@@ -66,15 +66,15 @@
     "zod": "^4.6.5"
   },
   "peerDependencies": {
-    "@opentelemetry/api": "^1.9.0",
-    "next": ">=16.0.0",
     "@google/adk": ">=2.1.0",
-    "@kitana-sdk/adk": ">=0.1.7"
+    "@kitana-sdk/adk": ">=0.1.10",
+    "@opentelemetry/api": "^1.9.0",
+    "next": ">=16.0.0"
   },
   "devDependencies": {
     "@google/adk": "^2.1.0",
     "@google/genai": "^2.24.0",
-    "@kitana-sdk/adk": "^0.1.7",
+    "@kitana-sdk/adk": "^0.1.10",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/context-async-hooks": "^2.11.0",
     "@opentelemetry/otlp-transformer": "^0.222.0",
