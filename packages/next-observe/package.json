@@ -4,6 +4,10 @@
   "description": "OpenTelemetry observability for Next.js — client, server and your own code via 'use observe'",
   "license": "MIT",
   "type": "module",
+  "bin": {
+    "next-observe": "./dist/bin.js",
+    "nxo": "./dist/bin.js"
+  },
   "exports": {
     "./config": {
       "types": "./dist/config.d.ts",

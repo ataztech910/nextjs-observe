@@ -367,6 +367,50 @@ EXPECT_VERSION=v1 node ../nextjs-observe/packages/next-observe/e2e/observe-page.
 
 ---
 
+## Шаг 8. CLI: `nxo dev` и `nxo collector`
+
+**Чтобы** участник запускал всё одной командой из корня проекта (или с `--root`), а на сервере коллектор настраивался через env,
+**делаем** CLI. У пакета два имени команды: `next-observe` и короткое `nxo`.
+
+```bash
+nxo dev                                   # из корня Next-проекта
+nxo dev --root apps/web -- -p 3100        # из другой папки; всё после -- уходит в next dev
+nxo collector --host 0.0.0.0 --api-key …  # только коллектор (сервер, дроплет)
+```
+
+- **`nxo dev`**
+  1. проверяет, что в `--root` есть `package.json` и установлен `next`;
+  2. поднимает коллектор;
+  3. запускает `next dev` из `node_modules` проекта с `OBSERVE_ENDPOINT`, указывающим на этот коллектор. `register()` и браузерный прокси `/__observe` сами попадают в правильное место;
+  4. Ctrl+C гасит `next dev` и коллектор. Если `next dev` упал, CLI выходит с его кодом.
+- **`nxo collector`** — только коллектор. Всё настраивается через env: `OBSERVE_PORT`, `OBSERVE_HOST`, `OBSERVE_API_KEY`. `OBSERVE_ROOT` задаёт корень для `dev`. Флаги важнее env.
+- **Понятные ошибки:** неизвестная команда, неверный порт, нет `package.json`, не установлен `next`, «порт 4318 занят — уже запущен другой nxo? используйте --port».
+
+Устройство: вся логика в `cli.ts` — функция `run(argv, deps)`, куда подставляются `spawn`, env и сигнал остановки. `bin.ts` — пять строк, которые связывают её с настоящим процессом. Так CLI тестируется в том же процессе, без запуска `next`.
+
+### Как тестировали
+
+1. **Юнит-тесты: 70** (было 59). 11 на CLI: разбор аргументов (`--root` относительно cwd, `--root=…`, аргументы после `--`, env и приоритет флагов, ошибки), help, занятый порт. `collector`: работает до сигнала, требует ключ из env, после остановки порт закрыт. `dev`: фейковый `spawn`, но **настоящий** коллектор — проверяются путь к бинарнику `next` из проекта, `cwd`, `stdio`, что `OBSERVE_ENDPOINT` перекрывает внешний, что коллектор доступен, пока идёт `next dev`, что код выхода передаётся, что Ctrl+C убивает `next dev` и закрывает коллектор, что при ошибке ничего не запускается.
+2. **Мутации:** не передавать `OBSERVE_ENDPOINT` — упал 1 тест; игнорировать `--root` — упали 4.
+3. **Сквозной тест** на установленном из tarball пакете, запуск **из родительской папки**:
+
+```bash
+OBSERVE_SERVICE_VERSION=v1 vercel-otel-test/node_modules/.bin/nxo dev --root vercel-otel-test -- -p 3100
+# сценарий /observe: 2 клика + server action
+EXPECT_VERSION=v1 node nextjs-observe/packages/next-observe/e2e/observe-page.mjs     # 12/12
+kill -INT <pid nxo>                                                                  # как Ctrl+C
+```
+
+После `SIGINT`: процессы `nxo` и `next dev` завершились, порты 3100 и 4318 свободны.
+
+### Что узнали
+
+- На macOS `tmpdir()` — симлинк `/var` → `/private/var`. `require.resolve` возвращает реальный путь, поэтому тесты сравнивают с `realpathSync`.
+- Типы Next делают `process.env.NODE_ENV` обязательным в `NodeJS.ProcessEnv`, и это касается всех, кто подключает типы `next`. Для CLI у нас свой тип `Env = Record<string, string | undefined>`.
+- Шебанг `#!/usr/bin/env node` TypeScript переносит в `dist/bin.js` как есть, а npm при установке делает bin исполняемым. Ничего дописывать не пришлось.
+
+---
+
 ## Дальше
 
 - [ ] DevTools-хук (bippy) в `instrumentation-client.ts`: `actualDuration` всех компонентов в profiling-сборке.
@@ -375,6 +419,7 @@ EXPECT_VERSION=v1 node ../nextjs-observe/packages/next-observe/e2e/observe-page.
 - [x] `next-observe/server` и `next-observe/client`, шаг 6
 - [ ] `service.version` у браузерных спанов.
 - [x] Коллектор + хранилище + API запросов в пакете, шаг 7
-- [ ] `nxo dev`: CLI запускает коллектор (+ позже UI) одной командой.
+- [x] `nxo dev` / `nxo collector`, шаг 8
+- [ ] UI трейсов (статический SPA из коллектора): список + waterfall.
 - [ ] Хранилище `node:sqlite` (данные переживают перезапуск).
 - [ ] `npx next-observe init`: подключение одной командой.
