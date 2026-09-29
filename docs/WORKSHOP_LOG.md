@@ -250,9 +250,176 @@ node observe-poc/verify.mjs
 
 ---
 
+## Шаг 6. `next-observe/server` и `next-observe/client`
+
+**Чтобы** подключение сервера и браузера тоже было в одну строку, а адрес коллектора брался из env,
+**делаем** две точки входа в пакете.
+
+```ts
+// instrumentation.ts
+export { register } from 'next-observe/server'
+```
+```ts
+// instrumentation-client.ts
+import 'next-observe/client'
+```
+
+**`next-observe/server`** — обёртка над `@vercel/otel`:
+- экспорт в OTLP/JSON на `${OBSERVE_ENDPOINT}/v1/traces` (по умолчанию `http://localhost:4318`);
+- заголовок `x-api-key` из `OBSERVE_API_KEY`;
+- `service.name` из `OBSERVE_SERVICE_NAME`;
+- `service.version` из `OBSERVE_SERVICE_VERSION` или `VERCEL_GIT_COMMIT_SHA`. Это нужно агенту для вопроса «какой деплой всё сломал»;
+- для своих настроек: `export const register = () => registerObserve({ ... })`.
+
+**`next-observe/client`** — браузерный OTel из POC:
+- `WebTracerProvider` + `DocumentLoad` + `Fetch`, `BatchSpanProcessor` (раз в 2s и при скрытии страницы);
+- `service.name` = `<имя>-browser`;
+- экспорт на **свой же домен** `/__observe/v1/traces`.
+
+**`withObserve()` теперь дополнительно:**
+- добавляет rewrite `/__observe/:path*` → `${OBSERVE_ENDPOINT}/:path*` в `beforeFiles`. Браузер шлёт на свой origin, Next проксирует в коллектор: **нет CORS и не нужна публичная переменная с адресом**. Пользовательские rewrite в любой из трёх форм (нет, массив, объект) сохраняются;
+- кладёт `OBSERVE_SERVICE_NAME` в `env` конфига. По умолчанию это `name` из `package.json` проекта. Next подставляет его при сборке и в серверный, и в браузерный код.
+
+Зависимости: `@vercel/otel` и его peer-пакеты (`api-logs`, `sdk-logs`, `sdk-metrics`, `sdk-trace-base`) — в `dependencies` пакета, чтобы pnpm и строгий npm их ставили.
+
+### Как тестировали
+
+1. **Юнит-тесты, 35 штук** (было 23):
+   - `server`: что уходит в `registerOTel` и в экспортёр без конфига, из env, при приоритете опций над env и `OBSERVE_SERVICE_VERSION` над SHA от Vercel, при обрезке `/` в конце endpoint;
+   - `client`: разрешение опций, импорт на сервере (SSR) не регистрирует провайдер;
+   - `withObserve`: имя из `package.json`, приоритеты env и опций, rewrite во всех трёх формах, endpoint без `/` в конце.
+2. **Проверка тестов:** сломали обрезку `/` на сервере и положение пользовательских rewrite — упали по одному тесту на каждую поломку.
+3. **Сквозной тест** (tarball → `vercel-otel-test`): `verify.mjs` расширен до 13 проверок — `documentLoad` пришёл через прокси, запросы экспортёра не трассируются, `service.version` совпадает с ожидаемым (`EXPECT_VERSION`). Коллектор теперь сохраняет `service.version`.
+
+```bash
+OBSERVE_SERVICE_VERSION=v1 npx next dev                          # dev
+OBSERVE_SERVICE_VERSION=v2 npx next build --profile && OBSERVE_SERVICE_VERSION=v2 npx next start
+EXPECT_VERSION=v1 node observe-poc/verify.mjs                    # или v2 для прода
+```
+
+### Результат
+
+| | dev (`v1`) | prod (`--profile`, `v2`) |
+|---|---|---|
+| все 13 проверок | ✅ | ✅ |
+| `service.name` сервер / браузер | `vercel-otel-test` / `vercel-otel-test-browser` | то же |
+| `service.version` на серверных спанах | `v1` | `v2` |
+| `Counter.count` | 6 (StrictMode) | 3 |
+
+### Что узнали
+
+- **`ignoreUrls` для своих экспортов не нужен.** Проверили: убрали его и получили 0 трассированных запросов экспорта на 41 браузерный спан. OTLP-экспортёр сам отключает трассировку своих `fetch`. Строку удалили, e2e-проверка «нет петли» осталась как защита от регрессии.
+- `env` из `next.config` доходит и до `instrumentation.ts`: серверный `register()` получил имя из `package.json`.
+- Rewrite вычисляются **при сборке**. В проде `OBSERVE_ENDPOINT` должен быть задан во время `next build`. На Vercel env доступен при сборке, так что это нормально, но в документацию стоит записать.
+- **У браузерных спанов пока нет `service.version`.** Добавить через тот же `env` в `withObserve()`.
+
+---
+
+## Шаг 7. Коллектор + хранилище + API запросов в пакете
+
+**Чтобы** у UI и у агентов был один источник данных, а не файл `spans.jsonl`,
+**делаем** `next-observe/collector` на встроенных модулях Node, без Fastify и вообще без зависимостей.
+
+```ts
+import { startCollector } from 'next-observe/collector'
+const collector = await startCollector()          // http://127.0.0.1:4318
+```
+
+| Endpoint | Что возвращает |
+|---|---|
+| `POST /v1/traces` | приём OTLP/JSON; protobuf → `415` с подсказкой «настройте экспортёр на http/json» |
+| `GET /health` | `{ status, spans }` |
+| `GET /api/services` | сервисы с версиями — для вопроса «какой деплой» |
+| `GET /api/traces?service&operation&minDurationMs&hasError&fromMs&toMs&limit` | сводки трейсов: корень, сервисы, длительность, число спанов и ошибок |
+| `GET /api/traces/:traceId` | все спаны трейса в порядке waterfall |
+| `GET /api/operations?service&operation` | **агрегаты** по операциям: count, errorRate, avg / p50 / p95 / p99 / max — то, что будут получать агенты |
+
+Устройство:
+- **`decode.ts`** — OTLP/JSON → `NormalizedSpan`. Id в hex, время в наносекундах через BigInt, все типы атрибутов, события-исключения.
+- **`memory-storage.ts`** — `StorageAdapter` в памяти, по умолчанию лимит 100k спанов, старые вытесняются.
+- **`server.ts`** — `node:http`: CORS, лимит тела 10 МБ → `413`, `x-api-key` → `401` (если задан `apiKey`), ошибки параметров → `400`.
+
+### Как тестировали
+
+1. **Контрактный тест декодера:** спаны создаёт настоящий OTel SDK, сериализует `JsonTraceSerializer` — тот же код, что в экспортёре. Проверяются id, связи parent/child, resource, kind, статус, все типы атрибутов, исключения, время.
+2. **Хранилище:** перцентили сверены с эталонными значениями на 1..100, все фильтры, корень трейса при опоздавшем родителе, группировка операций, версии сервисов, вытеснение.
+3. **HTTP:** настоящий `OTLPTraceExporter` шлёт в запущенный коллектор, потом API. Отдельно `415`, `400`, `404`, `413` (ответ доходит до клиента), `401`, CORS preflight.
+4. **Сквозной тест:** `vercel-otel-test` → коллектор из пакета. Новый скрипт `packages/next-observe/e2e/observe-page.mjs` проверяет 12 утверждений **через API коллектора**, а не через файл.
+
+```bash
+node -e "import('next-observe/collector').then(m => m.startCollector())" &
+OBSERVE_SERVICE_VERSION=v1 npx next dev          # сценарий /observe: 2 клика + server action
+EXPECT_VERSION=v1 node ../nextjs-observe/packages/next-observe/e2e/observe-page.mjs
+```
+
+**Юнит-тесты: 59** (было 35). **E2E: 12 из 12** в dev (`v1`) и в prod `--profile` (`v2`).
+
+### Что узнали (тесты поймали два настоящих бага)
+
+- **Точность длительности.** Сначала `durationMs` считался как разность двух эпохальных миллисекунд (~1.8e12). У float64 на таком масштабе ошибка ~0.6 мкс. Исправили: вычитаем в наносекундах через BigInt, потом переводим. Поймал контрактный тест.
+- **Порядок waterfall.** Родитель и потомок часто стартуют в одну миллисекунду, а экспортёр присылает потомка первым (он раньше закончился). Сортировка только по времени ставила потомка выше родителя. Исправили вторым ключом — глубиной в дереве. Поймал HTTP-тест с настоящим экспортёром, добавлен детерминированный юнит-тест, мутационная проверка его подтвердила.
+- **`localhost` vs `127.0.0.1`.** Node может разрешить `localhost` в IPv6 `::1`, а коллектор слушает IPv4. Endpoint по умолчанию теперь `http://127.0.0.1:4318`.
+- Для трейса server action корень — **браузерный** `POST`. Серверный `POST /observe` — его потомок. UI и агенты должны это учитывать: «корневой сервис» трейса может быть браузером.
+
+### Git
+
+`master` в GitHub отставал: PR #1 смержился в ветку хука (она стала веткой по умолчанию). Шаг 7 построен поверх коммита с шагом 6. **Нужно:** сделать `master` веткой по умолчанию и влить в него ветку хука.
+
+---
+
+## Шаг 8. CLI: `nxo dev` и `nxo collector`
+
+**Чтобы** участник запускал всё одной командой из корня проекта (или с `--root`), а на сервере коллектор настраивался через env,
+**делаем** CLI. У пакета два имени команды: `next-observe` и короткое `nxo`.
+
+```bash
+nxo dev                                   # из корня Next-проекта
+nxo dev --root apps/web -- -p 3100        # из другой папки; всё после -- уходит в next dev
+nxo collector --host 0.0.0.0 --api-key …  # только коллектор (сервер, дроплет)
+```
+
+- **`nxo dev`**
+  1. проверяет, что в `--root` есть `package.json` и установлен `next`;
+  2. поднимает коллектор;
+  3. запускает `next dev` из `node_modules` проекта с `OBSERVE_ENDPOINT`, указывающим на этот коллектор. `register()` и браузерный прокси `/__observe` сами попадают в правильное место;
+  4. Ctrl+C гасит `next dev` и коллектор. Если `next dev` упал, CLI выходит с его кодом.
+- **`nxo collector`** — только коллектор. Всё настраивается через env: `OBSERVE_PORT`, `OBSERVE_HOST`, `OBSERVE_API_KEY`. `OBSERVE_ROOT` задаёт корень для `dev`. Флаги важнее env.
+- **Понятные ошибки:** неизвестная команда, неверный порт, нет `package.json`, не установлен `next`, «порт 4318 занят — уже запущен другой nxo? используйте --port».
+
+Устройство: вся логика в `cli.ts` — функция `run(argv, deps)`, куда подставляются `spawn`, env и сигнал остановки. `bin.ts` — пять строк, которые связывают её с настоящим процессом. Так CLI тестируется в том же процессе, без запуска `next`.
+
+### Как тестировали
+
+1. **Юнит-тесты: 70** (было 59). 11 на CLI: разбор аргументов (`--root` относительно cwd, `--root=…`, аргументы после `--`, env и приоритет флагов, ошибки), help, занятый порт. `collector`: работает до сигнала, требует ключ из env, после остановки порт закрыт. `dev`: фейковый `spawn`, но **настоящий** коллектор — проверяются путь к бинарнику `next` из проекта, `cwd`, `stdio`, что `OBSERVE_ENDPOINT` перекрывает внешний, что коллектор доступен, пока идёт `next dev`, что код выхода передаётся, что Ctrl+C убивает `next dev` и закрывает коллектор, что при ошибке ничего не запускается.
+2. **Мутации:** не передавать `OBSERVE_ENDPOINT` — упал 1 тест; игнорировать `--root` — упали 4.
+3. **Сквозной тест** на установленном из tarball пакете, запуск **из родительской папки**:
+
+```bash
+OBSERVE_SERVICE_VERSION=v1 vercel-otel-test/node_modules/.bin/nxo dev --root vercel-otel-test -- -p 3100
+# сценарий /observe: 2 клика + server action
+EXPECT_VERSION=v1 node nextjs-observe/packages/next-observe/e2e/observe-page.mjs     # 12/12
+kill -INT <pid nxo>                                                                  # как Ctrl+C
+```
+
+После `SIGINT`: процессы `nxo` и `next dev` завершились, порты 3100 и 4318 свободны.
+
+### Что узнали
+
+- На macOS `tmpdir()` — симлинк `/var` → `/private/var`. `require.resolve` возвращает реальный путь, поэтому тесты сравнивают с `realpathSync`.
+- Типы Next делают `process.env.NODE_ENV` обязательным в `NodeJS.ProcessEnv`, и это касается всех, кто подключает типы `next`. Для CLI у нас свой тип `Env = Record<string, string | undefined>`.
+- Шебанг `#!/usr/bin/env node` TypeScript переносит в `dist/bin.js` как есть, а npm при установке делает bin исполняемым. Ничего дописывать не пришлось.
+
+---
+
 ## Дальше
 
 - [ ] DevTools-хук (bippy) в `instrumentation-client.ts`: `actualDuration` всех компонентов в profiling-сборке.
 - [ ] Связать `documentLoad` с серверным трейсом через `traceparent` в HTML.
 - [x] `withObserve(nextConfig)`, шаг 5
+- [x] `next-observe/server` и `next-observe/client`, шаг 6
+- [ ] `service.version` у браузерных спанов.
+- [x] Коллектор + хранилище + API запросов в пакете, шаг 7
+- [x] `nxo dev` / `nxo collector`, шаг 8
+- [ ] UI трейсов (статический SPA из коллектора): список + waterfall.
+- [ ] Хранилище `node:sqlite` (данные переживают перезапуск).
 - [ ] `npx next-observe init`: подключение одной командой.

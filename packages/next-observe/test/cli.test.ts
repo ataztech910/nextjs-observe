@@ -1,0 +1,177 @@
+import { EventEmitter } from 'node:events'
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import type { ChildProcess, SpawnOptions } from 'node:child_process'
+import { describe, expect, it } from 'vitest'
+import { CliError, HELP, parseCliArgs, run, type CliDeps, type Env } from '../src/cli.js'
+import { startCollector } from '../src/collector/index.js'
+
+// A project dir with a resolvable `next` package, like a real app after npm install.
+function fixtureApp(withNext = true): string {
+  const root = mkdtempSync(join(tmpdir(), 'nxo-app-'))
+  writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'fixture-app' }))
+  if (withNext) {
+    mkdirSync(join(root, 'node_modules', 'next', 'dist', 'bin'), { recursive: true })
+    writeFileSync(join(root, 'node_modules', 'next', 'package.json'), JSON.stringify({ name: 'next', version: '16.0.0' }))
+    writeFileSync(join(root, 'node_modules', 'next', 'dist', 'bin', 'next'), '')
+  }
+  return root
+}
+
+class FakeChild extends EventEmitter {
+  exitCode: number | null = null
+  killedWith: string | null = null
+  kill(signal: string) {
+    this.killedWith = signal
+    setImmediate(() => this.emit('exit', null, signal))
+    return true
+  }
+  exit(code: number) {
+    this.exitCode = code
+    this.emit('exit', code, null)
+  }
+}
+
+function harness(env: Env = {}) {
+  const logs: string[] = []
+  const spawned: { command: string; args: string[]; options: SpawnOptions; child: FakeChild }[] = []
+  let stop!: (signal: string) => void
+  const deps: CliDeps = {
+    env,
+    cwd: '/work',
+    log: (line) => logs.push(line),
+    spawn: (command, args, options) => {
+      const child = new FakeChild()
+      spawned.push({ command, args, options, child })
+      return child as unknown as ChildProcess
+    },
+    shutdownSignal: new Promise((resolve) => (stop = resolve)),
+  }
+  const collectorUrl = () => logs.join('\n').match(/collector\s+(http:\/\/\S+)/)?.[1]
+  return { deps, logs, spawned, stop: (s = 'SIGINT') => stop(s), collectorUrl }
+}
+
+const until = async (condition: () => unknown) => {
+  for (let i = 0; i < 200 && !condition(); i++) await new Promise((r) => setTimeout(r, 5))
+  if (!condition()) throw new Error('condition not met')
+}
+const reachable = (url: string) => fetch(`${url}/health`).then(() => true, () => false)
+
+describe('parseCliArgs', () => {
+  it('shows help without a command', () => {
+    expect(parseCliArgs([], {}, '/work').command).toBe('help')
+    expect(parseCliArgs(['dev', '-h'], {}, '/work').command).toBe('help')
+  })
+
+  it('resolves --root against cwd and passes args after -- to next dev', () => {
+    expect(parseCliArgs(['dev', '--root', 'apps/web', '--', '-p', '3100'], {}, '/work')).toEqual({
+      command: 'dev',
+      root: '/work/apps/web',
+      port: 4318,
+      host: '127.0.0.1',
+      apiKey: undefined,
+      nextArgs: ['-p', '3100'],
+    })
+    expect(parseCliArgs(['dev', '--root=apps/web'], {}, '/work').root).toBe('/work/apps/web')
+  })
+
+  it('reads env for cloud use, flags win over env', () => {
+    const env = { OBSERVE_ROOT: 'site', OBSERVE_PORT: '9000', OBSERVE_HOST: '0.0.0.0', OBSERVE_API_KEY: 'k' }
+    expect(parseCliArgs(['collector'], env, '/work')).toMatchObject({ root: '/work/site', port: 9000, host: '0.0.0.0', apiKey: 'k' })
+    expect(parseCliArgs(['collector', '--port', '9100'], env, '/work').port).toBe(9100)
+  })
+
+  it('rejects bad input with CliError', () => {
+    expect(() => parseCliArgs(['deploy'], {}, '/w')).toThrow(CliError)
+    expect(() => parseCliArgs(['dev', '--port', 'abc'], {}, '/w')).toThrow('invalid port "abc"')
+    expect(() => parseCliArgs(['dev', '--port', '70000'], {}, '/w')).toThrow(CliError)
+    expect(() => parseCliArgs(['dev', '--nope'], {}, '/w')).toThrow(CliError)
+  })
+})
+
+describe('run: help and errors', () => {
+  it('prints help and exits 0', async () => {
+    const h = harness()
+    expect(await run([], h.deps)).toBe(0)
+    expect(h.logs).toEqual([HELP])
+  })
+
+  it('prints the error plus help and exits 1', async () => {
+    const h = harness()
+    expect(await run(['deploy'], h.deps)).toBe(1)
+    expect(h.logs[0]).toMatch(/^nxo: unknown command "deploy"/)
+  })
+
+  it('explains a busy port', async () => {
+    const busy = await startCollector({ port: 0 })
+    try {
+      const h = harness()
+      expect(await run(['collector', '--port', String(busy.port)], h.deps)).toBe(1)
+      expect(h.logs[0]).toContain(`port ${busy.port} is already in use`)
+    } finally {
+      await busy.close()
+    }
+  })
+})
+
+describe('run collector', () => {
+  it('serves until the shutdown signal, then closes', async () => {
+    const h = harness({ OBSERVE_API_KEY: 'secret' })
+    const exit = run(['collector', '--port', '0'], h.deps)
+    await until(h.collectorUrl)
+    const url = h.collectorUrl()!
+    expect(await reachable(url)).toBe(true)
+    expect(h.logs[0]).toContain('x-api-key required')
+    const unauthorized = await fetch(`${url}/v1/traces`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+    expect(unauthorized.status).toBe(401)
+
+    h.stop()
+    expect(await exit).toBe(0)
+    expect(await reachable(url)).toBe(false)
+  })
+})
+
+describe('run dev', () => {
+  it('starts the collector, then next dev in the app with OBSERVE_ENDPOINT pointing at it', async () => {
+    const root = fixtureApp()
+    const h = harness({ PATH: '/bin', OBSERVE_ENDPOINT: 'https://prod.example.com' })
+    const exit = run(['dev', '--root', root, '--port', '0', '--', '-p', '3100'], h.deps)
+    await until(() => h.spawned.length)
+
+    const [{ command, args, options, child }] = h.spawned
+    expect(command).toBe(process.execPath)
+    // require.resolve returns the real path (on macOS tmpdir is a symlink to /private/var)
+    expect(args).toEqual([join(realpathSync(root), 'node_modules', 'next', 'dist', 'bin', 'next'), 'dev', '-p', '3100'])
+    expect(options.cwd).toBe(root)
+    expect(options.stdio).toBe('inherit')
+    expect(options.env).toMatchObject({ PATH: '/bin', OBSERVE_ENDPOINT: h.collectorUrl() })
+    expect(await reachable(h.collectorUrl()!)).toBe(true)
+
+    child.exit(3)
+    expect(await exit).toBe(3)
+    expect(await reachable(h.collectorUrl()!)).toBe(false)
+  })
+
+  it('on Ctrl+C stops next dev and the collector', async () => {
+    const h = harness()
+    const exit = run(['dev', '--root', fixtureApp(), '--port', '0'], h.deps)
+    await until(() => h.spawned.length)
+    h.stop('SIGINT')
+    expect(await exit).toBe(0)
+    expect(h.spawned[0].child.killedWith).toBe('SIGTERM')
+    expect(await reachable(h.collectorUrl()!)).toBe(false)
+  })
+
+  it('fails clearly without package.json or without next, and starts nothing', async () => {
+    const empty = mkdtempSync(join(tmpdir(), 'nxo-empty-'))
+    const h1 = harness()
+    expect(await run(['dev', '--root', empty, '--port', '0'], h1.deps)).toBe(1)
+    expect(h1.logs[0]).toContain('no package.json')
+
+    const h2 = harness()
+    expect(await run(['dev', '--root', fixtureApp(false), '--port', '0'], h2.deps)).toBe(1)
+    expect(h2.logs[0]).toContain('next is not installed')
+    expect([...h1.spawned, ...h2.spawned]).toHaveLength(0)
+  })
+})
