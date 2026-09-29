@@ -13,7 +13,7 @@ type ConfigFunction = (phase: string, context: { defaultConfig: NextConfig }) =>
 export interface ObserveOptions {
   /** OTel `service.name`. Default: OBSERVE_SERVICE_NAME, else `name` from the project's package.json. */
   serviceName?: string
-  /** Collector base URL the browser proxy points to. Default: OBSERVE_ENDPOINT or http://localhost:4318. */
+  /** Collector base URL the browser proxy points to. Default: OBSERVE_ENDPOINT or http://127.0.0.1:4318. */
   endpoint?: string
 }
 
