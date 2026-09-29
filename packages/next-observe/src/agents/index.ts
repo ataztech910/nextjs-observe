@@ -2,3 +2,4 @@
 export { createInvestigator, type Investigator, type InvestigatorOptions, type InvestigationStep, type TranscriptEntry } from './investigator.js'
 export { getModel, resolveAiMode, type AiMode } from './model.js'
 export { MockLlm, MOCK_PREFIX } from './mock-llm.js'
+export { createChatHandler, type ChatHandlerOptions } from './chat.js'

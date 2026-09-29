@@ -105,11 +105,15 @@ export function createInvestigator(options: InvestigatorOptions) {
 
   return {
     /** Runs one investigation; resolves with the final report and every tool call made on the way. Safe to call concurrently. */
-    async ask(question: string): Promise<{ text: string; steps: InvestigationStep[]; transcript: TranscriptEntry[]; error?: string }> {
+    async ask(
+      question: string,
+      call: { onStep?: (step: InvestigationStep) => void } = {},
+    ): Promise<{ text: string; steps: InvestigationStep[]; transcript: TranscriptEntry[]; error?: string }> {
       const steps: InvestigationStep[] = []
       const record = (step: InvestigationStep) => {
         steps.push(step)
         options.onStep?.(step)
+        call.onStep?.(step)
       }
       const runner = new InMemoryRunner({ agent: buildOrchestrator(record), appName: 'next-observe' })
       const transcript: TranscriptEntry[] = []

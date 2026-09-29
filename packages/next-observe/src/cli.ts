@@ -4,7 +4,10 @@ import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { startCollector, type Collector } from './collector/index.js'
+import { MemoryStorage, startCollector, type Collector, type CollectorOptions } from './collector/index.js'
+
+// Type-only: the agents module (and @google/adk behind it) is loaded lazily, it's an optional peer dependency.
+type AgentsModule = typeof import('./agents/index.js')
 
 export const HELP = `Usage:
   nxo dev [--root <dir>] [--port <n>] [-- <next dev args>]
@@ -76,6 +79,8 @@ export interface CliDeps {
   spawn: (command: string, args: string[], options: SpawnOptions) => ChildProcess
   /** Resolves when the CLI should stop (SIGINT/SIGTERM in real use). */
   shutdownSignal: Promise<string>
+  /** Loads the agents module; injectable so tests can simulate a project without @google/adk. */
+  loadAgents?: () => Promise<AgentsModule>
 }
 
 function resolveNextBin(root: string): string {
@@ -88,9 +93,40 @@ function resolveNextBin(root: string): string {
   }
 }
 
-async function start(args: CliArgs): Promise<Collector> {
+const CHAT_INSTALL_HINT = 'npm i -D @google/adk @kitana-sdk/adk @google/genai'
+
+function isMissing(error: unknown, pkg: string): boolean {
+  const e = error as NodeJS.ErrnoException
+  return (e?.code === 'ERR_MODULE_NOT_FOUND' || e?.code === 'MODULE_NOT_FOUND') && String(e.message).includes(pkg)
+}
+
+// Chat needs the optional @google/adk; without it the collector still runs, chat is just off.
+async function loadChat(storage: MemoryStorage, deps: CliDeps): Promise<{ chat?: CollectorOptions['chat']; line: string }> {
+  let agents: AgentsModule
   try {
-    return await startCollector({ port: args.port, host: args.host, apiKey: args.apiKey })
+    agents = await (deps.loadAgents ?? (() => import('./agents/index.js')))()
+  } catch (error) {
+    if (isMissing(error, '@google/adk')) return { line: `  chat       disabled — ${CHAT_INSTALL_HINT}` }
+    throw error
+  }
+  try {
+    const chat = await agents.createChatHandler({ storage, env: deps.env })
+    const hint = chat.mode === 'mock' ? '  (OBSERVE_AI=real for a real model)' : ''
+    return { chat, line: `  chat       ${chat.mode}${hint}` }
+  } catch (error) {
+    if (isMissing(error, '@kitana-sdk/adk')) {
+      throw new CliError(`OBSERVE_AI=real needs GEMINI_API_KEY + GEMINI_MODEL, or Kitana: ${CHAT_INSTALL_HINT}`)
+    }
+    throw new CliError((error as Error).message)
+  }
+}
+
+async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collector; chatLine: string }> {
+  const storage = new MemoryStorage()
+  const { chat, line } = await loadChat(storage, deps)
+  try {
+    const collector = await startCollector({ port: args.port, host: args.host, apiKey: args.apiKey, storage, chat })
+    return { collector, chatLine: line }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
       throw new CliError(`port ${args.port} is already in use — is another nxo running? Use --port <n>`)
@@ -109,8 +145,8 @@ function banner(collector: Collector, extra: string[] = []): string {
 }
 
 async function runCollector(args: CliArgs, deps: CliDeps): Promise<number> {
-  const collector = await start(args)
-  deps.log(banner(collector, args.apiKey ? ['  auth       x-api-key required'] : []))
+  const { collector, chatLine } = await start(args, deps)
+  deps.log(banner(collector, [chatLine, ...(args.apiKey ? ['  auth       x-api-key required'] : [])]))
   await deps.shutdownSignal
   await collector.close()
   return 0
@@ -118,8 +154,8 @@ async function runCollector(args: CliArgs, deps: CliDeps): Promise<number> {
 
 async function runDev(args: CliArgs, deps: CliDeps): Promise<number> {
   const nextBin = resolveNextBin(args.root)
-  const collector = await start(args)
-  deps.log(banner(collector, [`  app        ${['next dev', ...args.nextArgs].join(' ')} in ${args.root}`]))
+  const { collector, chatLine } = await start(args, deps)
+  deps.log(banner(collector, [chatLine, `  app        ${['next dev', ...args.nextArgs].join(' ')} in ${args.root}`]))
 
   const child = deps.spawn(process.execPath, [nextBin, 'dev', ...args.nextArgs], {
     cwd: args.root,
