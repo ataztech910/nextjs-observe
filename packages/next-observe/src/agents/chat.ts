@@ -3,6 +3,7 @@ import type { BaseLlm } from '@google/adk'
 import type { ChatEvent, ChatHandler } from '../collector/chat.js'
 import type { StorageAdapter } from '../collector/types.js'
 import type { QueryOptions } from '../debug/queries.js'
+import { cardKey, cardsFromResult } from './cards.js'
 import { createInvestigator } from './investigator.js'
 import { getModel, resolveAiMode, type Env } from './model.js'
 
@@ -30,8 +31,17 @@ export async function createChatHandler(options: ChatHandlerOptions): Promise<{ 
     }
     let timer: ReturnType<typeof setTimeout> | undefined
     const timeout = new Promise<'timeout'>((resolve) => (timer = setTimeout(() => resolve('timeout'), timeoutMs)))
+    const shown = new Set<string>()
+    const onResult = (step: { tool: string; args: Record<string, unknown> }, result: unknown) => {
+      for (const card of cardsFromResult(step.tool, step.args, result)) {
+        const key = cardKey(card)
+        if (shown.has(key)) continue
+        shown.add(key)
+        send({ type: 'card', card })
+      }
+    }
     try {
-      const result = await Promise.race([investigator.ask(question, { onStep: (s) => send({ type: 'step', ...s }) }), timeout])
+      const result = await Promise.race([investigator.ask(question, { onStep: (s) => send({ type: 'step', ...s }), onResult }), timeout])
       if (result === 'timeout') {
         send({ type: 'error', message: `investigation took longer than ${Math.round(timeoutMs / 1000)}s — try a narrower question` })
       } else if (result.error && !result.text) {

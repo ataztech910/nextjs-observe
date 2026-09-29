@@ -71,6 +71,7 @@ describe('parseCliArgs', () => {
       port: 4318,
       host: '127.0.0.1',
       apiKey: undefined,
+      demo: false,
       nextArgs: ['-p', '3100'],
     })
     expect(parseCliArgs(['dev', '--root=apps/web'], {}, '/work').root).toBe('/work/apps/web')
@@ -213,5 +214,18 @@ describe('chat in the CLI', () => {
     real.deps.loadAgents = async () => ({ ...agents, createChatHandler: async () => { throw missing('@kitana-sdk/adk') } })
     expect(await run(['collector', '--port', '0'], real.deps)).toBe(1)
     expect(real.logs[0]).toContain('OBSERVE_AI=real needs GEMINI_API_KEY + GEMINI_MODEL, or Kitana')
+  })
+})
+
+describe('--demo', () => {
+  it('preloads the shop scenario so the UI and chat have data without an app', async () => {
+    const h = harness({})
+    const exit = run(['collector', '--port', '0', '--demo'], h.deps)
+    await until(h.collectorUrl)
+    expect(h.logs[0]).toContain('demo       "shop" scenario loaded')
+    const services = await (await fetch(`${h.collectorUrl()}/api/services`)).json()
+    expect(services[0]).toMatchObject({ name: 'shop', versions: ['v0', 'v1', 'v2'] })
+    h.stop()
+    expect(await exit).toBe(0)
   })
 })
