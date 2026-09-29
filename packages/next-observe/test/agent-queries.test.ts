@@ -75,8 +75,11 @@ describe('getErrors', () => {
     expect(check.exampleTraceIds).toHaveLength(3)
   })
 
-  it('says a real but healthy operation has no errors, instead of pretending it does not exist', async () => {
-    expect(await q.getErrors({ operation: 'chargePayment' })).toEqual({ note: '"chargePayment" has no errors in this window', errors: [] })
+  it('for a real but healthy operation: says so, and still shows what is failing elsewhere', async () => {
+    // "500s on product pages" → the agent asks for "product"; GET /api/products is healthy, inventory.check fails on those pages.
+    const result = await q.getErrors({ operation: 'product' })
+    expect(result.note).toBe('"product" has no errors in this window; showing failing operations elsewhere')
+    expect(result.errors.map((e) => e.operation)).toContain('inventory.check')
   })
 
   it('falls back to all errors only when the name matches nothing', async () => {
