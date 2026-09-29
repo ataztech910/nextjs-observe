@@ -7,7 +7,7 @@ export interface ObserveServerOptions {
   serviceName?: string
   /** OTel `service.version` — lets agents compare deployments. Default: OBSERVE_SERVICE_VERSION or the Vercel commit SHA. */
   serviceVersion?: string
-  /** Collector base URL. Default: OBSERVE_ENDPOINT or http://localhost:4318. */
+  /** Collector base URL. Default: OBSERVE_ENDPOINT or http://127.0.0.1:4318. */
   endpoint?: string
   /** Sent as `x-api-key`. Default: OBSERVE_API_KEY. */
   apiKey?: string

@@ -315,6 +315,58 @@ EXPECT_VERSION=v1 node observe-poc/verify.mjs                    # или v2 д�
 
 ---
 
+## Шаг 7. Коллектор + хранилище + API запросов в пакете
+
+**Чтобы** у UI и у агентов был один источник данных, а не файл `spans.jsonl`,
+**делаем** `next-observe/collector` на встроенных модулях Node, без Fastify и вообще без зависимостей.
+
+```ts
+import { startCollector } from 'next-observe/collector'
+const collector = await startCollector()          // http://127.0.0.1:4318
+```
+
+| Endpoint | Что возвращает |
+|---|---|
+| `POST /v1/traces` | приём OTLP/JSON; protobuf → `415` с подсказкой «настройте экспортёр на http/json» |
+| `GET /health` | `{ status, spans }` |
+| `GET /api/services` | сервисы с версиями — для вопроса «какой деплой» |
+| `GET /api/traces?service&operation&minDurationMs&hasError&fromMs&toMs&limit` | сводки трейсов: корень, сервисы, длительность, число спанов и ошибок |
+| `GET /api/traces/:traceId` | все спаны трейса в порядке waterfall |
+| `GET /api/operations?service&operation` | **агрегаты** по операциям: count, errorRate, avg / p50 / p95 / p99 / max — то, что будут получать агенты |
+
+Устройство:
+- **`decode.ts`** — OTLP/JSON → `NormalizedSpan`. Id в hex, время в наносекундах через BigInt, все типы атрибутов, события-исключения.
+- **`memory-storage.ts`** — `StorageAdapter` в памяти, по умолчанию лимит 100k спанов, старые вытесняются.
+- **`server.ts`** — `node:http`: CORS, лимит тела 10 МБ → `413`, `x-api-key` → `401` (если задан `apiKey`), ошибки параметров → `400`.
+
+### Как тестировали
+
+1. **Контрактный тест декодера:** спаны создаёт настоящий OTel SDK, сериализует `JsonTraceSerializer` — тот же код, что в экспортёре. Проверяются id, связи parent/child, resource, kind, статус, все типы атрибутов, исключения, время.
+2. **Хранилище:** перцентили сверены с эталонными значениями на 1..100, все фильтры, корень трейса при опоздавшем родителе, группировка операций, версии сервисов, вытеснение.
+3. **HTTP:** настоящий `OTLPTraceExporter` шлёт в запущенный коллектор, потом API. Отдельно `415`, `400`, `404`, `413` (ответ доходит до клиента), `401`, CORS preflight.
+4. **Сквозной тест:** `vercel-otel-test` → коллектор из пакета. Новый скрипт `packages/next-observe/e2e/observe-page.mjs` проверяет 12 утверждений **через API коллектора**, а не через файл.
+
+```bash
+node -e "import('next-observe/collector').then(m => m.startCollector())" &
+OBSERVE_SERVICE_VERSION=v1 npx next dev          # сценарий /observe: 2 клика + server action
+EXPECT_VERSION=v1 node ../nextjs-observe/packages/next-observe/e2e/observe-page.mjs
+```
+
+**Юнит-тесты: 59** (было 35). **E2E: 12 из 12** в dev (`v1`) и в prod `--profile` (`v2`).
+
+### Что узнали (тесты поймали два настоящих бага)
+
+- **Точность длительности.** Сначала `durationMs` считался как разность двух эпохальных миллисекунд (~1.8e12). У float64 на таком масштабе ошибка ~0.6 мкс. Исправили: вычитаем в наносекундах через BigInt, потом переводим. Поймал контрактный тест.
+- **Порядок waterfall.** Родитель и потомок часто стартуют в одну миллисекунду, а экспортёр присылает потомка первым (он раньше закончился). Сортировка только по времени ставила потомка выше родителя. Исправили вторым ключом — глубиной в дереве. Поймал HTTP-тест с настоящим экспортёром, добавлен детерминированный юнит-тест, мутационная проверка его подтвердила.
+- **`localhost` vs `127.0.0.1`.** Node может разрешить `localhost` в IPv6 `::1`, а коллектор слушает IPv4. Endpoint по умолчанию теперь `http://127.0.0.1:4318`.
+- Для трейса server action корень — **браузерный** `POST`. Серверный `POST /observe` — его потомок. UI и агенты должны это учитывать: «корневой сервис» трейса может быть браузером.
+
+### Git
+
+`master` в GitHub отставал: PR #1 смержился в ветку хука (она стала веткой по умолчанию). Шаг 7 построен поверх коммита с шагом 6. **Нужно:** сделать `master` веткой по умолчанию и влить в него ветку хука.
+
+---
+
 ## Дальше
 
 - [ ] DevTools-хук (bippy) в `instrumentation-client.ts`: `actualDuration` всех компонентов в profiling-сборке.
@@ -322,5 +374,7 @@ EXPECT_VERSION=v1 node observe-poc/verify.mjs                    # или v2 д�
 - [x] `withObserve(nextConfig)`, шаг 5
 - [x] `next-observe/server` и `next-observe/client`, шаг 6
 - [ ] `service.version` у браузерных спанов.
-- [ ] Коллектор + хранилище + API запросов в пакете (вместо `observe-poc/collector.mjs`).
+- [x] Коллектор + хранилище + API запросов в пакете, шаг 7
+- [ ] `nxo dev`: CLI запускает коллектор (+ позже UI) одной командой.
+- [ ] Хранилище `node:sqlite` (данные переживают перезапуск).
 - [ ] `npx next-observe init`: подключение одной командой.

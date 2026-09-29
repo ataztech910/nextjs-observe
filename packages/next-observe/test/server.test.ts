@@ -27,7 +27,7 @@ describe('register', () => {
     register()
     expect(calls.registerOTel[0].serviceName).toBe('next-app')
     expect(calls.registerOTel[0].attributes).toEqual({})
-    expect(calls.exporter[0]).toEqual({ url: 'http://localhost:4318/v1/traces', headers: {} })
+    expect(calls.exporter[0]).toEqual({ url: 'http://127.0.0.1:4318/v1/traces', headers: {} })
   })
 
   it('reads env vars', () => {

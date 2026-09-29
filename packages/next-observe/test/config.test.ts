@@ -68,7 +68,7 @@ describe('withObserve: service name', () => {
 
 describe('withObserve: browser proxy rewrite', () => {
   afterEach(() => vi.unstubAllEnvs())
-  const proxy = { source: '/__observe/:path*', destination: 'http://localhost:4318/:path*' }
+  const proxy = { source: '/__observe/:path*', destination: 'http://127.0.0.1:4318/:path*' }
   const user = { source: '/old', destination: '/new' }
 
   it('adds the proxy to beforeFiles when the user has no rewrites', async () => {
