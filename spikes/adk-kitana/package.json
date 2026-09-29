@@ -1,0 +1,17 @@
+{
+  "name": "adk-kitana-spike",
+  "version": "1.0.0",
+  "description": "ADK 2.x + Kitana (Claude CLI) spike: one agent with a tool, and an orchestrator with specialist agents",
+  "scripts": {
+    "agent": "node spike.mjs",
+    "orchestrator": "node spike-orchestrator.mjs"
+  },
+  "type": "module",
+  "dependencies": {
+    "@google/adk": "^2.1.0",
+    "@google/genai": "^2.24.0",
+    "@kitana-sdk/adk": "^0.1.7",
+    "zod": "^4.6.5"
+  },
+  "private": true
+}
