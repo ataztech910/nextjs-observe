@@ -102,6 +102,7 @@ async function start(args: CliArgs): Promise<Collector> {
 function banner(collector: Collector, extra: string[] = []): string {
   return [
     'next-observe',
+    `  ui         ${collector.url}`,
     `  collector  ${collector.url}  (OTLP: /v1/traces, API: /api/traces, /api/operations, /api/services)`,
     ...extra,
   ].join('\n')

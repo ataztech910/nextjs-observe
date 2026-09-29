@@ -35,8 +35,10 @@
     "dist"
   ],
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && npm --prefix ui run build",
+    "ui:install": "npm --prefix ui install",
+    "ui:dev": "npm --prefix ui run dev",
+    "typecheck": "tsc -p tsconfig.json --noEmit && npm --prefix ui run typecheck",
     "test": "vitest run"
   },
   "dependencies": {

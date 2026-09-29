@@ -30,6 +30,12 @@ describe('register', () => {
     expect(calls.exporter[0]).toEqual({ url: 'http://127.0.0.1:4318/v1/traces', headers: {} })
   })
 
+  it('does not trace fetches to the collector (the /__observe proxy forwarding browser spans)', () => {
+    vi.stubEnv('OBSERVE_ENDPOINT', 'https://observe.example.com/')
+    register()
+    expect(calls.registerOTel[0].instrumentationConfig).toEqual({ fetch: { ignoreUrls: ['https://observe.example.com/'] } })
+  })
+
   it('reads env vars', () => {
     vi.stubEnv('OBSERVE_SERVICE_NAME', 'shop')
     vi.stubEnv('OBSERVE_ENDPOINT', 'https://observe.example.com/')
