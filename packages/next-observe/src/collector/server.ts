@@ -5,10 +5,13 @@
 //   GET  /api/traces?service&operation&minDurationMs&hasError&fromMs&toMs&limit
 //   GET  /api/traces/:traceId
 //   GET  /api/operations?service&operation&fromMs&toMs
+//   GET  /*                         the UI (dist/ui) with SPA fallback
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { fileURLToPath } from 'node:url'
 import { decodeOtlpJson, type OtlpTraceRequest } from './decode.js'
 import { MemoryStorage } from './memory-storage.js'
+import { serveUi } from './static.js'
 import type { StorageAdapter } from './types.js'
 
 export interface CollectorOptions {
@@ -20,7 +23,11 @@ export interface CollectorOptions {
   apiKey?: string
   /** Default 10 MB. */
   maxBodyBytes?: number
+  /** Built UI to serve at /. Default: the package's dist/ui. `false` disables it. */
+  uiDir?: string | false
 }
+
+const DEFAULT_UI_DIR = fileURLToPath(new URL('../ui/', import.meta.url))
 
 export interface Collector {
   url: string
@@ -147,6 +154,9 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
         }),
       )
     }
+    if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/v1/')) throw new HttpError(404, 'not found')
+    const uiDir = options.uiDir ?? DEFAULT_UI_DIR
+    if (uiDir && (await serveUi(uiDir, url.pathname, res))) return
     throw new HttpError(404, 'not found')
   }
 
@@ -170,6 +180,11 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     url: `http://${host === '0.0.0.0' ? '127.0.0.1' : host}:${port}`,
     port,
     storage,
-    close: () => new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve()))),
+    close: () =>
+      new Promise((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()))
+        // Defensive: don't let any lingering client socket delay shutdown (a hang was seen once in e2e, cause not reproduced).
+        server.closeAllConnections()
+      }),
   }
 }

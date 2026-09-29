@@ -30,6 +30,8 @@ export function register(options?: ObserveServerOptions): void {
   registerOTel({
     serviceName,
     attributes: serviceVersion ? { 'service.version': serviceVersion } : {},
+    // Next's /__observe rewrite forwards browser exports with fetch; tracing that adds a noise span per batch.
+    instrumentationConfig: { fetch: { ignoreUrls: [`${endpoint}/`] } },
     traceExporter: new OTLPHttpJsonTraceExporter({
       url: `${endpoint}/v1/traces`,
       headers: apiKey ? { 'x-api-key': apiKey } : {},
