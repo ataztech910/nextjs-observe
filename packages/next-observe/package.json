@@ -1,0 +1,44 @@
+{
+  "name": "next-observe",
+  "version": "0.0.1",
+  "description": "OpenTelemetry observability for Next.js — client, server and your own code via 'use observe'",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "default": "./dist/config.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "default": "./dist/runtime.js"
+    },
+    "./loader": "./dist/transform/loader.cjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@babel/core": "^8.0.6"
+  },
+  "peerDependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "next": ">=16.0.0"
+  },
+  "devDependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/context-async-hooks": "^2.11.0",
+    "@opentelemetry/sdk-trace-base": "^2.11.0",
+    "@types/node": "^26.6.3",
+    "next": "^16.3.7",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.2"
+  }
+}

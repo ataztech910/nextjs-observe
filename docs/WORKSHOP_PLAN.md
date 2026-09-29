@@ -1,0 +1,167 @@
+# План воркшопа — AI-Native Observability
+
+**Тема:** Building Self-Debugging Next.js Applications with OpenTelemetry
+**Дата:** 10 ноября 2026, Португалия. **Длительность:** 3 ч 30 мин, смешанная аудитория.
+**Формат:** гибрид. Инфраструктуру (коллектор, хранилище, API запросов, просмотр трейсов) даёт пакет `next-observe` с первой минуты. Руками участники пишут инструментацию и агентов. В финале — reveal: `next-observe/debug` делает то же, что они написали, одной строкой конфига.
+Участники работают только локально. Прод (Vercel + дроплет) — демо ведущего, поднимается заранее.
+
+---
+
+## Тайминг (210 минут)
+
+| # | Блок | Мин | Кто | Что |
+|---|---|---|---|---|
+| 0 | Вступление, проверка окружения | 10 | ведущий | `npm run doctor` у всех |
+| 1 | Теория: трейс → OTel → боль → паттерн self-debug | 30 | слайды | |
+| ☕ | Перерыв | 15 | | |
+| 2 | Старт | 10 | все | `npm run dev` + `nxo dev` → трейсы в UI сразу |
+| 3 | Инструментация | 35 | **руками** | `'use observe'` на checkout / payment / inventory, клиент, свой спан. N+1 находят **глазами** в waterfall |
+| 4 | AI-агенты | 40 | **руками** | Пишут Latency Agent (инструкция + 2 инструмента поверх API пакета), остальные агенты готовые. 3 сценария |
+| ☕ | Перерыв | 15 | | |
+| 5 | Self-debug демо | 30 | ведущий | ломаем приложение → детектор → агенты → компоненты стримятся в чат. Затем прод: Vercel + дроплет |
+| 6 | Итог + Q&A | 15 | разговор | «вы написали агента на 50 строк → вот `next-observe/debug`» |
+
+---
+
+## Вопросы из описания → данные и агенты
+
+| Вопрос | Данные | Кто отвечает |
+|---|---|---|
+| Why did checkout latency increase? | спаны checkout с дочерними, p50/p95/p99 | Latency Agent |
+| Which deployment introduced the regression? | `service.version` на **каждом** спане + сравнение по версиям | Latency / Error Agent + `compare_versions` |
+| What is the most likely root cause? | исключения в спанах + `code.filepath` из `'use observe'` → исходник | Error Agent + `read_file` |
+| Which component should be fixed first? | self-time × частота + рендеры React | Report Agent |
+
+---
+
+## Стартовый репозиторий: shop app с тремя багами
+
+| Баг | Где | Сигнал | Что находит агент |
+|---|---|---|---|
+| 1. Медленный payment `sleep(500 + random*2000)` | `api/checkout` | latency | `chargePayment` p99 > 2s |
+| 2. N+1: `ids.map(getProductById)` | `api/products` | latency, «ничего не выделяется» | 5 одинаковых `db.query` вместо одного |
+| 3. 30% `Inventory service timeout` | `api/inventory/[id]` | errors | `inventory.check` с `error=true`, rate 30% |
+
+- Git-теги на каждый блок (`step-2-start`, `step-3-instrumented`, `step-4-agents`, `step-5-debug`): отставший делает `git checkout` и продолжает со всеми.
+- Генератор нагрузки `npm run load`: без трафика детектору нечего видеть.
+- `npm run doctor`: проверка Node, зависимостей, ключа LLM, портов.
+- **Prereqs:** клонировать и выполнить `npm install` **дома**. Конференционный Wi-Fi это не потянет.
+
+---
+
+## Исправления к исходному плану
+
+1. **Детектор считает по корневым серверным спанам** (`SpanKind.SERVER`) или по каждой операции, а не по всем спанам. Next создаёт около 7 спанов на запрос, и 30% ошибок inventory размылись бы ниже порога 20%.
+2. **`streamUI` не используем.** Он переехал в `@ai-sdk/rsc`, а документация AI SDK 7 пишет: «experimental, we recommend AI SDK UI».
+3. **Один LLM-конвейер:** Report Agent вызывает UI-инструменты, вызов уходит в чат как событие `{ component, props }`, клиент рендерит компонент. Второго вызова LLM нет (см. схему ниже).
+4. **Имя модели берём из env**, не хардкодим `gemini-2.0-flash`.
+5. **Версии и имена:** Next 16, `next-observe`, `next-observe/debug`.
+6. **Детектор:** фильтр по времени вместо `setTimeout` на каждый спан, без переменной с именем `window`.
+
+### Схема: один LLM-конвейер
+
+```
+detector ── AnomalyReport ──► ADK orchestrator (Gemini | Kitana)
+                                ├ Latency / Error / Traffic agents   ← инструменты: запросы к трейсам
+                                └ Report Agent                      ← инструменты: showAnomalyCard(...)
+                                        │ execute() = emit({ component: 'AnomalyCard', props })
+                                        ▼
+                               SSE /api/debug/stream
+                                        ▼
+                         /chat: EventSource → <AnomalyCard {...props}/>
+```
+
+---
+
+## Что пакет должен уметь к 10 ноября
+
+**Обязательно:**
+- [ ] `withObserve(nextConfig)`, loader `'use observe'`, `next-observe/runtime`
+- [ ] `next-observe/server` (обёртка `@vercel/otel`) и `next-observe/client` (браузерный OTel)
+- [ ] Коллектор OTLP/HTTP (JSON + protobuf) + хранилище в памяти / SQLite
+- [ ] API запросов: `searchTraces`, `getTrace`, `getOperationStats`, `getServices`, `compareVersions`. Возвращают **агрегаты**
+- [ ] Минимальный UI: список трейсов + waterfall
+- [ ] `nxo dev`
+- [ ] `service.version` на всех спанах
+
+**Для блоков 5–6:**
+- [ ] `next-observe/debug`: детектор + агенты + чат через SSE
+- [ ] Все агенты через ADK, модель: Gemini или `KitanaLlm`
+- [ ] Флаг `OBSERVE_AI=mock|real|record|replay` (`MockLlm`, `RecordingLlm`, `ReplayLlm` поверх `BaseLlm`)
+- [ ] Очередь запросов + retry на 429 в режиме `real`
+
+**После воркшопа:** BullMQ / Kafka, Supabase / Mongo / ClickHouse, YAML-дашборды, федерация, SWC-плагин, `deploy`, React DevTools-хук (если не успеем).
+
+---
+
+## Вехи (6 недель)
+
+| Неделя | Даты | Результат |
+|---|---|---|
+| 1 | 29 сен – 5 окт | Каркас пакета: `withObserve`, loader, runtime, server/client; коллектор + хранилище в памяти + API запросов |
+| 2 | 6 – 12 окт | `nxo dev` + минимальный UI трейсов; `init` |
+| 3 | 13 – 19 окт | Стартовый репозиторий: shop app, 3 бага, теги, `load`, `doctor` |
+| 4 | 20 – 26 окт | `debug`: детектор, ADK-агенты (Gemini / Kitana), чат через SSE |
+| 5 | 27 окт – 2 ноя | Прод-демо (Vercel + дроплет), replay, прогон на чистых машинах (macOS / Windows / Linux) |
+| 6 | 3 – 9 ноя | Слайды, репетиция, запас на форс-мажор |
+
+---
+
+## LLM: ADK + Gemini или Kitana (бюджет ≤ €20)
+
+Все агенты — `LlmAgent` из `@google/adk`, другого LLM-кода в проекте нет. Модель выбирается одной функцией:
+
+```ts
+function getModel() {
+  if (process.env.GEMINI_API_KEY) return process.env.GEMINI_MODEL   // встроенный Gemini в ADK
+  return new KitanaLlm({ model: 'auto' })  // claude CLI → codex CLI → ollama → api-key
+}
+```
+
+- Есть бесплатный ключ AI Studio → Gemini.
+- Ключа нет → Kitana: подписка Claude / ChatGPT через CLI, Ollama или API-ключ.
+
+### Флаг `OBSERVE_AI`: реальный AI или заглушка
+
+У бесплатного Gemini из EU те же лимиты на запросы. Одно расследование — это оркестратор и 2–4 агента, каждый делает несколько ходов. При отладке лимит кончится быстро. Поэтому режим задаётся флагом:
+
+| `OBSERVE_AI` | Что делает | Когда |
+|---|---|---|
+| `mock` (**по умолчанию в dev**) | `MockLlm extends BaseLlm`, сеть не трогает. Сценарий: вызвать инструменты агента с дефолтными аргументами → вернуть текст-сводку по их ответам. Report Agent вызывает `show*` с props из результатов | отладка детектора, инструментов, SSE и чата |
+| `real` | `getModel()` → Gemini или Kitana | настоящая работа |
+| `record` | `real` + запись каждого запроса и ответа в `.observe/llm-fixtures/` | подготовка демо |
+| `replay` | ответы из записи, без сети; при промахе — `mock` | демо ведущего, если упадёт Wi-Fi |
+
+```ts
+function getModel(): BaseLlm | string {
+  const real = () => process.env.GEMINI_API_KEY ? process.env.GEMINI_MODEL! : new KitanaLlm({ model: 'auto' })
+  switch (process.env.OBSERVE_AI ?? 'mock') {
+    case 'real':   return real()
+    case 'record': return new RecordingLlm(real())
+    case 'replay': return new ReplayLlm({ fallback: new MockLlm() })
+    default:       return new MockLlm()
+  }
+}
+```
+
+- Ключ записи — агент + тип аномалии + номер хода, **а не хеш промпта**. В промпте есть traceId и время, хеш не совпадёт при следующем прогоне.
+- В режиме `real` нужна очередь с минимальным интервалом между запросами и retry на 429: 4 агента параллельно быстро упрутся в лимит free tier. Плюс cooldown детектора, который уже есть.
+- Для воркшопа: в блоке 4 участники сначала гоняют своего агента на `mock` (проверяют инструменты), потом переключают на `real`. Токены тратятся только на осмысленные прогоны.
+- В UI чата бейдж `MOCK` / `REPLAY`, чтобы заглушку не приняли за ответ модели.
+
+**Бюджет:**
+- Запасной вариант за счёт ведущего: OpenRouter, €20, ключи с лимитом ~€0.5–1 на ключ.
+- Живое демо: подписка Claude через CLI или платный ключ + replay на случай, если упадёт Wi-Fi.
+- Оценка: ~20 чел × ~10 расследований × ~30k токенов ≈ 6M токенов → единицы € на дешёвых моделях.
+
+**Проверить до воркшопа:**
+- [ ] `@kitana-sdk/adk` с `@google/adk` 2.1.0 (последняя). Kitana тестировалась на ADK 1.6.
+- [x] Gemini free tier доступен из EU (лимиты те же)
+- [ ] Tool calling с 4 агентами + оркестратором на каждом провайдере цепочки.
+- [ ] Kitana буферизует запросы с инструментами в одно событие. Для чата это нормально: события UI отправляются при выполнении инструмента, а не из токенов.
+
+---
+
+## Что не делаем на воркшопе
+
+Docker, Telegram, n8n, Jaeger, Turborepo / монорепо, внутренности пакета. Код пишем понятный, не продакшен.
