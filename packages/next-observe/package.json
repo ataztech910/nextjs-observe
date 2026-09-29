@@ -29,6 +29,10 @@
     "./collector": {
       "types": "./dist/collector/index.d.ts",
       "default": "./dist/collector/index.js"
+    },
+    "./debug": {
+      "types": "./dist/debug/index.d.ts",
+      "default": "./dist/debug/index.js"
     }
   },
   "files": [
