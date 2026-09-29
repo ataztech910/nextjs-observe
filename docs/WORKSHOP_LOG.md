@@ -250,9 +250,77 @@ node observe-poc/verify.mjs
 
 ---
 
+## Шаг 6. `next-observe/server` и `next-observe/client`
+
+**Чтобы** подключение сервера и браузера тоже было в одну строку, а адрес коллектора брался из env,
+**делаем** две точки входа в пакете.
+
+```ts
+// instrumentation.ts
+export { register } from 'next-observe/server'
+```
+```ts
+// instrumentation-client.ts
+import 'next-observe/client'
+```
+
+**`next-observe/server`** — обёртка над `@vercel/otel`:
+- экспорт в OTLP/JSON на `${OBSERVE_ENDPOINT}/v1/traces` (по умолчанию `http://localhost:4318`);
+- заголовок `x-api-key` из `OBSERVE_API_KEY`;
+- `service.name` из `OBSERVE_SERVICE_NAME`;
+- `service.version` из `OBSERVE_SERVICE_VERSION` или `VERCEL_GIT_COMMIT_SHA`. Это нужно агенту для вопроса «какой деплой всё сломал»;
+- для своих настроек: `export const register = () => registerObserve({ ... })`.
+
+**`next-observe/client`** — браузерный OTel из POC:
+- `WebTracerProvider` + `DocumentLoad` + `Fetch`, `BatchSpanProcessor` (раз в 2s и при скрытии страницы);
+- `service.name` = `<имя>-browser`;
+- экспорт на **свой же домен** `/__observe/v1/traces`.
+
+**`withObserve()` теперь дополнительно:**
+- добавляет rewrite `/__observe/:path*` → `${OBSERVE_ENDPOINT}/:path*` в `beforeFiles`. Браузер шлёт на свой origin, Next проксирует в коллектор: **нет CORS и не нужна публичная переменная с адресом**. Пользовательские rewrite в любой из трёх форм (нет, массив, объект) сохраняются;
+- кладёт `OBSERVE_SERVICE_NAME` в `env` конфига. По умолчанию это `name` из `package.json` проекта. Next подставляет его при сборке и в серверный, и в браузерный код.
+
+Зависимости: `@vercel/otel` и его peer-пакеты (`api-logs`, `sdk-logs`, `sdk-metrics`, `sdk-trace-base`) — в `dependencies` пакета, чтобы pnpm и строгий npm их ставили.
+
+### Как тестировали
+
+1. **Юнит-тесты, 35 штук** (было 23):
+   - `server`: что уходит в `registerOTel` и в экспортёр без конфига, из env, при приоритете опций над env и `OBSERVE_SERVICE_VERSION` над SHA от Vercel, при обрезке `/` в конце endpoint;
+   - `client`: разрешение опций, импорт на сервере (SSR) не регистрирует провайдер;
+   - `withObserve`: имя из `package.json`, приоритеты env и опций, rewrite во всех трёх формах, endpoint без `/` в конце.
+2. **Проверка тестов:** сломали обрезку `/` на сервере и положение пользовательских rewrite — упали по одному тесту на каждую поломку.
+3. **Сквозной тест** (tarball → `vercel-otel-test`): `verify.mjs` расширен до 13 проверок — `documentLoad` пришёл через прокси, запросы экспортёра не трассируются, `service.version` совпадает с ожидаемым (`EXPECT_VERSION`). Коллектор теперь сохраняет `service.version`.
+
+```bash
+OBSERVE_SERVICE_VERSION=v1 npx next dev                          # dev
+OBSERVE_SERVICE_VERSION=v2 npx next build --profile && OBSERVE_SERVICE_VERSION=v2 npx next start
+EXPECT_VERSION=v1 node observe-poc/verify.mjs                    # или v2 для прода
+```
+
+### Результат
+
+| | dev (`v1`) | prod (`--profile`, `v2`) |
+|---|---|---|
+| все 13 проверок | ✅ | ✅ |
+| `service.name` сервер / браузер | `vercel-otel-test` / `vercel-otel-test-browser` | то же |
+| `service.version` на серверных спанах | `v1` | `v2` |
+| `Counter.count` | 6 (StrictMode) | 3 |
+
+### Что узнали
+
+- **`ignoreUrls` для своих экспортов не нужен.** Проверили: убрали его и получили 0 трассированных запросов экспорта на 41 браузерный спан. OTLP-экспортёр сам отключает трассировку своих `fetch`. Строку удалили, e2e-проверка «нет петли» осталась как защита от регрессии.
+- `env` из `next.config` доходит и до `instrumentation.ts`: серверный `register()` получил имя из `package.json`.
+- Rewrite вычисляются **при сборке**. В проде `OBSERVE_ENDPOINT` должен быть задан во время `next build`. На Vercel env доступен при сборке, так что это нормально, но в документацию стоит записать.
+- **У браузерных спанов пока нет `service.version`.** Добавить через тот же `env` в `withObserve()`.
+
+---
+
 ## Дальше
 
 - [ ] DevTools-хук (bippy) в `instrumentation-client.ts`: `actualDuration` всех компонентов в profiling-сборке.
 - [ ] Связать `documentLoad` с серверным трейсом через `traceparent` в HTML.
 - [x] `withObserve(nextConfig)`, шаг 5
+- [x] `next-observe/server` и `next-observe/client`, шаг 6
+- [ ] `service.version` у браузерных спанов.
+- [ ] Коллектор + хранилище + API запросов в пакете (вместо `observe-poc/collector.mjs`).
 - [ ] `npx next-observe init`: подключение одной командой.
