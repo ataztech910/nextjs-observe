@@ -5,6 +5,7 @@ import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { MemoryStorage, startCollector, type Collector, type CollectorOptions } from './collector/index.js'
+import { seedDemo } from './debug/demo.js'
 
 // Type-only: the agents module (and @google/adk behind it) is loaded lazily, it's an optional peer dependency.
 type AgentsModule = typeof import('./agents/index.js')
@@ -14,8 +15,9 @@ export const HELP = `Usage:
       Start the collector and \`next dev\` for the app in <dir> (default: current directory).
       Example: nxo dev --root apps/web -- -p 3100
 
-  nxo collector [--host <host>] [--port <n>] [--api-key <key>]
+  nxo collector [--host <host>] [--port <n>] [--api-key <key>] [--demo]
       Start only the collector (e.g. on a server). Reads OBSERVE_HOST, OBSERVE_PORT, OBSERVE_API_KEY.
+      --demo preloads the workshop "shop" scenario (a regression in v2, 30% inventory errors, an N+1).
 
 Environment: OBSERVE_ROOT, OBSERVE_PORT (default 4318), OBSERVE_HOST (default 127.0.0.1), OBSERVE_API_KEY`
 
@@ -29,6 +31,7 @@ export interface CliArgs {
   port: number
   host: string
   apiKey?: string
+  demo: boolean
   nextArgs: string[]
 }
 
@@ -47,6 +50,7 @@ export function parseCliArgs(argv: string[], env: Env, cwd: string): CliArgs {
         port: { type: 'string' },
         host: { type: 'string' },
         'api-key': { type: 'string' },
+        demo: { type: 'boolean' },
         help: { type: 'boolean', short: 'h' },
       },
     })
@@ -68,6 +72,7 @@ export function parseCliArgs(argv: string[], env: Env, cwd: string): CliArgs {
     port,
     host: values.host ?? env.OBSERVE_HOST ?? '127.0.0.1',
     apiKey: values['api-key'] ?? env.OBSERVE_API_KEY,
+    demo: values.demo ?? false,
     nextArgs,
   }
 }
@@ -123,7 +128,9 @@ async function loadChat(storage: MemoryStorage, deps: CliDeps): Promise<{ chat?:
 
 async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collector; chatLine: string }> {
   const storage = new MemoryStorage()
-  const { chat, line } = await loadChat(storage, deps)
+  if (args.demo) await seedDemo(storage)
+  const { chat, line: chatLine } = await loadChat(storage, deps)
+  const line = args.demo ? `${chatLine}\n  demo       "shop" scenario loaded: v1 → v2 regression, inventory errors, catalog N+1` : chatLine
   try {
     const collector = await startCollector({ port: args.port, host: args.host, apiKey: args.apiKey, storage, chat })
     return { collector, chatLine: line }

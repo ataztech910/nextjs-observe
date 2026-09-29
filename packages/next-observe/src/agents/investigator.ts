@@ -36,7 +36,7 @@ export function createInvestigator(options: InvestigatorOptions) {
   const q = createAgentQueries(options.storage, options.queryOptions)
 
   // Agents are built per investigation so each ask() records into its own steps — concurrent chats don't mix.
-  function buildOrchestrator(record: (step: InvestigationStep) => void) {
+  function buildOrchestrator(record: (step: InvestigationStep) => void, recordResult: (step: InvestigationStep, result: unknown) => void) {
     // Tools are created per agent so every step is attributed to the agent that made it.
     function tool<T extends z.ZodObject>(agent: string, name: string, description: string, parameters: T, run: (args: z.infer<T>) => Promise<unknown>) {
       return new FunctionTool({
@@ -44,8 +44,11 @@ export function createInvestigator(options: InvestigatorOptions) {
         description,
         parameters,
         execute: async (args) => {
-          record({ agent, tool: name, args: args as Record<string, unknown> })
-          return run(args as z.infer<T>)
+          const step = { agent, tool: name, args: args as Record<string, unknown> }
+          record(step)
+          const result = await run(args as z.infer<T>)
+          recordResult(step, result)
+          return result
         },
       })
     }
@@ -66,7 +69,8 @@ export function createInvestigator(options: InvestigatorOptions) {
       model: options.model,
       instruction: `You are a latency specialist. Find what is slow and why.
   Check compare_versions for regressions between deployments. For a slow trace, use search_traces then get_trace: high selfMs points at the code file; "repeated" means N+1.
-  Distinguish external dependencies from internal code. Max 3 sentences. ${FACTS_ONLY}`,
+  When asked where time is spent, always open at least one trace with get_trace — aggregates don't show structure.
+Distinguish external dependencies from internal code. Max 3 sentences. ${FACTS_ONLY}`,
       tools: [latency.stats, latency.versions, latency.search, latency.trace],
     })
 
@@ -107,7 +111,11 @@ export function createInvestigator(options: InvestigatorOptions) {
     /** Runs one investigation; resolves with the final report and every tool call made on the way. Safe to call concurrently. */
     async ask(
       question: string,
-      call: { onStep?: (step: InvestigationStep) => void } = {},
+      call: {
+        onStep?: (step: InvestigationStep) => void
+        /** Called with each data tool's result — the chat builds evidence cards from these. */
+        onResult?: (step: InvestigationStep, result: unknown) => void
+      } = {},
     ): Promise<{ text: string; steps: InvestigationStep[]; transcript: TranscriptEntry[]; error?: string }> {
       const steps: InvestigationStep[] = []
       const record = (step: InvestigationStep) => {
@@ -115,7 +123,7 @@ export function createInvestigator(options: InvestigatorOptions) {
         options.onStep?.(step)
         call.onStep?.(step)
       }
-      const runner = new InMemoryRunner({ agent: buildOrchestrator(record), appName: 'next-observe' })
+      const runner = new InMemoryRunner({ agent: buildOrchestrator(record, (step, result) => call.onResult?.(step, result)), appName: 'next-observe' })
       const transcript: TranscriptEntry[] = []
       let text = ''
       let failure: string | undefined

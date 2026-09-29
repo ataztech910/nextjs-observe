@@ -119,23 +119,29 @@ OBSERVE_AI=real npx vitest run e2e/investigate.real.test.ts --silent=false   # �
 
 1. **Детектор считает по корневым серверным спанам** (`SpanKind.SERVER`) или по каждой операции, а не по всем спанам. Next создаёт около 7 спанов на запрос, и 30% ошибок inventory размылись бы ниже порога 20%.
 2. **`streamUI` не используем.** Он переехал в `@ai-sdk/rsc`, а документация AI SDK 7 пишет: «experimental, we recommend AI SDK UI».
-3. **Один LLM-конвейер:** Report Agent вызывает UI-инструменты, вызов уходит в чат как событие `{ component, props }`, клиент рендерит компонент. Второго вызова LLM нет (см. схему ниже).
+3. **Один LLM-конвейер, карточки — из фактов:** модель пишет только текст выводов, а карточки строит код из результатов инструментов данных. Они уходят в чат событием `card` сразу после вызова инструмента. Второго вызова LLM нет (см. схему ниже; решение принято на шаге 14 журнала).
 4. **Имя модели берём из env**, не хардкодим `gemini-2.0-flash`.
 5. **Версии и имена:** Next 16, `next-observe`, `next-observe/debug`.
 6. **Детектор:** фильтр по времени вместо `setTimeout` на каждый спан, без переменной с именем `window`.
 
-### Схема: один LLM-конвейер
+### Схема: один LLM-конвейер, карточки из фактов
 
 ```
-detector ── AnomalyReport ──► ADK orchestrator (Gemini | Kitana)
-                                ├ Latency / Error / Traffic agents   ← инструменты: запросы к трейсам
-                                └ Report Agent                      ← инструменты: showAnomalyCard(...)
-                                        │ execute() = emit({ component: 'AnomalyCard', props })
-                                        ▼
-                               SSE /api/debug/stream
-                                        ▼
-                         /chat: EventSource → <AnomalyCard {...props}/>
+вопрос / детектор ──► ADK orchestrator (Gemini | Kitana | mock)
+                        ├ latency_agent ─┐
+                        ├ error_agent   ─┼─► инструменты данных (compare_versions, get_errors, get_trace, …)
+                        └ traffic_agent ─┘            │ результат
+                                                      ├──► модели (рассуждение → текст отчёта)
+                                                      └──► cardsFromResult() → событие card   ← код, не модель
+POST /api/chat → поток NDJSON: status → step… → card… → report
+/chat: шаги вживую → карточки (регрессия, ошибки, N+1, горячая точка, нет трафика, трейсы) → отчёт
 ```
+
+**Почему карточки строит код, а не Report Agent с `showAnomalyCard(...)`:**
+- в карточке физически не может быть выдумки (кейс 2 — уверенная галлюцинация);
+- у Kitana один вызов инструмента за ход: четыре карточки — это +4 хода по 5–10 секунд;
+- работает и в `mock` (заглушка не заполнит обязательные поля карточки);
+- урок для зала: **модель рассуждает — код показывает доказательства.**
 
 ---
 

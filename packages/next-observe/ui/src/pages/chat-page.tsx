@@ -4,7 +4,9 @@ import { api, type ChatEvent } from '@/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { EvidenceCardView } from '@/components/chat/evidence-cards'
 import { Input } from '@/components/ui/input'
+import { renderInline } from '@/lib/inline-markdown'
 
 // The three workshop scenarios, one click away.
 const SUGGESTIONS = [
@@ -93,6 +95,7 @@ export function ChatPage() {
 
 function TurnView({ turn }: { turn: Turn }) {
   const steps = turn.events.filter((e): e is Extract<ChatEvent, { type: 'step' }> => e.type === 'step')
+  const cards = turn.events.flatMap((e) => (e.type === 'card' ? [e.card] : []))
   const report = turn.events.find((e): e is Extract<ChatEvent, { type: 'report' }> => e.type === 'report')
   const error = turn.events.find((e): e is Extract<ChatEvent, { type: 'error' }> => e.type === 'error')
   return (
@@ -111,9 +114,16 @@ function TurnView({ turn }: { turn: Turn }) {
             ))}
             {turn.running && <li className="animate-pulse">working…</li>}
           </ol>
+          {cards.length > 0 && (
+            <div className="grid gap-2 sm:grid-cols-2" data-testid="chat-cards">
+              {cards.map((card, i) => (
+                <EvidenceCardView key={i} card={card} />
+              ))}
+            </div>
+          )}
           {report && (
             <p className="whitespace-pre-wrap leading-relaxed" data-testid="chat-report">
-              {report.text}
+              {renderInline(report.text)}
             </p>
           )}
           {error && (
