@@ -117,11 +117,13 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
       const errorSpansFor = (operation?: string) => storage.querySpans({ service: args.service, operation, status: 'error', fromMs, limit: 1000 })
       let errorSpans = await errorSpansFor(args.operation)
       let note: string | undefined
-      // "Operation exists but is healthy" must not look like "no such operation": only fall back when the name matches nothing.
+      // Nothing failing under this name → show what IS failing elsewhere. The note keeps "exists but healthy" apart from
+      // "no such operation": a user asking about "product pages" needs to see inventory.check failing on those pages.
       if (errorSpans.length === 0 && args.operation) {
         const exists = (await storage.getOperationStats({ service: args.service, operation: args.operation, fromMs })).length > 0
-        if (exists) return { note: `"${args.operation}" has no errors in this window`, errors: [] }
-        note = `nothing matches "${args.operation}", showing all operations instead`
+        note = exists
+          ? `"${args.operation}" has no errors in this window; showing failing operations elsewhere`
+          : `nothing matches "${args.operation}", showing all operations instead`
         errorSpans = await errorSpansFor(undefined)
       }
       const groups = new Map<string, NormalizedSpan[]>()
