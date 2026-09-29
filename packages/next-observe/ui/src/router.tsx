@@ -1,5 +1,6 @@
 import { createRootRoute, createRoute, createRouter, Link, Outlet, redirect } from '@tanstack/react-router'
 import type { TraceSearch } from '@/api'
+import { ChatPage } from '@/pages/chat-page'
 import { TracePage } from '@/pages/trace-page'
 import { TracesPage } from '@/pages/traces-page'
 
@@ -12,6 +13,9 @@ const rootRoute = createRootRoute({
         </Link>
         <Link to="/traces" className="text-sm text-muted-foreground [&.active]:text-foreground">
           Traces
+        </Link>
+        <Link to="/chat" className="text-sm text-muted-foreground [&.active]:text-foreground">
+          Chat
         </Link>
       </header>
       <main className="p-6">
@@ -54,7 +58,13 @@ const traceRoute = createRoute({
   component: TracePage,
 })
 
-export const router = createRouter({ routeTree: rootRoute.addChildren([indexRoute, tracesRoute, traceRoute]) })
+const chatRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/chat',
+  component: ChatPage,
+})
+
+export const router = createRouter({ routeTree: rootRoute.addChildren([indexRoute, tracesRoute, traceRoute, chatRoute]) })
 
 declare module '@tanstack/react-router' {
   interface Register {

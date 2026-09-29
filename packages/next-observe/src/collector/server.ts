@@ -5,10 +5,13 @@
 //   GET  /api/traces?service&operation&minDurationMs&hasError&fromMs&toMs&limit
 //   GET  /api/traces/:traceId
 //   GET  /api/operations?service&operation&fromMs&toMs
+//   GET  /api/chat                  { enabled, mode }
+//   POST /api/chat                  { question } → NDJSON stream of ChatEvent (status, step…, report | error)
 //   GET  /*                         the UI (dist/ui) with SPA fallback
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { fileURLToPath } from 'node:url'
+import type { ChatEvent, ChatHandler } from './chat.js'
 import { decodeOtlpJson, type OtlpTraceRequest } from './decode.js'
 import { MemoryStorage } from './memory-storage.js'
 import { serveUi } from './static.js'
@@ -25,7 +28,12 @@ export interface CollectorOptions {
   maxBodyBytes?: number
   /** Built UI to serve at /. Default: the package's dist/ui. `false` disables it. */
   uiDir?: string | false
+  /** Agents answering /api/chat. Provided by the CLI when @google/adk is installed; absent → chat disabled. */
+  chat?: { mode: 'mock' | 'real'; handle: ChatHandler }
 }
+
+const CHAT_DISABLED = 'chat is disabled: install @google/adk (and @kitana-sdk/adk to use Kitana) in your project, then restart nxo'
+const MAX_QUESTION = 2000
 
 const DEFAULT_UI_DIR = fileURLToPath(new URL('../ui/', import.meta.url))
 
@@ -112,12 +120,43 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     send(res, 200, {})
   }
 
+  async function chat(req: IncomingMessage, res: ServerResponse) {
+    if (!options.chat) throw new HttpError(503, CHAT_DISABLED)
+    let body: { question?: unknown }
+    try {
+      body = JSON.parse(await readBody(req, 64 * 1024))
+    } catch (error) {
+      if (error instanceof HttpError) throw error
+      throw new HttpError(400, 'body is not valid JSON')
+    }
+    const question = typeof body?.question === 'string' ? body.question.trim() : ''
+    if (!question) throw new HttpError(400, 'question is required')
+    if (question.length > MAX_QUESTION) throw new HttpError(400, `question is longer than ${MAX_QUESTION} characters`)
+
+    // One JSON event per line, flushed as the agents work — the UI shows each step live.
+    res.writeHead(200, { ...CORS, 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-cache' })
+    const emit = (event: ChatEvent) => {
+      if (!res.writableEnded) res.write(JSON.stringify(event) + '\n')
+    }
+    try {
+      await options.chat.handle(question, emit)
+    } catch (error) {
+      emit({ type: 'error', message: error instanceof Error ? error.message : String(error) })
+    }
+    res.end()
+  }
+
   async function route(req: IncomingMessage, res: ServerResponse) {
     const url = new URL(req.url ?? '/', 'http://collector')
     const q = url.searchParams
     if (req.method === 'OPTIONS') return void res.writeHead(204, CORS).end()
     if (req.method === 'POST' && url.pathname === '/v1/traces') return ingest(req, res)
+    if (req.method === 'POST' && url.pathname === '/api/chat') return chat(req, res)
     if (req.method !== 'GET') throw new HttpError(404, 'not found')
+
+    if (url.pathname === '/api/chat') {
+      return send(res, 200, options.chat ? { enabled: true, mode: options.chat.mode } : { enabled: false, reason: CHAT_DISABLED })
+    }
 
     if (url.pathname === '/health') return send(res, 200, { status: 'ok', spans: await storage.count() })
     if (url.pathname === '/api/services') return send(res, 200, await storage.getServices())
