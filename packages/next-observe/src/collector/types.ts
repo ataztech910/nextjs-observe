@@ -32,7 +32,7 @@ export interface NormalizedSpan {
 
 export interface TraceFilter {
   service?: string
-  /** Substring match on any span name in the trace. */
+  /** Case-insensitive substring match on any span name in the trace. */
   operation?: string
   /** Minimum duration of the whole trace. */
   minDurationMs?: number
@@ -59,10 +59,14 @@ export interface OperationFilter {
   operation?: string
   fromMs?: number
   toMs?: number
+  /** Split stats per service.version — the basis for "which deployment introduced the regression". */
+  byVersion?: boolean
 }
 
 export interface OperationStats {
   service: string
+  /** Set only when stats were requested with byVersion. */
+  serviceVersion?: string | null
   operation: string
   count: number
   errorCount: number
@@ -74,8 +78,20 @@ export interface OperationStats {
   maxMs: number
 }
 
+export interface SpanFilter {
+  service?: string
+  /** Case-insensitive substring match on the span name. */
+  operation?: string
+  status?: SpanStatusName
+  fromMs?: number
+  toMs?: number
+  /** Default 100. */
+  limit?: number
+}
+
 export interface ServiceInfo {
   name: string
+  /** In order of first appearance — i.e. deploy order. */
   versions: string[]
   spanCount: number
   lastSeenMs: number
@@ -86,6 +102,8 @@ export interface StorageAdapter {
   queryTraces(filter: TraceFilter): Promise<TraceSummary[]>
   getTrace(traceId: string): Promise<NormalizedSpan[]>
   getOperationStats(filter: OperationFilter): Promise<OperationStats[]>
+  /** Most recently received first. */
+  querySpans(filter: SpanFilter): Promise<NormalizedSpan[]>
   getServices(): Promise<ServiceInfo[]>
   count(): Promise<number>
 }

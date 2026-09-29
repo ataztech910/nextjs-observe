@@ -4,6 +4,7 @@ import type {
   OperationFilter,
   OperationStats,
   ServiceInfo,
+  SpanFilter,
   StorageAdapter,
   TraceFilter,
   TraceSummary,
@@ -21,6 +22,8 @@ export function percentile(sorted: number[], p: number): number {
 }
 
 const round = (n: number) => Math.round(n * 1000) / 1000
+// Case-insensitive: agents and people type "payment", spans say "chargePayment".
+const nameMatches = (name: string, query: string) => name.toLowerCase().includes(query.toLowerCase())
 
 function summarize(traceId: string, spans: NormalizedSpan[]): TraceSummary {
   const ids = new Set(spans.map((s) => s.spanId))
@@ -69,7 +72,7 @@ export class MemoryStorage implements StorageAdapter {
     const result: TraceSummary[] = []
     for (const [traceId, spans] of this.byTrace) {
       if (filter.service && !spans.some((s) => s.service === filter.service)) continue
-      if (filter.operation && !spans.some((s) => s.name.includes(filter.operation!))) continue
+      if (filter.operation && !spans.some((s) => nameMatches(s.name, filter.operation!))) continue
       const summary = summarize(traceId, spans)
       if (filter.hasError !== undefined && summary.errorCount > 0 !== filter.hasError) continue
       if (filter.minDurationMs !== undefined && summary.durationMs < filter.minDurationMs) continue
@@ -96,10 +99,10 @@ export class MemoryStorage implements StorageAdapter {
     const groups = new Map<string, NormalizedSpan[]>()
     for (const s of this.spans) {
       if (filter.service && s.service !== filter.service) continue
-      if (filter.operation && !s.name.includes(filter.operation)) continue
+      if (filter.operation && !nameMatches(s.name, filter.operation)) continue
       if (filter.fromMs !== undefined && s.startTimeMs < filter.fromMs) continue
       if (filter.toMs !== undefined && s.startTimeMs > filter.toMs) continue
-      const key = `${s.service}\u0000${s.name}`
+      const key = filter.byVersion ? `${s.service}\u0000${s.serviceVersion}\u0000${s.name}` : `${s.service}\u0000${s.name}`
       const group = groups.get(key)
       if (group) group.push(s)
       else groups.set(key, [s])
@@ -110,6 +113,7 @@ export class MemoryStorage implements StorageAdapter {
       const errorCount = spans.filter((s) => s.status === 'error').length
       stats.push({
         service: spans[0].service,
+        ...(filter.byVersion ? { serviceVersion: spans[0].serviceVersion } : {}),
         operation: spans[0].name,
         count: spans.length,
         errorCount,
@@ -122,6 +126,21 @@ export class MemoryStorage implements StorageAdapter {
       })
     }
     return stats.sort((a, b) => b.p95Ms - a.p95Ms)
+  }
+
+  async querySpans(filter: SpanFilter = {}): Promise<NormalizedSpan[]> {
+    const result: NormalizedSpan[] = []
+    const limit = filter.limit ?? 100
+    for (let i = this.spans.length - 1; i >= 0 && result.length < limit; i--) {
+      const s = this.spans[i]
+      if (filter.service && s.service !== filter.service) continue
+      if (filter.operation && !nameMatches(s.name, filter.operation)) continue
+      if (filter.status && s.status !== filter.status) continue
+      if (filter.fromMs !== undefined && s.startTimeMs < filter.fromMs) continue
+      if (filter.toMs !== undefined && s.startTimeMs > filter.toMs) continue
+      result.push(s)
+    }
+    return result
   }
 
   async getServices(): Promise<ServiceInfo[]> {
