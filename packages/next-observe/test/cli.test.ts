@@ -229,3 +229,21 @@ describe('--demo', () => {
     expect(await exit).toBe(0)
   })
 })
+
+describe('detector in the CLI', () => {
+  it('is on by default with its thresholds in the banner, and can be turned off', async () => {
+    const on = harness({})
+    const exit = run(['collector', '--port', '0'], on.deps)
+    await until(on.collectorUrl)
+    expect(on.logs[0]).toContain('detector   errors > 20%, slow (>1000ms) > 30%, silence > 120s → agents investigate on their own')
+    on.stop()
+    await exit
+
+    const off = harness({ OBSERVE_DETECTOR: 'off' })
+    const exit2 = run(['collector', '--port', '0'], off.deps)
+    await until(off.collectorUrl)
+    expect(off.logs[0]).toContain('detector   off (OBSERVE_DETECTOR=off)')
+    off.stop()
+    await exit2
+  })
+})

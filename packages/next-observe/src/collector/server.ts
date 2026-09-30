@@ -7,11 +7,13 @@
 //   GET  /api/operations?service&operation&fromMs&toMs
 //   GET  /api/chat                  { enabled, mode }
 //   POST /api/chat                  { question, sessionId? } → NDJSON stream of ChatEvent (status, step…, card…, report | error)
+//   GET  /api/chat/events           SSE: proactive turns (detector anomaly → investigation), recent ones replayed on connect
 //   GET  /*                         the UI (dist/ui) with SPA fallback
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { fileURLToPath } from 'node:url'
-import type { ChatEvent, ChatHandler } from './chat.js'
+import { questionFor, type AnomalyDetector } from '../debug/detector.js'
+import type { ChatEvent, ChatHandler, ProactiveEvent } from './chat.js'
 import { decodeOtlpJson, type OtlpTraceRequest } from './decode.js'
 import { MemoryStorage } from './memory-storage.js'
 import { serveUi } from './static.js'
@@ -30,7 +32,13 @@ export interface CollectorOptions {
   uiDir?: string | false
   /** Agents answering /api/chat. Provided by the CLI when @google/adk is installed; absent → chat disabled. */
   chat?: { mode: 'mock' | 'real'; handle: ChatHandler }
+  /** Watches ingested spans; on an anomaly pushes it to /api/chat/events and, with `chat`, investigates on its own. */
+  detector?: Pick<AnomalyDetector, 'observe' | 'check'>
+  /** How often the detector window is checked. Default 5 s. */
+  detectorIntervalMs?: number
 }
+
+const REPLAY_EVENTS = 200
 
 const CHAT_DISABLED = 'chat is disabled: install @google/adk (and @kitana-sdk/adk to use Kitana) in your project, then restart nxo'
 const MAX_QUESTION = 2000
@@ -116,8 +124,45 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
       if (error instanceof HttpError) throw error
       throw new HttpError(400, 'body is not valid JSON')
     }
-    await storage.insertSpans(decodeOtlpJson(payload))
+    const spans = decodeOtlpJson(payload)
+    await storage.insertSpans(spans)
+    options.detector?.observe(spans)
     send(res, 200, {})
+  }
+
+  // --- proactive: detector → SSE broadcast → investigation, one at a time ---
+  const subscribers = new Set<ServerResponse>()
+  const recent: ProactiveEvent[] = []
+  let seq = 0
+  const broadcast = (message: Omit<ProactiveEvent, 'seq'>) => {
+    const envelope: ProactiveEvent = { seq: ++seq, ...message }
+    recent.push(envelope)
+    if (recent.length > REPLAY_EVENTS) recent.shift()
+    const line = `data: ${JSON.stringify(envelope)}\n\n`
+    for (const res of subscribers) res.write(line)
+  }
+  let investigations = Promise.resolve()
+  const onAnomalies = () => {
+    for (const anomaly of options.detector?.check() ?? []) {
+      const turnId = anomaly.id
+      broadcast({ turnId, event: { type: 'anomaly', anomaly } })
+      if (!options.chat) continue
+      const chat = options.chat
+      // Queued: two investigations at once would double the model load and interleave in the UI.
+      investigations = investigations.then(() =>
+        chat.handle({ question: questionFor(anomaly) }, (event) => broadcast({ turnId, event })).catch((error: unknown) => {
+          broadcast({ turnId, event: { type: 'error', message: error instanceof Error ? error.message : String(error) } })
+        }),
+      )
+    }
+  }
+
+  function events(req: IncomingMessage, res: ServerResponse) {
+    res.writeHead(200, { ...CORS, 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'keep-alive' })
+    res.write(': connected\n\n')
+    for (const envelope of recent) res.write(`data: ${JSON.stringify(envelope)}\n\n`)
+    subscribers.add(res)
+    req.on('close', () => subscribers.delete(res))
   }
 
   async function chat(req: IncomingMessage, res: ServerResponse) {
@@ -158,6 +203,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     if (req.method === 'POST' && url.pathname === '/api/chat') return chat(req, res)
     if (req.method !== 'GET') throw new HttpError(404, 'not found')
 
+    if (url.pathname === '/api/chat/events') return events(req, res)
     if (url.pathname === '/api/chat') {
       return send(res, 200, options.chat ? { enabled: true, mode: options.chat.mode } : { enabled: false, reason: CHAT_DISABLED })
     }
@@ -216,6 +262,14 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     server.once('error', reject)
     server.listen(options.port ?? 4318, options.host ?? '127.0.0.1', resolve)
   })
+  const detectorTimer = options.detector ? setInterval(onAnomalies, options.detectorIntervalMs ?? 5000) : undefined
+  // A comment line every 15 s keeps proxies from closing idle SSE connections.
+  const heartbeat = setInterval(() => {
+    for (const res of subscribers) res.write(': ping\n\n')
+  }, 15_000)
+  detectorTimer?.unref()
+  heartbeat.unref()
+
   const { port } = server.address() as AddressInfo
   const host = options.host ?? '127.0.0.1'
 
@@ -225,6 +279,9 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     storage,
     close: () =>
       new Promise((resolve, reject) => {
+        clearInterval(detectorTimer)
+        clearInterval(heartbeat)
+        for (const res of subscribers) res.end()
         server.close((error) => (error ? reject(error) : resolve()))
         // Defensive: don't let any lingering client socket delay shutdown (a hang was seen once in e2e, cause not reproduced).
         server.closeAllConnections()

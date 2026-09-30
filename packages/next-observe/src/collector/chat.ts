@@ -1,4 +1,5 @@
 // Chat protocol shared by the collector (transport) and the agents (producer). No ADK imports here.
+import type { Anomaly } from '../debug/detector.js'
 
 export interface VersionStats {
   version: string
@@ -21,6 +22,7 @@ export type EvidenceCard =
   | { kind: 'traces'; label: string; traces: { traceId: string; root: string; durationMs: number; errors: number }[] }
 
 export type ChatEvent =
+  | { type: 'anomaly'; anomaly: Anomaly }
   | { type: 'status'; mode: 'mock' | 'real'; sessionId: string; text: string }
   | { type: 'step'; agent: string; tool: string; args: Record<string, unknown> }
   | { type: 'card'; card: EvidenceCard }
@@ -35,3 +37,11 @@ export interface ChatRequest {
 
 /** Runs one chat turn, emitting events as it goes. Resolves when the turn is over. */
 export type ChatHandler = (request: ChatRequest, emit: (event: ChatEvent) => void) => Promise<void>
+
+/** Server-pushed (SSE) event: part of a proactive turn started by the detector, not by a question. */
+export interface ProactiveEvent {
+  /** Increases by one per event; lets a reconnecting client skip the replayed ones it already has. */
+  seq: number
+  turnId: string
+  event: ChatEvent
+}

@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { MemoryStorage, startCollector, type Collector, type CollectorOptions } from './collector/index.js'
 import { seedDemo } from './debug/demo.js'
+import { AnomalyDetector } from './debug/detector.js'
 
 // Type-only: the agents module (and @google/adk behind it) is loaded lazily, it's an optional peer dependency.
 type AgentsModule = typeof import('./agents/index.js')
@@ -19,7 +20,8 @@ export const HELP = `Usage:
       Start only the collector (e.g. on a server). Reads OBSERVE_HOST, OBSERVE_PORT, OBSERVE_API_KEY.
       --demo preloads the workshop "shop" scenario (a regression in v2, 30% inventory errors, an N+1).
 
-Environment: OBSERVE_ROOT, OBSERVE_PORT (default 4318), OBSERVE_HOST (default 127.0.0.1), OBSERVE_API_KEY`
+Environment: OBSERVE_ROOT, OBSERVE_PORT (default 4318), OBSERVE_HOST (default 127.0.0.1), OBSERVE_API_KEY,
+             OBSERVE_AI (mock | real), OBSERVE_DETECTOR (off to disable the anomaly detector)`
 
 export class CliError extends Error {}
 
@@ -130,9 +132,17 @@ async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collect
   const storage = new MemoryStorage()
   if (args.demo) await seedDemo(storage)
   const { chat, line: chatLine } = await loadChat(storage, deps)
-  const line = args.demo ? `${chatLine}\n  demo       "shop" scenario loaded: v1 → v2 regression, inventory errors, catalog N+1` : chatLine
+  const detector = deps.env.OBSERVE_DETECTOR === 'off' ? undefined : new AnomalyDetector()
+  const lines = [chatLine]
+  if (detector) {
+    const o = detector.options
+    const action = chat ? 'agents investigate on their own' : 'anomalies are shown, no agents'
+    lines.push(`  detector   errors > ${o.errorRate * 100}%, slow (>${o.slowMs}ms) > ${o.slowRate * 100}%, silence > ${o.noTrafficMs / 1000}s → ${action}`)
+  } else lines.push('  detector   off (OBSERVE_DETECTOR=off)')
+  if (args.demo) lines.push('  demo       "shop" scenario loaded: v1 → v2 regression, inventory errors, catalog N+1')
+  const line = lines.join('\n')
   try {
-    const collector = await startCollector({ port: args.port, host: args.host, apiKey: args.apiKey, storage, chat })
+    const collector = await startCollector({ port: args.port, host: args.host, apiKey: args.apiKey, storage, chat, detector })
     return { collector, chatLine: line }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {

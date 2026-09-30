@@ -9,7 +9,7 @@ const pct = (n: number | null) => (n === null ? '—' : `${Math.round(n * 100)}%
 function TraceLink({ traceId, children }: { traceId: string; children?: React.ReactNode }) {
   return (
     <Link to="/traces/$traceId" params={{ traceId }} className="font-mono text-xs text-sky-700 underline-offset-2 hover:underline dark:text-sky-400">
-      {children ?? traceId.slice(0, 12)}
+      {children ?? `${traceId.slice(0, 6)}…${traceId.slice(-4)}`}
     </Link>
   )
 }
