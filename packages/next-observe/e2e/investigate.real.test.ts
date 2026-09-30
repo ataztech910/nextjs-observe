@@ -41,3 +41,22 @@ describe.skipIf(!real)('investigator with a real model (workshop scenarios)', ()
     expect(text).toMatch(/\b5\b|five/i)
   })
 })
+
+describe.skipIf(!real)('conversation memory with a real model', () => {
+  it('4. a follow-up question uses the previous turn ("it" = chargePayment)', async () => {
+    const investigator = createInvestigator({ storage: await shopStorage(), model: await getModel(), queryOptions: { now: () => NOW } })
+    const t0 = Date.now()
+    const first = await investigator.ask("Checkout is slow. What's the slowest operation?")
+    const t1 = Date.now()
+    const second = await investigator.ask('Which deployment introduced it? Give p95 before and after.', { sessionId: first.sessionId })
+    const t2 = Date.now()
+    console.log(`\n### turn 1 (${((t1 - t0) / 1000).toFixed(0)}s)\n${first.text}\n### turn 2 (${((t2 - t1) / 1000).toFixed(0)}s)\n${second.text}`)
+
+    expect(first.text).toMatch(/chargePayment/)
+    expect(second.sessionId).toBe(first.sessionId)
+    expect(second.text).toMatch(/chargePayment/) // never named in the second question
+    expect(second.text).toMatch(/\bv1\b/)
+    expect(second.text).toMatch(/\bv2\b/)
+    expect(second.text).toMatch(/2[,.]?[34]\d\d|2\.[34]\s?s/) // v2 p95 ≈ 2380–2490 ms
+  })
+})

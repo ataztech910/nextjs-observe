@@ -26,6 +26,8 @@ export function ChatPage() {
   const info = useQuery({ queryKey: ['chat-info'], queryFn: api.chatInfo })
   const [turns, setTurns] = useState<Turn[]>([])
   const [draft, setDraft] = useState('')
+  // The agents remember the conversation per session; the id arrives with the first `status` event.
+  const [sessionId, setSessionId] = useState<string>()
   const running = turns.some((t) => t.running)
 
   async function ask(question: string) {
@@ -34,12 +36,20 @@ export function ChatPage() {
     setTurns((all) => [...all, { id, question, events: [], running: true }])
     setDraft('')
     try {
-      await api.ask(question, (event) => update((t) => ({ ...t, events: [...t.events, event] })))
+      await api.ask(question, sessionId, (event) => {
+        if (event.type === 'status') setSessionId(event.sessionId)
+        update((t) => ({ ...t, events: [...t.events, event] }))
+      })
     } catch (error) {
       update((t) => ({ ...t, events: [...t.events, { type: 'error', message: error instanceof Error ? error.message : String(error) }] }))
     } finally {
       update((t) => ({ ...t, running: false }))
     }
+  }
+
+  function newChat() {
+    setTurns([])
+    setSessionId(undefined)
   }
 
   function submit(e: FormEvent) {
@@ -66,6 +76,11 @@ export function ChatPage() {
           <Badge variant={info.data.mode === 'mock' ? 'outline' : 'secondary'} data-testid="chat-mode">
             {info.data.mode === 'mock' ? 'MOCK — no real model' : 'REAL model'}
           </Badge>
+        )}
+        {turns.length > 0 && (
+          <Button type="button" variant="ghost" size="sm" className="ml-auto" onClick={newChat} disabled={running}>
+            New chat
+          </Button>
         )}
       </div>
 

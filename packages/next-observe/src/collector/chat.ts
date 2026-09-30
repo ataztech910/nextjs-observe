@@ -21,11 +21,17 @@ export type EvidenceCard =
   | { kind: 'traces'; label: string; traces: { traceId: string; root: string; durationMs: number; errors: number }[] }
 
 export type ChatEvent =
-  | { type: 'status'; mode: 'mock' | 'real'; text: string }
+  | { type: 'status'; mode: 'mock' | 'real'; sessionId: string; text: string }
   | { type: 'step'; agent: string; tool: string; args: Record<string, unknown> }
   | { type: 'card'; card: EvidenceCard }
   | { type: 'report'; text: string }
   | { type: 'error'; message: string }
 
+export interface ChatRequest {
+  question: string
+  /** From a previous `status` event: continue that conversation. Omitted → a new conversation. */
+  sessionId?: string
+}
+
 /** Runs one chat turn, emitting events as it goes. Resolves when the turn is over. */
-export type ChatHandler = (question: string, emit: (event: ChatEvent) => void) => Promise<void>
+export type ChatHandler = (request: ChatRequest, emit: (event: ChatEvent) => void) => Promise<void>

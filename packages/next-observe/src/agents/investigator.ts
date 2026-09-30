@@ -1,5 +1,5 @@
 // Orchestrator + specialist agents (Four Golden Signals split) over the telemetry tools from next-observe/debug.
-import { AgentTool, FunctionTool, InMemoryRunner, LlmAgent, type BaseLlm } from '@google/adk'
+import { AgentTool, FunctionTool, InMemorySessionService, LlmAgent, Runner, type BaseLlm } from '@google/adk'
 import { z } from 'zod'
 import type { StorageAdapter } from '../collector/types.js'
 import { createAgentQueries, type QueryOptions } from '../debug/queries.js'
@@ -32,8 +32,24 @@ const operation = z.string().optional().describe('substring of the operation nam
 const FACTS_ONLY = `Use only facts returned by your tools; if a tool returned nothing relevant, say so — never guess causes.
 Quote exact numbers, operation names, versions and error messages. Answer in English.`
 
+const APP_NAME = 'next-observe'
+const USER_ID = 'next-observe'
+
 export function createInvestigator(options: InvestigatorOptions) {
   const q = createAgentQueries(options.storage, options.queryOptions)
+  // Conversation memory: ADK stores every question, specialist call and answer in the session; the orchestrator sees
+  // them on the next turn. Specialists (AgentTool) start fresh each time and get context via the orchestrator's request.
+  // In-memory: sessions end with the process.
+  const sessions = new InMemorySessionService()
+
+  /** Continues a session, or starts one (also when an id is unknown, e.g. after a restart). Returns the session id. */
+  async function startSession(sessionId?: string): Promise<string> {
+    if (sessionId) {
+      const existing = await sessions.getSession({ appName: APP_NAME, userId: USER_ID, sessionId })
+      if (existing) return existing.id
+    }
+    return (await sessions.createSession({ appName: APP_NAME, userId: USER_ID, sessionId })).id
+  }
 
   // Agents are built per investigation so each ask() records into its own steps — concurrent chats don't mix.
   function buildOrchestrator(record: (step: InvestigationStep) => void, recordResult: (step: InvestigationStep, result: unknown) => void) {
@@ -108,26 +124,32 @@ Distinguish external dependencies from internal code. Max 3 sentences. ${FACTS_O
   }
 
   return {
-    /** Runs one investigation; resolves with the final report and every tool call made on the way. Safe to call concurrently. */
+    startSession,
+    /**
+     * Runs one investigation; resolves with the final report and every tool call made on the way.
+     * Pass the sessionId from a previous answer to continue that conversation. Safe to call concurrently (per session: one at a time).
+     */
     async ask(
       question: string,
       call: {
         onStep?: (step: InvestigationStep) => void
         /** Called with each data tool's result — the chat builds evidence cards from these. */
         onResult?: (step: InvestigationStep, result: unknown) => void
+        sessionId?: string
       } = {},
-    ): Promise<{ text: string; steps: InvestigationStep[]; transcript: TranscriptEntry[]; error?: string }> {
+    ): Promise<{ text: string; sessionId: string; steps: InvestigationStep[]; transcript: TranscriptEntry[]; error?: string }> {
+      const sessionId = await startSession(call.sessionId)
       const steps: InvestigationStep[] = []
       const record = (step: InvestigationStep) => {
         steps.push(step)
         options.onStep?.(step)
         call.onStep?.(step)
       }
-      const runner = new InMemoryRunner({ agent: buildOrchestrator(record, (step, result) => call.onResult?.(step, result)), appName: 'next-observe' })
+      const runner = new Runner({ agent: buildOrchestrator(record, (step, result) => call.onResult?.(step, result)), appName: APP_NAME, sessionService: sessions })
       const transcript: TranscriptEntry[] = []
       let text = ''
       let failure: string | undefined
-      for await (const event of runner.runEphemeral({ userId: 'next-observe', newMessage: { role: 'user', parts: [{ text: question }] } })) {
+      for await (const event of runner.runAsync({ userId: USER_ID, sessionId, newMessage: { role: 'user', parts: [{ text: question }] } })) {
         if (event.errorMessage) failure = event.errorMessage
         if (event.author !== 'orchestrator') continue
         for (const part of event.content?.parts ?? []) {
@@ -145,7 +167,7 @@ Distinguish external dependencies from internal code. Max 3 sentences. ${FACTS_O
           }
         }
       }
-      return { text, steps, transcript, ...(failure ? { error: failure } : {}) }
+      return { text, sessionId, steps, transcript, ...(failure ? { error: failure } : {}) }
     },
   }
 }

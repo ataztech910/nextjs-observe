@@ -67,7 +67,7 @@ describe('chat turn with cards (mock model)', () => {
   it('streams regression, errors and trace-list cards, each finding once, before the report', async () => {
     const handler = await createChatHandler({ storage: await shopStorage(), env: {}, queryOptions: { now: () => NOW } })
     const events: ChatEvent[] = []
-    await handler.handle('Checkout is slow and product pages fail', (e) => events.push(e))
+    await handler.handle({ question: 'Checkout is slow and product pages fail' }, (e) => events.push(e))
     const cards = events.flatMap((e) => (e.type === 'card' ? [e.card] : []))
     expect(byKind(cards, 'regression').map((c) => c.operation)).toContain('chargePayment')
     expect(byKind(cards, 'errors').map((c) => c.operation)).toContain('inventory.check')
