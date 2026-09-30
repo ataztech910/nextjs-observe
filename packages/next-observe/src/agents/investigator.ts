@@ -32,6 +32,19 @@ const operation = z.string().optional().describe('substring of the operation nam
 const FACTS_ONLY = `Use only facts returned by your tools; if a tool returned nothing relevant, say so — never guess causes.
 Quote exact numbers, operation names, versions and error messages. Answer in English.`
 
+// Specialists run behind AgentTool with their own tools only; calling another agent from inside one cannot work.
+const OWN_TOOLS_ONLY = `You can only use the tools listed for you — never call other agents or tools that are not listed.
+If you need data your tools cannot give, say what is missing in your answer.`
+
+/**
+ * A final text that starts like `{"tool_call": …}` is a tool call that leaked instead of a report. Seen in real runs:
+ * the model dropped a closing brace, the provider could not parse the call, and the raw JSON came back as text —
+ * so this checks the shape of the start, not whether the JSON is valid.
+ */
+export function isLeakedToolCall(text: string): boolean {
+  return /^\s*(?:```(?:json)?\s*)?\{\s*"tool_call"\s*:/.test(text)
+}
+
 const APP_NAME = 'next-observe'
 const USER_ID = 'next-observe'
 
@@ -86,7 +99,8 @@ export function createInvestigator(options: InvestigatorOptions) {
       instruction: `You are a latency specialist. Find what is slow and why.
   Check compare_versions for regressions between deployments. For a slow trace, use search_traces then get_trace: high selfMs points at the code file; "repeated" means N+1.
   When asked where time is spent, always open at least one trace with get_trace — aggregates don't show structure.
-Distinguish external dependencies from internal code. Max 3 sentences. ${FACTS_ONLY}`,
+Distinguish external dependencies from internal code. Max 3 sentences. ${FACTS_ONLY}
+${OWN_TOOLS_ONLY}`,
       tools: [latency.stats, latency.versions, latency.search, latency.trace],
     })
 
@@ -96,7 +110,8 @@ Distinguish external dependencies from internal code. Max 3 sentences. ${FACTS_O
       description: 'Error specialist: failing operations, error rates, exact exception messages, source vs downstream victims.',
       model: options.model,
       instruction: `You are an error specialist. Report the failing operation, its error rate and the exact exception message.
-  Use get_trace on an example trace to separate the source span from its downstream victims and to find the code file. Max 3 sentences. ${FACTS_ONLY}`,
+  Use get_trace on an example trace to separate the source span from its downstream victims and to find the code file. Max 3 sentences. ${FACTS_ONLY}
+${OWN_TOOLS_ONLY}`,
       tools: [error.errors, error.search, error.trace],
     })
 
@@ -106,7 +121,8 @@ Distinguish external dependencies from internal code. Max 3 sentences. ${FACTS_O
       description: 'Traffic specialist: which services report data, versions deployed, silent services (no traffic).',
       model: options.model,
       instruction: `You are a traffic specialist. A service that stopped sending spans is more critical than errors — flag it immediately.
-  Report which versions are deployed and whether traffic looks normal. Max 2 sentences. ${FACTS_ONLY}`,
+  Report which versions are deployed and whether traffic looks normal. Max 2 sentences. ${FACTS_ONLY}
+${OWN_TOOLS_ONLY}`,
       tools: [traffic.services, traffic.stats],
     })
 
@@ -166,6 +182,9 @@ Distinguish external dependencies from internal code. Max 3 sentences. ${FACTS_O
             transcript.push({ kind: 'text', agent: 'orchestrator', content: part.text })
           }
         }
+      }
+      if (isLeakedToolCall(text)) {
+        return { text: '', sessionId, steps, transcript, error: 'the agents did not finish the report (a tool call leaked instead) — the evidence cards above are still valid; ask again to continue' }
       }
       return { text, sessionId, steps, transcript, ...(failure ? { error: failure } : {}) }
     },

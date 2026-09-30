@@ -7,6 +7,9 @@ export type AnomalyType = 'high_error_rate' | 'high_latency' | 'no_traffic'
 export interface Anomaly {
   id: string
   type: AnomalyType
+  /** 'all' = share of all server requests; 'operation' = one operation failing/slow on its own (see `subject`). */
+  scope: 'all' | 'operation'
+  subject?: { service: string; operation: string }
   severity: 'warning' | 'critical'
   detectedAtMs: number
   /** What was measured: error share, slow share, or seconds of silence. */
@@ -47,7 +50,8 @@ export class AnomalyDetector {
   private readonly now: () => number
   private window: { atMs: number; span: NormalizedSpan }[] = []
   private lastSeenMs: number | null = null
-  private readonly lastReportedMs = new Map<AnomalyType, number>()
+  /** Cooldown per type (app-wide) or per type + operation. */
+  private readonly lastReportedMs = new Map<string, number>()
   private seq = 0
 
   constructor(options: DetectorOptions = {}) {
@@ -71,28 +75,43 @@ export class AnomalyDetector {
     const requests = this.window.map((w) => w.span)
     const found: Anomaly[] = []
 
-    if (requests.length >= o.minSamples) {
-      const errors = requests.filter((s) => s.status === 'error').length
-      const slow = requests.filter((s) => s.durationMs > o.slowMs).length
-      const errorRate = errors / requests.length
-      const slowRate = slow / requests.length
-      if (errorRate > o.errorRate) found.push(this.anomaly('high_error_rate', errorRate, o.errorRate, requests, now, errorRate >= 2 * o.errorRate))
-      if (slowRate > o.slowRate) found.push(this.anomaly('high_latency', slowRate, o.slowRate, requests, now, slowRate >= 2 * o.slowRate))
+    const judge = (list: NormalizedSpan[], subject?: Anomaly['subject']) => {
+      if (list.length < o.minSamples) return
+      const errorRate = list.filter((s) => s.status === 'error').length / list.length
+      const slowRate = list.filter((s) => s.durationMs > o.slowMs).length / list.length
+      // An operation-level anomaly would only repeat an app-wide one of the same type.
+      const covered = (type: AnomalyType) => subject && found.some((a) => a.type === type && a.scope === 'all')
+      if (errorRate > o.errorRate && !covered('high_error_rate')) {
+        found.push(this.anomaly('high_error_rate', errorRate, o.errorRate, list, now, errorRate >= 2 * o.errorRate, subject))
+      }
+      if (slowRate > o.slowRate && !covered('high_latency')) {
+        found.push(this.anomaly('high_latency', slowRate, o.slowRate, list, now, slowRate >= 2 * o.slowRate, subject))
+      }
     }
+    judge(requests)
+    // Per operation: on a realistic route mix one broken endpoint (30% errors) is only ~10% of all requests —
+    // below the app-wide threshold, yet clearly an incident.
+    const byOperation = new Map<string, NormalizedSpan[]>()
+    for (const s of requests) {
+      const key = `${s.service}\u0000${s.name}`
+      byOperation.set(key, [...(byOperation.get(key) ?? []), s])
+    }
+    for (const list of byOperation.values()) judge(list, { service: list[0].service, operation: list[0].name })
 
     if (this.lastSeenMs !== null && now - this.lastSeenMs > o.noTrafficMs) {
       found.push(this.anomaly('no_traffic', Math.round((now - this.lastSeenMs) / 1000), o.noTrafficMs / 1000, [], now, true))
     }
 
     return found.filter((a) => {
-      const last = this.lastReportedMs.get(a.type)
+      const key = a.subject ? `${a.type}\u0000${a.subject.service}\u0000${a.subject.operation}` : a.type
+      const last = this.lastReportedMs.get(key)
       if (last !== undefined && now - last < o.cooldownMs) return false
-      this.lastReportedMs.set(a.type, now)
+      this.lastReportedMs.set(key, now)
       return true
     })
   }
 
-  private anomaly(type: AnomalyType, value: number, threshold: number, requests: NormalizedSpan[], now: number, critical: boolean): Anomaly {
+  private anomaly(type: AnomalyType, value: number, threshold: number, requests: NormalizedSpan[], now: number, critical: boolean, subject?: Anomaly['subject']): Anomaly {
     const byOperation = new Map<string, Anomaly['operations'][number]>()
     for (const s of requests) {
       const key = `${s.service}\u0000${s.name}`
@@ -110,6 +129,8 @@ export class AnomalyDetector {
     return {
       id: `${type}-${now}-${++this.seq}`,
       type,
+      scope: subject ? 'operation' : 'all',
+      ...(subject ? { subject } : {}),
       severity: critical ? 'critical' : 'warning',
       detectedAtMs: now,
       value: Math.round(value * 1000) / 1000,
@@ -125,11 +146,12 @@ export class AnomalyDetector {
 export function questionFor(anomaly: Anomaly): string {
   const ops = anomaly.operations.map((o) => `${o.operation} (${o.service}: ${o.errors} errors, ${o.slow} slow of ${o.count})`).join('; ')
   const seconds = Math.round(anomaly.windowMs / 1000)
+  const what = anomaly.subject ? `${anomaly.subject.operation} requests` : 'server requests'
   switch (anomaly.type) {
     case 'high_error_rate':
-      return `Anomaly detected: ${Math.round(anomaly.value * 100)}% of server requests failed in the last ${seconds}s (${anomaly.sampleSize} requests). Most affected: ${ops}. Find the failing operation, the exact error and its source.`
+      return `Anomaly detected: ${Math.round(anomaly.value * 100)}% of ${what} failed in the last ${seconds}s (${anomaly.sampleSize} requests). Most affected: ${ops}. Find the failing operation, the exact error and its source.`
     case 'high_latency':
-      return `Anomaly detected: ${Math.round(anomaly.value * 100)}% of server requests were slower than threshold in the last ${seconds}s (${anomaly.sampleSize} requests). Most affected: ${ops}. Find what is slow and which deployment introduced it.`
+      return `Anomaly detected: ${Math.round(anomaly.value * 100)}% of ${what} were slower than threshold in the last ${seconds}s (${anomaly.sampleSize} requests). Most affected: ${ops}. Find what is slow and which deployment introduced it.`
     case 'no_traffic':
       return `Anomaly detected: no spans received for ${anomaly.value}s after traffic was flowing. Check which services went silent.`
   }

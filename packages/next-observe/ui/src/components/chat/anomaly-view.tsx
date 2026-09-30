@@ -5,11 +5,12 @@ const pct = (n: number) => `${Math.round(n * 100)}%`
 
 export function anomalyHeadline(a: Anomaly): string {
   const seconds = Math.round(a.windowMs / 1000)
+  const of = a.subject ? `${a.sampleSize} ${a.subject.operation} requests` : `${a.sampleSize} requests`
   switch (a.type) {
     case 'high_error_rate':
-      return `High error rate · ${pct(a.value)} of ${a.sampleSize} requests failed in ${seconds}s`
+      return `High error rate · ${pct(a.value)} of ${of} failed in ${seconds}s`
     case 'high_latency':
-      return `Slow requests · ${pct(a.value)} of ${a.sampleSize} requests were slow in ${seconds}s`
+      return `Slow requests · ${pct(a.value)} of ${of} were slow in ${seconds}s`
     case 'no_traffic':
       return `No traffic · silent for ${a.value}s`
   }
