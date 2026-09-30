@@ -1,59 +1,25 @@
 # nextjs-observe
 
-> OpenTelemetry-based observability platform for Next.js applications.  
-> Workshop reference implementation — Porto 2026.
-
-## What is this?
-
-`nextjs-observe` is a complete observability solution for Next.js, inspired by `@nestjs/observe`.  
-It collects traces, metrics and logs from your Next.js app and ships them to a self-hosted (or managed) collector with a built-in dashboard.
-
-Unlike `@vercel/otel` (which requires Vercel infrastructure), this works anywhere — VPS, Railway, Fly.io, Kubernetes, or your laptop.
-
-## How it works
+Monorepo of **[next-observe](packages/next-observe)** — OpenTelemetry observability for Next.js 16 with AI agents that
+investigate problems on their own — and the reference implementation for the workshop *AI-Native Observability:
+Building Self-Debugging Next.js Applications with OpenTelemetry* (Porto, 10 November 2026).
 
 ```
-Next.js App
-  instrumentation.ts  ←  auto monkey-patches fetch, http, React.cache
-  instrumentation-client.ts  ←  browser SDK
-  withObserve(handler)  ←  route handler wrapper
-  withObserveWorker(processor)  ←  BullMQ job wrapper
-
-        ↓  OTLP/HTTP  +  x-api-key
-
-nextjs-observe-server
-  Fastify  →  Auth  →  BullMQ queue  →  Storage (Supabase / ClickHouse)
-
-        ↓
-
-nextjs-observe-ui  (Next.js dashboard, dogfoods the SDK)
+Next.js app ── 'use observe', @vercel/otel, browser OTel ──► nxo collector (OTLP/JSON)
+                                                              ├─ trace UI (list, waterfall)
+                                                              ├─ anomaly detector ──┐
+                                                              └─ chat ◄─────────────┴─ ADK agents (Gemini | Kitana | mock)
+                                                                                        tools over the stored telemetry,
+                                                                                        evidence cards built from facts
 ```
 
-## Packages
-
-| Package | Description |
+| Path | |
 |---|---|
-| `@nextjs/observe` | Next.js SDK — instrumentation, wrappers, OTel config |
-| `nextjs-observe-server` | OTLP collector + auth + queue + storage |
-| `nextjs-observe-ui` | Dashboard — trace explorer, metrics, logs |
-| `nextjs-observe` | CLI — setup wizard, deploy, project management |
+| [`packages/next-observe`](packages/next-observe) | the package — see its [README](packages/next-observe/README.md) |
+| [`docs/WORKSHOP_LOG.md`](docs/WORKSHOP_LOG.md) | every step: what was built, how it was tested, what we learned (Russian) |
+| [`docs/WORKSHOP_PLAN.md`](docs/WORKSHOP_PLAN.md) | the 3.5-hour workshop plan |
+| [`docs/SPRINTS.md`](docs/SPRINTS.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | the original long-term plan (partly superseded by the log) |
+| [`spikes/adk-kitana`](spikes/adk-kitana) | ADK + Kitana experiments behind the workshop's agent cases |
+| [`CLAUDE.md`](CLAUDE.md) | working rules for AI-assisted development in this repo |
 
-## Quick start
-
-```bash
-# Setup wizard — generates docker-compose, .env, instrumentation.ts
-npx nextjs-observe@latest init
-
-# Add SDK to your Next.js app
-npm install @nextjs/observe
-
-# Start the server locally
-docker compose up
-```
-
-## Reference projects
-
-| Project | What we learned |
-|---|---|
-| `vercel-otel-test` | OTel SDK setup for Next.js (Node.js + Edge + Browser) |
-| `@nestjs/observe` | Architecture: Proxy instrumentation, SharedArrayBuffer, worker thread, wire protocol |
+The workshop app (*Porto Shop*, three planted bugs for the agents to find) lives in a separate repository.
