@@ -14,7 +14,7 @@ OpenTelemetry observability for Next.js 16 — with AI agents that investigate p
 
 ## Quick start
 
-Requires Node.js 22+ and Next.js 16.
+Requires Node.js 22.18+ and Next.js 16.
 
 ```bash
 npm install next-observe
@@ -71,6 +71,28 @@ npm install -D @google/adk @kitana-sdk/adk @google/genai
 | `real` | Gemini when `GEMINI_API_KEY` + `GEMINI_MODEL` are set, otherwise [Kitana](https://www.npmjs.com/package/@kitana-sdk/adk) (Claude / Codex CLI, Ollama, API keys) |
 
 Without `@google/adk` the collector still runs; chat is disabled and anomalies are still shown.
+
+### Your own specialists
+
+Put `observe.agents.ts` (or `.mts`, `.js`, `.mjs`) in the app root. A specialist with a built-in name
+(`latency_agent`, `error_agent`, `traffic_agent`) replaces it; a new name adds one. The orchestrator picks specialists by
+their `description`; the rules "facts from tools only" and "own tools only" are added to every instruction.
+
+```ts
+import { defineSpecialist } from 'next-observe/agents'
+
+export default [
+  defineSpecialist({
+    name: 'latency_agent',
+    description: 'Finds slow operations and the deployment that made them slow',
+    instruction: 'First call compare_versions; then open one slow trace and name the span with the highest selfMs.',
+    tools: ['compare_versions', 'search_traces', 'get_trace'],
+  }),
+]
+```
+
+Tools: `get_services`, `get_operation_stats`, `compare_versions`, `get_errors`, `search_traces`, `get_trace`.
+`nxo` lists the loaded specialists on start.
 
 ## CLI
 

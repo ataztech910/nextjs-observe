@@ -104,6 +104,34 @@ describe('searchTraces', () => {
   })
 })
 
+describe('service filter', () => {
+  // A specialist without get_services guessed service "checkout" in a real run and got nothing back.
+  it('an unknown service falls back to all services with the real names, in every filtering tool', async () => {
+    const note = 'no service "checkout" (services: shop), showing all services instead'
+    const versions = await q.compareVersions({ service: 'checkout', operation: 'chargePayment' })
+    expect(versions.note).toBe(note)
+    expect(versions.changes[0]).toMatchObject({ operation: 'chargePayment', from: { version: 'v1' }, to: { version: 'v2' } })
+
+    const stats = await q.getOperationStats({ service: 'checkout' })
+    expect(stats.note).toBe(note)
+    expect(stats.operations.length).toBeGreaterThan(0)
+
+    const errors = await q.getErrors({ service: 'checkout' })
+    expect(errors.note).toBe(note)
+    expect(errors.errors.length).toBeGreaterThan(0)
+
+    const traces = await q.searchTraces({ service: 'checkout', operation: 'nope' })
+    expect(traces.note).toBe(`${note}; nothing matches "nope", showing all operations instead`)
+    expect(traces.traces.length).toBeGreaterThan(0)
+  })
+
+  it('matches service names case-insensitively without a note', async () => {
+    const stats = await q.getOperationStats({ service: 'SHOP' })
+    expect(stats.note).toBeUndefined()
+    expect(stats.operations.every((o) => o.service === 'shop')).toBe(true)
+  })
+})
+
 describe('getTrace', () => {
   it('flags the N+1: 5 identical db.query siblings, with self time on the parent', async () => {
     const [catalogTrace] = (await q.searchTraces({ operation: 'GET /api/products', limit: 1 })).traces

@@ -17,7 +17,8 @@ packages/next-observe/
   src/transform/         Babel plugin + Turbopack loader for 'use observe'
   src/collector/         OTLP/JSON ingest, MemoryStorage, query API, chat transport (NDJSON + SSE), static UI
   src/debug/             agent tools as pure functions (queries.ts), anomaly detector, demo data — no ADK imports
-  src/agents/            ADK agents (optional peer @google/adk, @kitana-sdk/adk), MockLlm, chat handler, evidence cards
+  src/agents/            ADK agents (optional peer @google/adk, @kitana-sdk/adk), MockLlm, chat handler, evidence cards;
+                         specialists.ts = specialists as data (built-ins + project observe.agents.ts, loaded by the CLI)
   src/cli.ts, bin.ts     nxo dev | nxo collector [--demo]
   ui/                    Vite + React SPA (TanStack Router/Query, shadcn/ui, Tailwind 4), built into dist/ui
   test/                  vitest unit tests; test/fixtures/shop.ts = workshop scenario at a fixed clock

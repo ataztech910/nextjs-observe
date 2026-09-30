@@ -5,6 +5,7 @@ import type { StorageAdapter } from '../collector/types.js'
 import type { QueryOptions } from '../debug/queries.js'
 import { cardKey, cardsFromResult } from './cards.js'
 import { createInvestigator } from './investigator.js'
+import type { SpecialistSpec } from './specialists.js'
 import { getModel, resolveAiMode, type Env } from './model.js'
 
 export interface ChatHandlerOptions {
@@ -15,12 +16,19 @@ export interface ChatHandlerOptions {
   timeoutMs?: number
   /** Overrides the model chosen from env (tests, custom providers). */
   model?: BaseLlm | string
+  /** Default: the built-in specialists; the CLI merges in the project's observe.agents file. */
+  specialists?: SpecialistSpec[]
 }
 
 export async function createChatHandler(options: ChatHandlerOptions): Promise<{ mode: 'mock' | 'real'; handle: ChatHandler }> {
   const env = options.env ?? process.env
   const mode = resolveAiMode(env)
-  const investigator = createInvestigator({ storage: options.storage, model: options.model ?? (await getModel(env)), queryOptions: options.queryOptions })
+  const investigator = createInvestigator({
+    storage: options.storage,
+    model: options.model ?? (await getModel(env)),
+    queryOptions: options.queryOptions,
+    specialists: options.specialists,
+  })
   const timeoutMs = options.timeoutMs ?? 180_000
 
   // One question at a time per conversation: a second one would interleave with the first in the session history.

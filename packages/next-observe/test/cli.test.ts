@@ -217,6 +217,66 @@ describe('chat in the CLI', () => {
   })
 })
 
+describe('project agents (observe.agents.*)', () => {
+  const cacheAgent = `{ name: 'cache_agent', description: 'Cache specialist', instruction: 'Check versions.', tools: ['get_services'] }`
+
+  function project(files: Record<string, string>): string {
+    const root = fixtureApp(false)
+    for (const [name, content] of Object.entries(files)) writeFileSync(join(root, name), content)
+    return root
+  }
+
+  async function start(root: string) {
+    const h = harness({})
+    const exit = run(['collector', '--port', '0', '--root', root], h.deps)
+    return { h, exit }
+  }
+
+  it('loads a .ts file, merges it with the built-ins and lists it in the banner', async () => {
+    // Type annotations prove the file goes through TypeScript stripping, not plain JS.
+    const root = project({ 'observe.agents.ts': `const agents: object[] = [${cacheAgent}, { name: 'latency_agent', description: 'Mine', instruction: 'Mine.', tools: ['compare_versions'] as string[] }]\nexport default agents\n` })
+    const { h, exit } = await start(root)
+    await until(h.collectorUrl)
+    expect(h.logs[0]).toContain('  agents     observe.agents.ts: cache_agent, latency_agent (replaces built-in); built-in: error_agent, traffic_agent')
+
+    const response = await fetch(`${h.collectorUrl()}/api/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question: 'What is going on?' }) })
+    const body = await response.text()
+    expect(body).toContain('"agent":"cache_agent","tool":"get_services"')
+    expect(body).toContain('"agent":"latency_agent","tool":"compare_versions"')
+    expect(body).not.toContain('"agent":"latency_agent","tool":"get_operation_stats"')
+    h.stop()
+    expect(await exit).toBe(0)
+  })
+
+  it('accepts a single default export from .mjs', async () => {
+    const { h, exit } = await start(project({ 'observe.agents.mjs': `export default ${cacheAgent}\n` }))
+    await until(h.collectorUrl)
+    expect(h.logs[0]).toContain('observe.agents.mjs: cache_agent; built-in: latency_agent, error_agent, traffic_agent')
+    h.stop()
+    expect(await exit).toBe(0)
+  })
+
+  it('without a file the banner has no agents line', async () => {
+    const { h, exit } = await start(project({}))
+    await until(h.collectorUrl)
+    expect(h.logs[0]).not.toMatch(/^  agents /m)
+    h.stop()
+    expect(await exit).toBe(0)
+  })
+
+  it.each([
+    [{ 'observe.agents.mjs': `export default [{ ${cacheAgent.slice(1, -1)}, tools: ['run_sql'] }]` }, 'observe.agents.mjs: specialist "cache_agent": unknown tools run_sql'],
+    [{ 'observe.agents.mjs': `export default [${cacheAgent}, ${cacheAgent}]` }, 'observe.agents.mjs: specialist "cache_agent" is defined twice'],
+    [{ 'observe.agents.mjs': 'export const x = 1' }, 'observe.agents.mjs: export default an array of defineSpecialist'],
+    [{ 'observe.agents.mjs': 'export default [' }, 'observe.agents.mjs: '],
+    [{ 'observe.agents.mjs': `export default ${cacheAgent}`, 'observe.agents.ts': `export default ${cacheAgent}` }, 'found observe.agents.ts and observe.agents.mjs'],
+  ])('fails with a clear message %#', async (files, message) => {
+    const h = harness({})
+    expect(await run(['collector', '--port', '0', '--root', project(files)], h.deps)).toBe(1)
+    expect(h.logs[0]).toContain(message)
+  })
+})
+
 describe('--demo', () => {
   it('preloads the shop scenario so the UI and chat have data without an app', async () => {
     const h = harness({})

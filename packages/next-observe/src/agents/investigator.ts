@@ -3,6 +3,7 @@ import { AgentTool, FunctionTool, InMemorySessionService, LlmAgent, Runner, type
 import { z } from 'zod'
 import type { StorageAdapter } from '../collector/types.js'
 import { createAgentQueries, type QueryOptions } from '../debug/queries.js'
+import { BUILT_IN_SPECIALISTS, orchestratorInstruction, specialistInstruction, type SpecialistSpec, type ToolName } from './specialists.js'
 
 export interface InvestigationStep {
   agent: string
@@ -23,18 +24,13 @@ export interface InvestigatorOptions {
   queryOptions?: QueryOptions
   /** Called for every tool call, specialists included — the chat shows these while the agents work. */
   onStep?: (step: InvestigationStep) => void
+  /** Default: the built-in latency, error and traffic specialists. */
+  specialists?: SpecialistSpec[]
 }
 
 const since = z.number().positive().optional().describe('look back this many minutes (default 15)')
 const service = z.string().optional().describe('exact service name')
 const operation = z.string().optional().describe('substring of the operation name, case-insensitive')
-
-const FACTS_ONLY = `Use only facts returned by your tools; if a tool returned nothing relevant, say so — never guess causes.
-Quote exact numbers, operation names, versions and error messages. Answer in English.`
-
-// Specialists run behind AgentTool with their own tools only; calling another agent from inside one cannot work.
-const OWN_TOOLS_ONLY = `You can only use the tools listed for you — never call other agents or tools that are not listed.
-If you need data your tools cannot give, say what is missing in your answer.`
 
 /**
  * A final text that starts like `{"tool_call": …}` is a tool call that leaked instead of a report. Seen in real runs:
@@ -50,6 +46,7 @@ const USER_ID = 'next-observe'
 
 export function createInvestigator(options: InvestigatorOptions) {
   const q = createAgentQueries(options.storage, options.queryOptions)
+  const specialists = options.specialists ?? BUILT_IN_SPECIALISTS
   // Conversation memory: ADK stores every question, specialist call and answer in the session; the orchestrator sees
   // them on the next turn. Specialists (AgentTool) start fresh each time and get context via the orchestrator's request.
   // In-memory: sessions end with the process.
@@ -82,59 +79,31 @@ export function createInvestigator(options: InvestigatorOptions) {
       })
     }
 
-    const tools = (agent: string) => ({
-      services: tool(agent, 'get_services', 'Services, their deployed versions (in deploy order) and seconds since their last span.', z.object({}), () => q.getServices()),
-      stats: tool(agent, 'get_operation_stats', 'Slowest operations by p95 with p50/p99 and error rate.', z.object({ service, operation, sinceMinutes: since }), (a) => q.getOperationStats(a)),
-      versions: tool(agent, 'compare_versions', 'Latest deployed version vs the previous one per operation: p95 ratio and error-rate delta. Use it to name the deployment that caused a regression.', z.object({ service, operation, sinceMinutes: since }), (a) => q.compareVersions(a)),
-      errors: tool(agent, 'get_errors', 'Failing operations: error rate, top exception messages, example trace ids.', z.object({ service, operation, sinceMinutes: since }), (a) => q.getErrors(a)),
-      search: tool(agent, 'search_traces', 'Recent traces matching filters, to get example trace ids.', z.object({ service, operation, minDurationMs: z.number().optional(), hasError: z.boolean().optional(), sinceMinutes: since }), (a) => q.searchTraces(a)),
-      trace: tool(agent, 'get_trace', 'One trace as a tree with self time, errors and code file paths; `repeated` lists ≥3 identical sibling calls (N+1).', z.object({ traceId: z.string().describe('32-char hex trace id from search_traces') }), (a) => q.getTrace(a)),
+    const tools = (agent: string): Record<ToolName, FunctionTool> => ({
+      get_services: tool(agent, 'get_services', 'Services, their deployed versions (in deploy order) and seconds since their last span.', z.object({}), () => q.getServices()),
+      get_operation_stats: tool(agent, 'get_operation_stats', 'Slowest operations by p95 with p50/p99 and error rate.', z.object({ service, operation, sinceMinutes: since }), (a) => q.getOperationStats(a)),
+      compare_versions: tool(agent, 'compare_versions', 'Latest deployed version vs the previous one per operation: p95 ratio and error-rate delta. Use it to name the deployment that caused a regression.', z.object({ service, operation, sinceMinutes: since }), (a) => q.compareVersions(a)),
+      get_errors: tool(agent, 'get_errors', 'Failing operations: error rate, top exception messages, example trace ids.', z.object({ service, operation, sinceMinutes: since }), (a) => q.getErrors(a)),
+      search_traces: tool(agent, 'search_traces', 'Recent traces matching filters, to get example trace ids.', z.object({ service, operation, minDurationMs: z.number().optional(), hasError: z.boolean().optional(), sinceMinutes: since }), (a) => q.searchTraces(a)),
+      get_trace: tool(agent, 'get_trace', 'One trace as a tree with self time, errors and code file paths; `repeated` lists ≥3 identical sibling calls (N+1).', z.object({ traceId: z.string().describe('32-char hex trace id from search_traces') }), (a) => q.getTrace(a)),
     })
 
-    const latency = tools('latency_agent')
-    const latencyAgent = new LlmAgent({
-      name: 'latency_agent',
-      description: 'Latency specialist: slow operations, p50/p95/p99, regressions between deployed versions, N+1 patterns.',
-      model: options.model,
-      instruction: `You are a latency specialist. Find what is slow and why.
-  Check compare_versions for regressions between deployments. For a slow trace, use search_traces then get_trace: high selfMs points at the code file; "repeated" means N+1.
-  When asked where time is spent, always open at least one trace with get_trace — aggregates don't show structure.
-Distinguish external dependencies from internal code. Max 3 sentences. ${FACTS_ONLY}
-${OWN_TOOLS_ONLY}`,
-      tools: [latency.stats, latency.versions, latency.search, latency.trace],
-    })
-
-    const error = tools('error_agent')
-    const errorAgent = new LlmAgent({
-      name: 'error_agent',
-      description: 'Error specialist: failing operations, error rates, exact exception messages, source vs downstream victims.',
-      model: options.model,
-      instruction: `You are an error specialist. Report the failing operation, its error rate and the exact exception message.
-  Use get_trace on an example trace to separate the source span from its downstream victims and to find the code file. Max 3 sentences. ${FACTS_ONLY}
-${OWN_TOOLS_ONLY}`,
-      tools: [error.errors, error.search, error.trace],
-    })
-
-    const traffic = tools('traffic_agent')
-    const trafficAgent = new LlmAgent({
-      name: 'traffic_agent',
-      description: 'Traffic specialist: which services report data, versions deployed, silent services (no traffic).',
-      model: options.model,
-      instruction: `You are a traffic specialist. A service that stopped sending spans is more critical than errors — flag it immediately.
-  Report which versions are deployed and whether traffic looks normal. Max 2 sentences. ${FACTS_ONLY}
-${OWN_TOOLS_ONLY}`,
-      tools: [traffic.services, traffic.stats],
+    const agents = specialists.map((spec) => {
+      const available = tools(spec.name)
+      return new LlmAgent({
+        name: spec.name,
+        description: spec.description,
+        model: options.model,
+        instruction: specialistInstruction(spec),
+        tools: spec.tools.map((name) => available[name]),
+      })
     })
 
     const orchestrator = new LlmAgent({
       name: 'orchestrator',
       model: options.model,
-      instruction: `You coordinate an investigation of a Next.js app using specialist agents.
-  Slowness → latency_agent (then traffic_agent if needed). Failures → error_agent first, then latency_agent. "Nothing happens" → traffic_agent.
-  A broad or unclear question → call all three. Then write one report for an on-call engineer at 3am:
-  priority no-traffic > errors > latency, max 5 sentences, diagnosis only, never suggest automated fixes.
-  Treat separate findings as separate problems unless a tool result shows they are connected. ${FACTS_ONLY}`,
-      tools: [new AgentTool({ agent: latencyAgent }), new AgentTool({ agent: errorAgent }), new AgentTool({ agent: trafficAgent })],
+      instruction: orchestratorInstruction(specialists),
+      tools: agents.map((agent) => new AgentTool({ agent })),
     })
     return orchestrator
   }

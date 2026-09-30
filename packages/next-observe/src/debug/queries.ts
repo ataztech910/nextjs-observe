@@ -48,6 +48,21 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
     return { items: await query(undefined), note: `nothing matches "${operation}", showing all operations instead` }
   }
 
+  // Service names are exact in storage, but models guess them ("checkout" for a route of "porto-shop"). Unknown name →
+  // all services plus a note with the real names, like the operation fallback; case-only differences just match.
+  async function resolveService(service: string | undefined): Promise<{ service?: string; note?: string }> {
+    if (!service) return {}
+    const names = (await storage.getServices()).map((s) => s.name)
+    const match = names.find((name) => name.toLowerCase() === service.toLowerCase())
+    if (match) return { service: match }
+    return { note: `no service "${service}" (services: ${names.join(', ') || 'none yet'}), showing all services instead` }
+  }
+
+  const joinNotes = (...notes: (string | undefined)[]) => {
+    const text = notes.filter(Boolean).join('; ')
+    return text ? { note: text } : {}
+  }
+
   return {
     /** Services, their deployed versions and how fresh their data is. */
     async getServices() {
@@ -59,11 +74,12 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
 
     /** Slowest operations by p95 with error rates. */
     async getOperationStats(args: { service?: string; operation?: string; limit?: number } & Window = {}) {
+      const { service, note: serviceNote } = await resolveService(args.service)
       const { items, note } = await withFallback(args.operation, (operation) =>
-        storage.getOperationStats({ service: args.service, operation, fromMs: since(args) }),
+        storage.getOperationStats({ service, operation, fromMs: since(args) }),
       )
       return {
-        ...(note ? { note } : {}),
+        ...joinNotes(serviceNote, note),
         operations: items.slice(0, args.limit ?? 15).map((s) => ({
           service: s.service,
           operation: s.operation,
@@ -84,8 +100,9 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
       const deployOrder = new Map((await storage.getServices()).map((s) => [s.name, s.versions]))
       const order = (s: OperationStats) => deployOrder.get(s.service)?.indexOf(s.serviceVersion ?? '') ?? -1
 
+      const { service, note: serviceNote } = await resolveService(args.service)
       const { items, note } = await withFallback(args.operation, (operation) =>
-        storage.getOperationStats({ service: args.service, operation, fromMs: since(args), byVersion: true }),
+        storage.getOperationStats({ service, operation, fromMs: since(args), byVersion: true }),
       )
       const byOperation = new Map<string, OperationStats[]>()
       for (const s of items) {
@@ -107,20 +124,21 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
       }
       changes.sort((a, b) => (b.p95Ratio ?? 0) - (a.p95Ratio ?? 0) || b.errorRateDelta - a.errorRateDelta)
       const empty = changes.length === 0 ? 'only one version seen per operation — nothing to compare' : undefined
-      return { ...(note || empty ? { note: [note, empty].filter(Boolean).join('; ') } : {}), changes }
+      return { ...joinNotes(serviceNote, note, empty), changes }
     },
 
     /** Failing operations: error rate, most common exception messages and example traces. */
     async getErrors(args: { service?: string; operation?: string; limit?: number } & Window = {}) {
       const fromMs = since(args)
-      const stats = await storage.getOperationStats({ service: args.service, fromMs })
-      const errorSpansFor = (operation?: string) => storage.querySpans({ service: args.service, operation, status: 'error', fromMs, limit: 1000 })
+      const { service, note: serviceNote } = await resolveService(args.service)
+      const stats = await storage.getOperationStats({ service, fromMs })
+      const errorSpansFor = (operation?: string) => storage.querySpans({ service, operation, status: 'error', fromMs, limit: 1000 })
       let errorSpans = await errorSpansFor(args.operation)
       let note: string | undefined
       // Nothing failing under this name → show what IS failing elsewhere. The note keeps "exists but healthy" apart from
       // "no such operation": a user asking about "product pages" needs to see inventory.check failing on those pages.
       if (errorSpans.length === 0 && args.operation) {
-        const exists = (await storage.getOperationStats({ service: args.service, operation: args.operation, fromMs })).length > 0
+        const exists = (await storage.getOperationStats({ service, operation: args.operation, fromMs })).length > 0
         note = exists
           ? `"${args.operation}" has no errors in this window; showing failing operations elsewhere`
           : `nothing matches "${args.operation}", showing all operations instead`
@@ -152,16 +170,17 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
         .sort((a, b) => b.errors - a.errors)
         .slice(0, args.limit ?? 10)
       const empty = errors.length === 0 ? 'no errors in this window' : undefined
-      return { ...(note || empty ? { note: [note, empty].filter(Boolean).join('; ') } : {}), errors }
+      return { ...joinNotes(serviceNote, note, empty), errors }
     },
 
     /** Recent traces matching filters — to get example trace ids. */
     async searchTraces(args: { service?: string; operation?: string; minDurationMs?: number; hasError?: boolean; limit?: number } & Window = {}) {
+      const { service, note: serviceNote } = await resolveService(args.service)
       const { items, note } = await withFallback(args.operation, (operation) =>
-        storage.queryTraces({ ...args, operation, fromMs: since(args), limit: args.limit ?? 10 }),
+        storage.queryTraces({ ...args, service, operation, fromMs: since(args), limit: args.limit ?? 10 }),
       )
       return {
-        ...(note ? { note } : {}),
+        ...joinNotes(serviceNote, note),
         traces: items.map((t) => ({
           traceId: t.traceId,
           root: t.rootName,
