@@ -25,9 +25,9 @@ describe('chat disabled (no agents)', () => {
 describe('chat enabled', () => {
   it('reports the mode and streams events as NDJSON in order, with the trimmed question', async () => {
     const received: string[] = []
-    const handle: ChatHandler = async (question, emit) => {
+    const handle: ChatHandler = async ({ question }, emit) => {
       received.push(question)
-      emit({ type: 'status', mode: 'mock', text: 'Investigating…' })
+      emit({ type: 'status', mode: 'mock', sessionId: 's1', text: 'Investigating…' })
       emit({ type: 'step', agent: 'latency_agent', tool: 'compare_versions', args: {} })
       emit({ type: 'report', text: 'chargePayment regressed in v2' })
     }

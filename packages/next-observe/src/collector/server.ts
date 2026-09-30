@@ -6,7 +6,7 @@
 //   GET  /api/traces/:traceId
 //   GET  /api/operations?service&operation&fromMs&toMs
 //   GET  /api/chat                  { enabled, mode }
-//   POST /api/chat                  { question } → NDJSON stream of ChatEvent (status, step…, report | error)
+//   POST /api/chat                  { question, sessionId? } → NDJSON stream of ChatEvent (status, step…, card…, report | error)
 //   GET  /*                         the UI (dist/ui) with SPA fallback
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -122,7 +122,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
 
   async function chat(req: IncomingMessage, res: ServerResponse) {
     if (!options.chat) throw new HttpError(503, CHAT_DISABLED)
-    let body: { question?: unknown }
+    let body: { question?: unknown; sessionId?: unknown }
     try {
       body = JSON.parse(await readBody(req, 64 * 1024))
     } catch (error) {
@@ -132,6 +132,10 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     const question = typeof body?.question === 'string' ? body.question.trim() : ''
     if (!question) throw new HttpError(400, 'question is required')
     if (question.length > MAX_QUESTION) throw new HttpError(400, `question is longer than ${MAX_QUESTION} characters`)
+    const sessionId = body.sessionId
+    if (sessionId !== undefined && (typeof sessionId !== 'string' || !/^[\w-]{1,100}$/.test(sessionId))) {
+      throw new HttpError(400, 'sessionId must be 1–100 characters of letters, digits, _ or -')
+    }
 
     // One JSON event per line, flushed as the agents work — the UI shows each step live.
     res.writeHead(200, { ...CORS, 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-cache' })
@@ -139,7 +143,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
       if (!res.writableEnded) res.write(JSON.stringify(event) + '\n')
     }
     try {
-      await options.chat.handle(question, emit)
+      await options.chat.handle({ question, ...(sessionId ? { sessionId } : {}) }, emit)
     } catch (error) {
       emit({ type: 'error', message: error instanceof Error ? error.message : String(error) })
     }

@@ -12,7 +12,7 @@ interface Declaration {
 }
 
 function questionOf(request: LlmRequest): string {
-  for (const content of request.contents) {
+  for (const content of [...request.contents].reverse()) {
     const text = content.parts?.find((p) => p.text)?.text
     if (content.role === 'user' && text) return text
   }
@@ -25,7 +25,9 @@ export class MockLlm extends BaseLlm {
   }
 
   async *generateContentAsync(request: LlmRequest): AsyncGenerator<LlmResponse, void> {
-    const parts = request.contents.flatMap((c) => c.parts ?? [])
+    // Only the current turn counts: with a session, earlier questions and their tool calls are in the history too.
+    const turnStart = request.contents.findLastIndex((c) => c.role === 'user' && c.parts?.some((p) => p.text))
+    const parts = request.contents.slice(Math.max(turnStart, 0)).flatMap((c) => c.parts ?? [])
     const called = new Set(parts.map((p) => p.functionCall?.name).filter(Boolean))
     const question = questionOf(request)
 

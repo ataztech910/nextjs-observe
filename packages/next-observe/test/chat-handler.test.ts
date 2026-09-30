@@ -28,7 +28,7 @@ class ThrowingLlm extends BaseLlm {
 
 async function run(handler: Awaited<ReturnType<typeof createChatHandler>>, question = 'Why is checkout slow?') {
   const events: ChatEvent[] = []
-  await handler.handle(question, (e) => events.push(e))
+  await handler.handle({ question }, (e) => events.push(e))
   return events
 }
 
@@ -37,7 +37,7 @@ describe('createChatHandler', () => {
     const handler = await createChatHandler({ storage: await shopStorage(), env: {}, queryOptions: { now: () => NOW } })
     expect(handler.mode).toBe('mock')
     const events = await run(handler)
-    expect(events[0]).toEqual({ type: 'status', mode: 'mock', text: 'Investigating…' })
+    expect(events[0]).toEqual({ type: 'status', mode: 'mock', sessionId: expect.any(String), text: 'Investigating…' })
     expect(events.at(-1)).toMatchObject({ type: 'report', text: expect.stringContaining(MOCK_PREFIX) })
     const steps = events.filter((e) => e.type === 'step')
     expect(steps.length).toBeGreaterThan(5)
@@ -48,7 +48,7 @@ describe('createChatHandler', () => {
   it('times out with an error and lets no late step leak into the finished turn', async () => {
     const slow = await createChatHandler({ storage: await shopStorage(), env: {}, queryOptions: { now: () => NOW }, timeoutMs: 100, model: new SlowMockLlm() })
     const events: ChatEvent[] = []
-    await slow.handle('q', (e) => events.push(e))
+    await slow.handle({ question: 'q' }, (e) => events.push(e))
     expect(events.at(-1)).toEqual({ type: 'error', message: expect.stringContaining('longer than') })
     const countAtEnd = events.length
     await sleep(600) // the investigation keeps running in the background
