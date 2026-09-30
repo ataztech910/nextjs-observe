@@ -888,6 +888,26 @@ const { text, steps, transcript } = await investigator.ask("Checkout is slow. Wh
 
 ---
 
+## Шаг 20. `next-observe` готов к публикации в npm
+
+**Чтобы** участники ставили пакет обычным `npm install`, а не из локального tarball,
+**делаем** пакет публикуемым.
+
+- Версия **0.1.0**; `author`, `repository` (с `directory`), `homepage`, `bugs`, `keywords`, `engines: node >= 22`; LICENSE (MIT, Andrei Tazetdinov — как у Kitana).
+- README пакета (для страницы npm): быстрый старт в три файла, `'use observe'`, агенты и режимы `OBSERVE_AI`, CLI, переменные окружения, точки входа. Корневой README репозитория переписан: старое описание (`@nextjs/observe`, Docker, Fastify) не соответствовало продукту.
+- `prepublishOnly: npm test && npm run build` — непроверенную или несобранную версию опубликовать нельзя.
+- **`next` — опциональная peer-зависимость:** ради `nxo collector` (например, на дроплете) npm 7+ иначе ставил бы весь Next.js.
+
+### Как проверили
+
+- `npm pack --dry-run`: в пакете только `dist` (с собранным UI), README, LICENSE — без исходников и тестов; 268 kB, 92 файла.
+- **Установка как у пользователя:** пустая папка → `npm install next-observe-0.1.0.tgz` → 64 пакета, **без Next.js** (53 MB) → `npx nxo --help` → `npx nxo collector --demo`: UI отдаётся, чат честно выключен с подсказкой, демо-данные на месте. Сценарий Next-приложения на tarball проверен в шагах 18–19 на Porto Shop.
+- 160 юнит-тестов, type-check пакета и UI.
+
+**Публикует пользователь** (npm-вход у него): `cd packages/next-observe && npm publish` — у пакета нет `workspace:`-зависимостей, поэтому здесь подходит обычный `npm publish`; `prepublishOnly` сам прогонит тесты и сборку.
+
+---
+
 ## Дальше
 
 - [ ] DevTools-хук (bippy) в `instrumentation-client.ts`: `actualDuration` всех компонентов в profiling-сборке.
@@ -918,7 +938,9 @@ const { text, steps, transcript } = await investigator.ask("Checkout is slow. Wh
 - [x] Битые вызовы инструментов: Kitana 0.1.11 + защита в `next-observe`, шаг 19
 - [ ] Опубликовать Kitana 0.1.11 и поднять её в `next-observe` (dev/peer) и Porto Shop.
 - [ ] Карточки: не дублировать внутренние спаны Next (`executing api route …`).
-- [ ] Опубликовать `next-observe` в npm; репозиторий `workshop-ai-observability` на GitHub; git-теги по блокам воркшопа.
+- [x] `next-observe` готов к публикации (0.1.0), шаг 20
+- [ ] Опубликовать `next-observe` 0.1.0 (пользователь), затем Porto Shop: `next-observe@^0.1.0` вместо `file:…tgz`.
+- [ ] Репозиторий `workshop-ai-observability` на GitHub; git-теги по блокам воркшопа.
 - [ ] UI: страница операций (p50/p95/p99, error rate) из `/api/operations`.
 - [ ] Разобраться с зависанием `nxo` при остановке, если повторится (см. шаг 9).
 - [ ] Хранилище `node:sqlite` (данные переживают перезапуск).

@@ -1,8 +1,33 @@
 {
   "name": "next-observe",
-  "version": "0.0.1",
-  "description": "OpenTelemetry observability for Next.js — client, server and your own code via 'use observe'",
+  "version": "0.1.0",
+  "description": "OpenTelemetry observability for Next.js — server, browser and your own code via 'use observe', a local collector with trace UI, and AI agents that investigate problems on their own",
   "license": "MIT",
+  "author": "Andrei Tazetdinov",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ataztech910/nextjs-observe.git",
+    "directory": "packages/next-observe"
+  },
+  "homepage": "https://github.com/ataztech910/nextjs-observe#readme",
+  "bugs": {
+    "url": "https://github.com/ataztech910/nextjs-observe/issues"
+  },
+  "keywords": [
+    "nextjs",
+    "next",
+    "opentelemetry",
+    "otel",
+    "observability",
+    "tracing",
+    "monitoring",
+    "ai-agents",
+    "adk",
+    "anomaly-detection"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "type": "module",
   "bin": {
     "next-observe": "./dist/bin.js",
@@ -47,7 +72,8 @@
     "ui:install": "npm --prefix ui install",
     "ui:dev": "npm --prefix ui run dev",
     "typecheck": "tsc -p tsconfig.json --noEmit && npm --prefix ui run typecheck",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "npm test && npm run build"
   },
   "dependencies": {
     "@babel/core": "^8.0.6",
@@ -90,6 +116,9 @@
       "optional": true
     },
     "@kitana-sdk/adk": {
+      "optional": true
+    },
+    "next": {
       "optional": true
     }
   }
