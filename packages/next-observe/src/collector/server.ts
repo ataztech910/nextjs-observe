@@ -139,7 +139,8 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     recent.push(envelope)
     if (recent.length > REPLAY_EVENTS) recent.shift()
     const line = `data: ${JSON.stringify(envelope)}\n\n`
-    for (const res of subscribers) res.write(line)
+    // A queued investigation can outlive close(): never write to an ended response.
+    for (const res of subscribers) if (!res.writableEnded) res.write(line)
   }
   let investigations = Promise.resolve()
   const onAnomalies = () => {
@@ -282,6 +283,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
         clearInterval(detectorTimer)
         clearInterval(heartbeat)
         for (const res of subscribers) res.end()
+        subscribers.clear()
         server.close((error) => (error ? reject(error) : resolve()))
         // Defensive: don't let any lingering client socket delay shutdown (a hang was seen once in e2e, cause not reproduced).
         server.closeAllConnections()

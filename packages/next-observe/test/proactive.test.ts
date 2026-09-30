@@ -109,6 +109,35 @@ describe('proactive investigations', () => {
     expect(maxRunning).toBe(1)
   })
 
+  it('survives an investigation that keeps emitting after the collector closed', async () => {
+    let emitLater!: () => void
+    const handle: ChatHandler = async (_request, emit) => {
+      await new Promise<void>((resolve) => (emitLater = resolve))
+      emit({ type: 'report', text: 'too late' })
+    }
+    collector = await startCollector({ port: 0, uiDir: false, chat: { mode: 'mock', handle }, detector: new AnomalyDetector(), detectorIntervalMs: 50 })
+    // a tab that stays connected until the collector itself closes
+    const tab = await fetch(`${collector.url}/api/chat/events`)
+    const reader = tab.body!.getReader()
+    reader.read().catch(() => {})
+    await ingest(requests(10, 'GET /x', { error: true }))
+    await new Promise((r) => setTimeout(r, 300)) // anomaly fired, investigation waiting
+    const errors: unknown[] = []
+    const onError = (error: unknown) => errors.push(error)
+    process.on('uncaughtException', onError)
+    try {
+      const closing = collector.close()
+      emitLater() // the investigation resumes while the collector shuts down
+      await closing
+      collector = undefined
+      await new Promise((r) => setTimeout(r, 100))
+      expect(errors).toEqual([])
+    } finally {
+      process.off('uncaughtException', onError)
+      reader.cancel().catch(() => {})
+    }
+  })
+
   it('sends nothing on healthy traffic', async () => {
     collector = await startCollector({ port: 0, uiDir: false, detector: new AnomalyDetector(), detectorIntervalMs: 50 })
     const listening = listen(() => false, 600)
