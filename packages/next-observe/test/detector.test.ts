@@ -109,6 +109,63 @@ describe('AnomalyDetector', () => {
   })
 })
 
+describe('AnomalyDetector per operation', () => {
+  // Porto Shop under `npm run load`: inventory is 1 of 3 routes here and fails 30% of the time → 10% overall.
+  const realisticMix = () => [
+    ...Array.from({ length: 7 }, () => request('GET /api/inventory/[id]')),
+    ...Array.from({ length: 3 }, () => failing('GET /api/inventory/[id]')),
+    ...Array.from({ length: 10 }, () => request('GET /')),
+    ...Array.from({ length: 10 }, () => request('POST /api/checkout')),
+  ]
+
+  it('catches one broken operation that stays below the app-wide threshold', () => {
+    const c = clock()
+    const d = new AnomalyDetector({ now: c.now })
+    d.observe(realisticMix())
+    const found = d.check()
+    expect(found).toHaveLength(1)
+    expect(found[0]).toMatchObject({
+      type: 'high_error_rate',
+      scope: 'operation',
+      subject: { service: 'shop', operation: 'GET /api/inventory/[id]' },
+      value: 0.3,
+      sampleSize: 10,
+    })
+  })
+
+  it('needs enough requests of that operation too', () => {
+    const c = clock()
+    const d = new AnomalyDetector({ now: c.now })
+    d.observe([...Array.from({ length: 4 }, () => failing('GET /rare')), ...Array.from({ length: 40 }, () => request('GET /'))])
+    expect(d.check()).toEqual([])
+  })
+
+  it('keeps a separate cooldown per operation', () => {
+    const c = clock()
+    const d = new AnomalyDetector({ now: c.now })
+    const broken = (name: string) => [...Array.from({ length: 6 }, () => failing(name)), ...Array.from({ length: 4 }, () => request(name))]
+    d.observe([...broken('GET /a'), ...Array.from({ length: 40 }, () => request('GET /'))])
+    expect(d.check().map((a) => a.subject?.operation)).toEqual(['GET /a'])
+    c.advance(5_000)
+    d.observe([...broken('GET /a'), ...broken('GET /b'), ...Array.from({ length: 40 }, () => request('GET /'))])
+    expect(d.check().map((a) => a.subject?.operation)).toEqual(['GET /b'])
+  })
+
+  it('does not repeat an app-wide anomaly per operation', () => {
+    const c = clock()
+    const d = new AnomalyDetector({ now: c.now })
+    d.observe(Array.from({ length: 10 }, () => failing('GET /x')))
+    expect(d.check().map((a) => a.scope)).toEqual(['all'])
+  })
+
+  it('asks the agents about that operation', () => {
+    const c = clock()
+    const d = new AnomalyDetector({ now: c.now })
+    d.observe(realisticMix())
+    expect(questionFor(d.check()[0])).toMatch(/^Anomaly detected: 30% of GET \/api\/inventory\/\[id\] requests failed in the last 10s \(10 requests\)/)
+  })
+})
+
 describe('questionFor', () => {
   it('turns the anomaly into a question that carries the evidence', () => {
     const c = clock()

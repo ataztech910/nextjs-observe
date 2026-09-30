@@ -121,3 +121,35 @@ describe('investigator (mock model over the shop scenario)', () => {
     expect(second.steps).toHaveLength(first.steps.length)
   })
 })
+
+describe('leaked tool calls', () => {
+  it('recognises a bare tool-call JSON (also fenced) and nothing else', async () => {
+    const { isLeakedToolCall } = await import('../src/agents/index.js')
+    expect(isLeakedToolCall('{"tool_call":{"name":"latency_agent","args":{"request":"x"}}}')).toBe(true)
+    expect(isLeakedToolCall('```json\n{"tool_call":{"name":"a","args":{}}}\n```')).toBe(true)
+    expect(isLeakedToolCall('The diagnosis: chargePayment regressed in v2.')).toBe(false)
+    expect(isLeakedToolCall('{"note":"not a tool call"}')).toBe(false)
+    expect(isLeakedToolCall('{broken')).toBe(false)
+    // real case: the model dropped the last closing brace — still a leaked call
+    expect(isLeakedToolCall('{"tool_call":{"name":"latency_agent","args":{"request":"x"}}')).toBe(true)
+  })
+
+  it('turns a leaked call into an honest error instead of a report', async () => {
+    const { BaseLlm } = await import('@google/adk')
+    class LeakingLlm extends BaseLlm {
+      constructor() {
+        super({ model: 'leaking' })
+      }
+      async *generateContentAsync() {
+        yield { content: { role: 'model', parts: [{ text: '{"tool_call":{"name":"latency_agent","args":{"request":"x"}}}' }] }, turnComplete: true }
+      }
+      async connect(): Promise<never> {
+        throw new Error('no live')
+      }
+    }
+    const investigator = createInvestigator({ storage: await shopStorage(), model: new LeakingLlm(), queryOptions: { now: () => NOW } })
+    const result = await investigator.ask('why?')
+    expect(result.text).toBe('')
+    expect(result.error).toContain('did not finish the report')
+  })
+})
