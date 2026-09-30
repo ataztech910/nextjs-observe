@@ -1,8 +1,9 @@
 // Types come straight from the collector, so the UI can't drift from the API.
-import type { ChatEvent, EvidenceCard, VersionStats } from '../../src/collector/chat'
+import type { ChatEvent, EvidenceCard, ProactiveEvent, VersionStats } from '../../src/collector/chat'
+import type { Anomaly } from '../../src/debug/detector'
 import type { NormalizedSpan, OperationStats, ServiceInfo, TraceSummary } from '../../src/collector/types'
 
-export type { ChatEvent, EvidenceCard, VersionStats, NormalizedSpan, OperationStats, ServiceInfo, TraceSummary }
+export type { Anomaly, ChatEvent, EvidenceCard, ProactiveEvent, VersionStats, NormalizedSpan, OperationStats, ServiceInfo, TraceSummary }
 
 export type ChatInfo = { enabled: true; mode: 'mock' | 'real' } | { enabled: false; reason: string }
 
