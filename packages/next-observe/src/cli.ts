@@ -3,6 +3,7 @@ import type { ChildProcess, SpawnOptions } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 import { MemoryStorage, startCollector, type Collector, type CollectorOptions } from './collector/index.js'
 import { seedDemo } from './debug/demo.js'
@@ -107,8 +108,61 @@ function isMissing(error: unknown, pkg: string): boolean {
   return (e?.code === 'ERR_MODULE_NOT_FOUND' || e?.code === 'MODULE_NOT_FOUND') && String(e.message).includes(pkg)
 }
 
+export const AGENTS_FILES = ['observe.agents.ts', 'observe.agents.mts', 'observe.agents.js', 'observe.agents.mjs']
+
+type SpecialistSpec = import('./agents/index.js').SpecialistSpec
+
+/**
+ * The project's own specialists from observe.agents.* in the app root: `export default [defineSpecialist({…})]`.
+ * Same name as a built-in replaces it, a new name adds a specialist. Node ≥22.18 runs the .ts file as is (type stripping).
+ */
+async function loadProjectSpecialists(root: string, agents: AgentsModule): Promise<{ file?: string; specs: SpecialistSpec[] }> {
+  const found = AGENTS_FILES.filter((name) => existsSync(join(root, name)))
+  if (found.length === 0) return { specs: [] }
+  if (found.length > 1) throw new CliError(`found ${found.join(' and ')} in ${root} — keep one`)
+  const file = found[0]
+  let exported: unknown
+  // Next apps rarely have "type": "module", so Node warns that it reparses observe.agents.ts as ESM — noise, not a problem.
+  const emitWarning = process.emitWarning
+  process.emitWarning = ((warning: string | Error, ...rest: unknown[]) => {
+    const code = (rest[0] as { code?: string } | undefined)?.code
+    if (code === 'MODULE_TYPELESS_PACKAGE_JSON' && String(warning).includes(file)) return
+    return (emitWarning as (...args: unknown[]) => void).call(process, warning, ...rest)
+  }) as typeof process.emitWarning
+  try {
+    exported = (await import(pathToFileURL(join(root, file)).href)).default
+  } catch (error) {
+    const e = error as NodeJS.ErrnoException
+    if (e?.code === 'ERR_UNKNOWN_FILE_EXTENSION') throw new CliError(`${file}: this Node.js cannot load TypeScript — use Node.js ≥22.18 or rename it to observe.agents.mjs`)
+    throw new CliError(`${file}: ${e?.message ?? String(error)}`)
+  } finally {
+    process.emitWarning = emitWarning
+  }
+  const list = Array.isArray(exported) ? exported : exported === undefined ? undefined : [exported]
+  if (!list) throw new CliError(`${file}: export default an array of defineSpecialist({…})`)
+  const specs: SpecialistSpec[] = []
+  for (const item of list) {
+    try {
+      specs.push(agents.defineSpecialist(item as SpecialistSpec))
+    } catch (error) {
+      throw new CliError(`${file}: ${(error as Error).message}`)
+    }
+  }
+  const names = specs.map((s) => s.name)
+  const duplicate = names.find((name, i) => names.indexOf(name) !== i)
+  if (duplicate) throw new CliError(`${file}: specialist "${duplicate}" is defined twice`)
+  return { file, specs }
+}
+
+function agentsLine(builtIn: SpecialistSpec[], file: string, project: SpecialistSpec[]): string {
+  const builtInNames = new Set(builtIn.map((s) => s.name))
+  const own = project.map((s) => (builtInNames.has(s.name) ? `${s.name} (replaces built-in)` : s.name))
+  const kept = builtIn.filter((s) => !project.some((p) => p.name === s.name)).map((s) => s.name)
+  return `  agents     ${file}: ${own.join(', ')}${kept.length ? `; built-in: ${kept.join(', ')}` : ''}`
+}
+
 // Chat needs the optional @google/adk; without it the collector still runs, chat is just off.
-async function loadChat(storage: MemoryStorage, deps: CliDeps): Promise<{ chat?: CollectorOptions['chat']; line: string }> {
+async function loadChat(storage: MemoryStorage, root: string, deps: CliDeps): Promise<{ chat?: CollectorOptions['chat']; line: string }> {
   let agents: AgentsModule
   try {
     agents = await (deps.loadAgents ?? (() => import('./agents/index.js')))()
@@ -116,10 +170,13 @@ async function loadChat(storage: MemoryStorage, deps: CliDeps): Promise<{ chat?:
     if (isMissing(error, '@google/adk')) return { line: `  chat       disabled — ${CHAT_INSTALL_HINT}` }
     throw error
   }
+  const project = await loadProjectSpecialists(root, agents)
+  const specialists = agents.mergeSpecialists(agents.BUILT_IN_SPECIALISTS, project.specs)
   try {
-    const chat = await agents.createChatHandler({ storage, env: deps.env })
+    const chat = await agents.createChatHandler({ storage, env: deps.env, specialists })
     const hint = chat.mode === 'mock' ? '  (OBSERVE_AI=real for a real model)' : ''
-    return { chat, line: `  chat       ${chat.mode}${hint}` }
+    const line = `  chat       ${chat.mode}${hint}`
+    return { chat, line: project.file ? `${line}\n${agentsLine(agents.BUILT_IN_SPECIALISTS, project.file, project.specs)}` : line }
   } catch (error) {
     if (isMissing(error, '@kitana-sdk/adk')) {
       throw new CliError(`OBSERVE_AI=real needs GEMINI_API_KEY + GEMINI_MODEL, or Kitana: ${CHAT_INSTALL_HINT}`)
@@ -131,7 +188,7 @@ async function loadChat(storage: MemoryStorage, deps: CliDeps): Promise<{ chat?:
 async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collector; chatLine: string }> {
   const storage = new MemoryStorage()
   if (args.demo) await seedDemo(storage)
-  const { chat, line: chatLine } = await loadChat(storage, deps)
+  const { chat, line: chatLine } = await loadChat(storage, args.root, deps)
   const detector = deps.env.OBSERVE_DETECTOR === 'off' ? undefined : new AnomalyDetector()
   const lines = [chatLine]
   if (detector) {
