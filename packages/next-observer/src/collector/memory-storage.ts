@@ -45,9 +45,17 @@ function summarize(traceId: string, spans: NormalizedSpan[]): TraceSummary {
   }
 }
 
+function firstRequestKey(span: NormalizedSpan): string | undefined {
+  const instance = span.resource['service.instance.id']
+  if (span.kind !== 'server' || typeof instance !== 'string') return undefined
+  return `${span.service}\u0000${instance}\u0000${span.name}`
+}
+
 export class MemoryStorage implements StorageAdapter {
   private readonly spans: NormalizedSpan[] = []
   private readonly byTrace = new Map<string, NormalizedSpan[]>()
+  // Earliest server span per (service, instance, route). Kept after eviction so a later request never becomes "cold".
+  private readonly firstRequests = new Map<string, NormalizedSpan>()
   private readonly maxSpans: number
 
   constructor(options: MemoryStorageOptions = {}) {
@@ -57,6 +65,12 @@ export class MemoryStorage implements StorageAdapter {
   async insertSpans(spans: NormalizedSpan[]): Promise<void> {
     for (const span of spans) {
       this.spans.push(span)
+      const key = firstRequestKey(span)
+      if (key) {
+        const first = this.firstRequests.get(key)
+        // Batches arrive out of order: an earlier request replaces the one seen first.
+        if (!first || span.startTimeMs < first.startTimeMs) this.firstRequests.set(key, span)
+      }
       const trace = this.byTrace.get(span.traceId)
       if (trace) trace.push(span)
       else this.byTrace.set(span.traceId, [span])
@@ -110,7 +124,10 @@ export class MemoryStorage implements StorageAdapter {
       else groups.set(key, [s])
     }
     const stats: OperationStats[] = []
-    for (const spans of groups.values()) {
+    for (const group of groups.values()) {
+      const warm = filter.hideColdStarts ? group.filter((s) => !this.isColdStart(s)) : group
+      const spans = warm.length > 0 ? warm : group
+      const coldStarts = group.length - warm.length
       const durations = spans.map((s) => s.durationMs).sort((a, b) => a - b)
       const errorCount = spans.filter((s) => s.status === 'error').length
       stats.push({
@@ -125,6 +142,7 @@ export class MemoryStorage implements StorageAdapter {
         p95Ms: round(percentile(durations, 95)),
         p99Ms: round(percentile(durations, 99)),
         maxMs: round(durations[durations.length - 1]),
+        ...(coldStarts > 0 ? { coldStarts, ...(warm.length === 0 ? { onlyColdStarts: true } : {}) } : {}),
       })
     }
     return stats.sort((a, b) => b.p95Ms - a.p95Ms)
@@ -144,6 +162,11 @@ export class MemoryStorage implements StorageAdapter {
       result.push(s)
     }
     return result
+  }
+
+  isColdStart(span: NormalizedSpan): boolean {
+    const key = firstRequestKey(span)
+    return key !== undefined && this.firstRequests.get(key) === span
   }
 
   async getServices(): Promise<ServiceInfo[]> {

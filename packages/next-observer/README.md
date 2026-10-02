@@ -12,6 +12,8 @@ npx next-observer dev          # observer + UI on http://127.0.0.1:4318, then `n
 - **Chat with agents** that query your telemetry: slow operations, regressions between deployments, failing operations
   with exact errors, N+1 patterns — with evidence cards built from the data, not by the model
 - **Anomaly detector** that starts an investigation by itself when error rates or latency jump
+- **Cold starts are not regressions:** the first request of a route after a server start (in `next dev` it includes
+  compiling the route) is left out of latency stats and the detector, and marked in traces (needs next-observe ≥ 0.2.2)
 
 Requires Node.js 22.18+. The app is instrumented with `next-observe` (see its README).
 
