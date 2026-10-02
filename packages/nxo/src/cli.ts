@@ -1,4 +1,4 @@
-// `nxo` / `next-observe` CLI. Pure logic lives here; bin.ts wires real process I/O.
+// `nxo` CLI — the observer for apps instrumented with next-observe. Pure logic lives here; bin.ts wires real process I/O.
 import type { ChildProcess, SpawnOptions } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -9,7 +9,7 @@ import { MemoryStorage, startCollector, type Collector, type CollectorOptions } 
 import { seedDemo } from './debug/demo.js'
 import { AnomalyDetector } from './debug/detector.js'
 
-// Type-only: the agents module (and @google/adk behind it) is loaded lazily, it's an optional peer dependency.
+// Type-only: the agents module (and @google/adk behind it) is loaded lazily, so `nxo --help` stays instant.
 type AgentsModule = typeof import('./agents/index.js')
 
 export const HELP = `Usage:
@@ -87,7 +87,7 @@ export interface CliDeps {
   spawn: (command: string, args: string[], options: SpawnOptions) => ChildProcess
   /** Resolves when the CLI should stop (SIGINT/SIGTERM in real use). */
   shutdownSignal: Promise<string>
-  /** Loads the agents module; injectable so tests can simulate a project without @google/adk. */
+  /** Loads the agents module; injectable for tests. */
   loadAgents?: () => Promise<AgentsModule>
 }
 
@@ -99,13 +99,6 @@ function resolveNextBin(root: string): string {
   } catch {
     throw new CliError(`next is not installed in ${root} — run npm install there first`)
   }
-}
-
-const CHAT_INSTALL_HINT = 'npm i -D @google/adk @kitana-sdk/adk @google/genai'
-
-function isMissing(error: unknown, pkg: string): boolean {
-  const e = error as NodeJS.ErrnoException
-  return (e?.code === 'ERR_MODULE_NOT_FOUND' || e?.code === 'MODULE_NOT_FOUND') && String(e.message).includes(pkg)
 }
 
 export const AGENTS_FILES = ['observe.agents.ts', 'observe.agents.mts', 'observe.agents.js', 'observe.agents.mjs']
@@ -161,15 +154,8 @@ function agentsLine(builtIn: SpecialistSpec[], file: string, project: Specialist
   return `  agents     ${file}: ${own.join(', ')}${kept.length ? `; built-in: ${kept.join(', ')}` : ''}`
 }
 
-// Chat needs the optional @google/adk; without it the collector still runs, chat is just off.
-async function loadChat(storage: MemoryStorage, root: string, deps: CliDeps): Promise<{ chat?: CollectorOptions['chat']; line: string }> {
-  let agents: AgentsModule
-  try {
-    agents = await (deps.loadAgents ?? (() => import('./agents/index.js')))()
-  } catch (error) {
-    if (isMissing(error, '@google/adk')) return { line: `  chat       disabled — ${CHAT_INSTALL_HINT}` }
-    throw error
-  }
+async function loadChat(storage: MemoryStorage, root: string, deps: CliDeps): Promise<{ chat: CollectorOptions['chat']; line: string }> {
+  const agents = await (deps.loadAgents ?? (() => import('./agents/index.js')))()
   const project = await loadProjectSpecialists(root, agents)
   const specialists = agents.mergeSpecialists(agents.BUILT_IN_SPECIALISTS, project.specs)
   try {
@@ -178,9 +164,6 @@ async function loadChat(storage: MemoryStorage, root: string, deps: CliDeps): Pr
     const line = `  chat       ${chat.mode}${hint}`
     return { chat, line: project.file ? `${line}\n${agentsLine(agents.BUILT_IN_SPECIALISTS, project.file, project.specs)}` : line }
   } catch (error) {
-    if (isMissing(error, '@kitana-sdk/adk')) {
-      throw new CliError(`OBSERVE_AI=real needs GEMINI_API_KEY + GEMINI_MODEL, or Kitana: ${CHAT_INSTALL_HINT}`)
-    }
     throw new CliError((error as Error).message)
   }
 }
@@ -193,8 +176,7 @@ async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collect
   const lines = [chatLine]
   if (detector) {
     const o = detector.options
-    const action = chat ? 'agents investigate on their own' : 'anomalies are shown, no agents'
-    lines.push(`  detector   errors > ${o.errorRate * 100}%, slow (>${o.slowMs}ms) > ${o.slowRate * 100}%, silence > ${o.noTrafficMs / 1000}s → ${action}`)
+    lines.push(`  detector   errors > ${o.errorRate * 100}%, slow (>${o.slowMs}ms) > ${o.slowRate * 100}%, silence > ${o.noTrafficMs / 1000}s → agents investigate on their own`)
   } else lines.push('  detector   off (OBSERVE_DETECTOR=off)')
   if (args.demo) lines.push('  demo       "shop" scenario loaded: v1 → v2 regression, inventory errors, catalog N+1')
   const line = lines.join('\n')
@@ -211,7 +193,7 @@ async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collect
 
 function banner(collector: Collector, extra: string[] = []): string {
   return [
-    'next-observe',
+    'nxo — next-observe observer',
     `  ui         ${collector.url}`,
     `  collector  ${collector.url}  (OTLP: /v1/traces, API: /api/traces, /api/operations, /api/services)`,
     ...extra,

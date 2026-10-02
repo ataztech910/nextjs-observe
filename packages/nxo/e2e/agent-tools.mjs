@@ -1,7 +1,7 @@
 // Runs the agent tools over real spans: starts a collector, waits until ingestion goes quiet, prints every tool's output.
 //   node e2e/agent-tools.mjs   then drive the app (nxo-less: OBSERVE_ENDPOINT=http://127.0.0.1:4318 next dev)
-import { startCollector } from 'next-observe/collector'
-import { createAgentQueries } from 'next-observe/debug'
+import { startCollector } from 'nxo/collector'
+import { createAgentQueries } from 'nxo/debug'
 
 const collector = await startCollector({ port: Number(process.env.OBSERVE_PORT ?? 4318), uiDir: false })
 console.log(`[agent-tools] collector ${collector.url}, waiting for spans…`)

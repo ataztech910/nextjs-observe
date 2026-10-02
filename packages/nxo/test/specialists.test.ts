@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import type { LlmRequest, LlmResponse } from '@google/adk'
 import { describe, expect, it } from 'vitest'
 import {
@@ -6,6 +7,7 @@ import {
   defineSpecialist,
   mergeSpecialists,
   MockLlm,
+  TOOL_NAMES,
   type SpecialistSpec,
 } from '../src/agents/index.js'
 import { NOW, shopStorage } from './fixtures/shop.js'
@@ -76,5 +78,13 @@ describe('investigator with project specialists', () => {
     const specialist = model.instructions.find((i) => i.includes('You look at versions only.'))!
     expect(specialist).toContain('Use only facts returned by your tools')
     expect(specialist).toContain('never call other agents')
+  })
+})
+
+describe('next-observe/agents (the types participants import)', () => {
+  it('lists the same tools as nxo', () => {
+    const source = readFileSync(new URL('../../next-observe/src/agents.ts', import.meta.url), 'utf8')
+    const list = source.match(/TOOL_NAMES = \[([^\]]*)\]/)?.[1]
+    expect(list?.match(/'([a-z_]+)'/g)?.map((t) => t.slice(1, -1))).toEqual([...TOOL_NAMES])
   })
 })

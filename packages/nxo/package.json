@@ -1,0 +1,73 @@
+{
+  "name": "nxo",
+  "version": "0.1.0",
+  "description": "The observer for next-observe: OTLP collector, trace UI, anomaly detector and AI agents that investigate your Next.js app. Run with npx nxo dev.",
+  "keywords": [
+    "nextjs",
+    "opentelemetry",
+    "observability",
+    "tracing",
+    "ai-agents",
+    "adk",
+    "collector"
+  ],
+  "author": "Andrei Tazetdinov",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ataztech910/nextjs-observe.git",
+    "directory": "packages/nxo"
+  },
+  "homepage": "https://github.com/ataztech910/nextjs-observe/tree/master/packages/nxo#readme",
+  "bugs": {
+    "url": "https://github.com/ataztech910/nextjs-observe/issues"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "bin": {
+    "nxo": "./dist/bin.js"
+  },
+  "exports": {
+    "./collector": {
+      "types": "./dist/collector/index.d.ts",
+      "default": "./dist/collector/index.js"
+    },
+    "./debug": {
+      "types": "./dist/debug/index.d.ts",
+      "default": "./dist/debug/index.js"
+    },
+    "./agents": {
+      "types": "./dist/agents/index.d.ts",
+      "default": "./dist/agents/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && npm --prefix ui run build",
+    "ui:install": "npm --prefix ui install",
+    "ui:dev": "npm --prefix ui run dev",
+    "typecheck": "tsc -p tsconfig.json --noEmit && npm --prefix ui run typecheck",
+    "test": "vitest run",
+    "prepublishOnly": "npm test && npm run build"
+  },
+  "dependencies": {
+    "@google/adk": "^2.1.0",
+    "@google/genai": "^2.24.0",
+    "@kitana-sdk/adk": "^0.1.11",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.222.0",
+    "@opentelemetry/otlp-transformer": "^0.222.0",
+    "@opentelemetry/resources": "^2.11.0",
+    "@opentelemetry/sdk-trace-base": "^2.11.0",
+    "@types/node": "^26.6.3",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.2"
+  }
+}

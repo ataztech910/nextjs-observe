@@ -1,7 +1,7 @@
 {
   "name": "next-observe",
-  "version": "0.1.0",
-  "description": "OpenTelemetry observability for Next.js — server, browser and your own code via 'use observe', a local collector with trace UI, and AI agents that investigate problems on their own",
+  "version": "0.2.0",
+  "description": "OpenTelemetry for Next.js \u2014 server, browser and your own code via 'use observe'. Pair it with the nxo observer (npx nxo dev) for a trace UI and AI agents.",
   "license": "MIT",
   "author": "Andrei Tazetdinov",
   "repository": {
@@ -21,18 +21,12 @@
     "observability",
     "tracing",
     "monitoring",
-    "ai-agents",
-    "adk",
-    "anomaly-detection"
+    "instrumentation"
   ],
   "engines": {
     "node": ">=22.18"
   },
   "type": "module",
-  "bin": {
-    "next-observe": "./dist/bin.js",
-    "nxo": "./dist/bin.js"
-  },
   "exports": {
     "./config": {
       "types": "./dist/config.d.ts",
@@ -51,27 +45,17 @@
       "default": "./dist/runtime.js"
     },
     "./loader": "./dist/transform/loader.cjs",
-    "./collector": {
-      "types": "./dist/collector/index.d.ts",
-      "default": "./dist/collector/index.js"
-    },
-    "./debug": {
-      "types": "./dist/debug/index.d.ts",
-      "default": "./dist/debug/index.js"
-    },
     "./agents": {
-      "types": "./dist/agents/index.d.ts",
-      "default": "./dist/agents/index.js"
+      "types": "./dist/agents.d.ts",
+      "default": "./dist/agents.js"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json && npm --prefix ui run build",
-    "ui:install": "npm --prefix ui install",
-    "ui:dev": "npm --prefix ui run dev",
-    "typecheck": "tsc -p tsconfig.json --noEmit && npm --prefix ui run typecheck",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "prepublishOnly": "npm test && npm run build"
   },
@@ -88,19 +72,13 @@
     "@opentelemetry/sdk-trace-base": "^2.11.0",
     "@opentelemetry/sdk-trace-web": "^2.11.0",
     "@opentelemetry/semantic-conventions": "^1.43.0",
-    "@vercel/otel": "^2.1.3",
-    "zod": "^4.6.5"
+    "@vercel/otel": "^2.1.3"
   },
   "peerDependencies": {
-    "@google/adk": ">=2.1.0",
-    "@kitana-sdk/adk": ">=0.1.11",
     "@opentelemetry/api": "^1.9.0",
     "next": ">=16.0.0"
   },
   "devDependencies": {
-    "@google/adk": "^2.1.0",
-    "@google/genai": "^2.24.0",
-    "@kitana-sdk/adk": "^0.1.11",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/context-async-hooks": "^2.11.0",
     "@opentelemetry/otlp-transformer": "^0.222.0",
@@ -110,16 +88,5 @@
     "react-dom": "^19.3.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.2"
-  },
-  "peerDependenciesMeta": {
-    "@google/adk": {
-      "optional": true
-    },
-    "@kitana-sdk/adk": {
-      "optional": true
-    },
-    "next": {
-      "optional": true
-    }
   }
 }
