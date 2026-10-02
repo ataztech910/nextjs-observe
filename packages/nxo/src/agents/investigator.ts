@@ -1,4 +1,4 @@
-// Orchestrator + specialist agents (Four Golden Signals split) over the telemetry tools from next-observe/debug.
+// Orchestrator + specialist agents (Four Golden Signals split) over the telemetry tools from ../debug.
 import { AgentTool, FunctionTool, InMemorySessionService, LlmAgent, Runner, type BaseLlm } from '@google/adk'
 import { z } from 'zod'
 import type { StorageAdapter } from '../collector/types.js'

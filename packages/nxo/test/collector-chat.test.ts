@@ -15,10 +15,10 @@ describe('chat disabled (no agents)', () => {
   it('reports why on GET and answers 503 on POST', async () => {
     collector = await startCollector({ port: 0, uiDir: false })
     const info = await (await fetch(`${collector.url}/api/chat`)).json()
-    expect(info).toEqual({ enabled: false, reason: expect.stringContaining('install @google/adk') })
+    expect(info).toEqual({ enabled: false, reason: expect.stringContaining('started without agents') })
     const res = await post({ question: 'why?' })
     expect(res.status).toBe(503)
-    expect((await res.json()).error).toContain('install @google/adk')
+    expect((await res.json()).error).toContain('started without agents')
   })
 })
 

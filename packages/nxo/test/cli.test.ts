@@ -178,8 +178,6 @@ describe('run dev', () => {
 })
 
 describe('chat in the CLI', () => {
-  const missing = (pkg: string) => Object.assign(new Error(`Cannot find package '${pkg}' imported from x`), { code: 'ERR_MODULE_NOT_FOUND' })
-
   it('enables chat in mock mode when @google/adk is installed', async () => {
     const h = harness({})
     const exit = run(['collector', '--port', '0'], h.deps)
@@ -190,30 +188,10 @@ describe('chat in the CLI', () => {
     expect(await exit).toBe(0)
   })
 
-  it('keeps the collector running with chat disabled when @google/adk is missing', async () => {
-    const h = harness({})
-    h.deps.loadAgents = async () => {
-      throw missing('@google/adk')
-    }
-    const exit = run(['collector', '--port', '0'], h.deps)
-    await until(h.collectorUrl)
-    expect(h.logs[0]).toContain('chat       disabled — npm i -D @google/adk @kitana-sdk/adk @google/genai')
-    expect((await (await fetch(`${h.collectorUrl()}/api/chat`)).json()).enabled).toBe(false)
-    expect(await reachable(h.collectorUrl()!)).toBe(true)
-    h.stop()
-    expect(await exit).toBe(0)
-  })
-
-  it('fails clearly on a bad OBSERVE_AI or on real mode without Gemini or Kitana', async () => {
+  it('fails clearly on a bad OBSERVE_AI', async () => {
     const bad = harness({ OBSERVE_AI: 'bogus' })
     expect(await run(['collector', '--port', '0'], bad.deps)).toBe(1)
     expect(bad.logs[0]).toContain('OBSERVE_AI must be "mock" or "real"')
-
-    const real = harness({ OBSERVE_AI: 'real' })
-    const agents = await import('../src/agents/index.js')
-    real.deps.loadAgents = async () => ({ ...agents, createChatHandler: async () => { throw missing('@kitana-sdk/adk') } })
-    expect(await run(['collector', '--port', '0'], real.deps)).toBe(1)
-    expect(real.logs[0]).toContain('OBSERVE_AI=real needs GEMINI_API_KEY + GEMINI_MODEL, or Kitana')
   })
 })
 

@@ -30,7 +30,7 @@ export interface CollectorOptions {
   maxBodyBytes?: number
   /** Built UI to serve at /. Default: the package's dist/ui. `false` disables it. */
   uiDir?: string | false
-  /** Agents answering /api/chat. Provided by the CLI when @google/adk is installed; absent → chat disabled. */
+  /** Agents answering /api/chat (the CLI always provides them); absent → chat disabled. */
   chat?: { mode: 'mock' | 'real'; handle: ChatHandler }
   /** Watches ingested spans; on an anomaly pushes it to /api/chat/events and, with `chat`, investigates on its own. */
   detector?: Pick<AnomalyDetector, 'observe' | 'check'>
@@ -40,7 +40,7 @@ export interface CollectorOptions {
 
 const REPLAY_EVENTS = 200
 
-const CHAT_DISABLED = 'chat is disabled: install @google/adk (and @kitana-sdk/adk to use Kitana) in your project, then restart nxo'
+const CHAT_DISABLED = 'chat is disabled: this collector was started without agents'
 const MAX_QUESTION = 2000
 
 const DEFAULT_UI_DIR = fileURLToPath(new URL('../ui/', import.meta.url))
@@ -254,7 +254,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     route(req, res).catch((error: unknown) => {
       if (res.headersSent) return
       if (error instanceof HttpError) return send(res, error.status, { error: error.message })
-      console.error('[next-observe collector]', error)
+      console.error('[nxo collector]', error)
       send(res, 500, { error: 'internal error' })
     })
   })

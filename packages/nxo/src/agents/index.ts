@@ -1,4 +1,4 @@
-// ADK agents over the telemetry tools. Needs the optional peer dependency @google/adk (and @kitana-sdk/adk for Kitana).
+// ADK agents over the telemetry tools (Gemini, Kitana or the mock model).
 export { createInvestigator, isLeakedToolCall, type Investigator, type InvestigatorOptions, type InvestigationStep, type TranscriptEntry } from './investigator.js'
 export { getModel, resolveAiMode, type AiMode } from './model.js'
 export { MockLlm, MOCK_PREFIX } from './mock-llm.js'
