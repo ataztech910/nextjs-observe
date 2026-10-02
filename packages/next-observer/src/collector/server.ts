@@ -1,5 +1,5 @@
 // OTLP/HTTP collector + query API. Node built-ins only.
-//   POST /v1/traces                 OTLP/JSON ingest (protobuf → 415 until Sprint 2 phase B)
+//   POST /v1/traces                 OTLP ingest: application/json or application/x-protobuf, optionally gzip
 //   GET  /health
 //   GET  /api/services
 //   GET  /api/traces?service&operation&minDurationMs&hasError&fromMs&toMs&limit
@@ -14,7 +14,9 @@ import type { AddressInfo } from 'node:net'
 import { fileURLToPath } from 'node:url'
 import { questionFor, type AnomalyDetector } from '../debug/detector.js'
 import type { ChatEvent, ChatHandler, ProactiveEvent } from './chat.js'
+import { gunzipSync } from 'node:zlib'
 import { decodeOtlpJson, type OtlpTraceRequest } from './decode.js'
+import { protobufToOtlpJson } from './protobuf.js'
 import { MemoryStorage } from './memory-storage.js'
 import { serveUi } from './static.js'
 import type { StorageAdapter } from './types.js'
@@ -64,14 +66,14 @@ class HttpError extends Error {
 const CORS = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'GET, POST, OPTIONS',
-  'access-control-allow-headers': 'content-type, x-api-key',
+  'access-control-allow-headers': 'content-type, content-encoding, x-api-key',
 }
 
 function send(res: ServerResponse, status: number, body: unknown) {
   res.writeHead(status, { ...CORS, 'content-type': 'application/json' }).end(JSON.stringify(body))
 }
 
-function readBody(req: IncomingMessage, limit: number): Promise<string> {
+function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     let size = 0
     let tooLarge = false
@@ -84,7 +86,7 @@ function readBody(req: IncomingMessage, limit: number): Promise<string> {
     })
     req.on('end', () => {
       if (tooLarge) reject(new HttpError(413, `body exceeds ${limit} bytes`))
-      else resolve(Buffer.concat(chunks).toString('utf8'))
+      else resolve(Buffer.concat(chunks))
     })
     req.on('error', reject)
   })
@@ -114,21 +116,35 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
   async function ingest(req: IncomingMessage, res: ServerResponse) {
     if (options.apiKey && req.headers['x-api-key'] !== options.apiKey) throw new HttpError(401, 'invalid x-api-key')
     const type = req.headers['content-type'] ?? ''
-    if (!type.includes('application/json')) {
-      throw new HttpError(415, `unsupported content-type "${type}": only OTLP/JSON is accepted, configure the exporter for http/json`)
+    const protobuf = /application\/(x-)?protobuf/.test(type)
+    if (!protobuf && !type.includes('application/json')) {
+      throw new HttpError(415, `unsupported content-type "${type}": send OTLP as application/json or application/x-protobuf`)
+    }
+    const encoding = (req.headers['content-encoding'] ?? 'identity').toLowerCase()
+    if (encoding !== 'identity' && encoding !== 'gzip') throw new HttpError(415, `unsupported content-encoding "${encoding}": use gzip or none`)
+    let body = await readBody(req, maxBodyBytes)
+    if (encoding === 'gzip') {
+      try {
+        // The limit applies after decompression too — a small gzip body must not expand into gigabytes.
+        body = gunzipSync(body, { maxOutputLength: maxBodyBytes })
+      } catch (error) {
+        const tooLarge = (error as NodeJS.ErrnoException).code === 'ERR_BUFFER_TOO_LARGE'
+        throw new HttpError(tooLarge ? 413 : 400, tooLarge ? `body exceeds ${maxBodyBytes} bytes after gzip` : 'body is not valid gzip')
+      }
     }
     let payload: OtlpTraceRequest
     try {
-      payload = JSON.parse(await readBody(req, maxBodyBytes))
-    } catch (error) {
-      if (error instanceof HttpError) throw error
-      throw new HttpError(400, 'body is not valid JSON')
+      payload = protobuf ? protobufToOtlpJson(body) : JSON.parse(body.toString('utf8'))
+    } catch {
+      throw new HttpError(400, protobuf ? 'body is not a valid OTLP protobuf ExportTraceServiceRequest' : 'body is not valid JSON')
     }
     const spans = decodeOtlpJson(payload)
     await storage.insertSpans(spans)
     // A restart of next dev compiles each route on its first request — not an anomaly to investigate.
     options.detector?.observe(spans.filter((s) => !storage.isColdStart(s)))
-    send(res, 200, {})
+    // OTLP answers in the request's format; an empty ExportTraceServiceResponse is zero bytes in protobuf.
+    if (protobuf) res.writeHead(200, { ...CORS, 'content-type': 'application/x-protobuf' }).end()
+    else send(res, 200, {})
   }
 
   // --- proactive: detector → SSE broadcast → investigation, one at a time ---
@@ -171,7 +187,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     if (!options.chat) throw new HttpError(503, CHAT_DISABLED)
     let body: { question?: unknown; sessionId?: unknown }
     try {
-      body = JSON.parse(await readBody(req, 64 * 1024))
+      body = JSON.parse((await readBody(req, 64 * 1024)).toString('utf8'))
     } catch (error) {
       if (error instanceof HttpError) throw error
       throw new HttpError(400, 'body is not valid JSON')

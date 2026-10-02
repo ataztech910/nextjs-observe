@@ -119,7 +119,7 @@ register({ destinations: [{ url: 'https://observer.example.com/v1/traces' }, { u
 ```
 
 `register({ endpoint, tracesUrl, headers, apiKey, protocol })` configures the observer destination. The next-observer
-observer accepts `http/json`.
+observer accepts both `http/json` and `http/protobuf` (≥ 0.2.0).
 
 Production React profiling: build with `next build --profile` to get component render timings.
 
@@ -133,7 +133,7 @@ Production React profiling: build with `next build --profile` to get component r
 | `next-observe/agents` | `defineSpecialist()` and types for `observe.agents.ts` |
 | `next-observe/proxy` | runtime proxy route for browser spans (optional) |
 
-Traces are sent as OTLP/HTTP **JSON**.
+Traces are sent as OTLP/HTTP — JSON by default, protobuf with `protocol: 'http/protobuf'` / `OTEL_EXPORTER_OTLP_PROTOCOL`.
 
 ## License
 

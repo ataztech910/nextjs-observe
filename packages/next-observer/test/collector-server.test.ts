@@ -1,7 +1,9 @@
 import { context, SpanKind, SpanStatusCode, trace } from '@opentelemetry/api'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
 import { resourceFromAttributes } from '@opentelemetry/resources'
-import { BasicTracerProvider, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base'
+import { JsonTraceSerializer, ProtobufTraceSerializer } from '@opentelemetry/otlp-transformer'
+import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base'
+import { gzipSync } from 'node:zlib'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { startCollector, type Collector } from '../src/collector/index.js'
 
@@ -60,10 +62,11 @@ describe('collector: ingest from the real OTLP exporter + query API', () => {
 })
 
 describe('collector: errors', () => {
-  it('415 for protobuf with a hint', async () => {
-    const res = await post('x', { 'content-type': 'application/x-protobuf' })
-    expect(res.status).toBe(415)
-    expect((await res.json()).error).toContain('http/json')
+  it('415 for an unsupported content type or encoding, with a hint', async () => {
+    const xml = await post('x', { 'content-type': 'text/xml' })
+    expect(xml.status).toBe(415)
+    expect((await xml.json()).error).toContain('application/x-protobuf')
+    expect((await post('{}', { 'content-type': 'application/json', 'content-encoding': 'br' })).status).toBe(415)
   })
 
   it('400 for invalid JSON and bad query params, 404 for unknown trace and route', async () => {
@@ -100,5 +103,53 @@ describe('collector: errors', () => {
     const res = await fetch(`${collector.url}/v1/traces`, { method: 'OPTIONS' })
     expect(res.status).toBe(204)
     expect(res.headers.get('access-control-allow-origin')).toBe('*')
+  })
+})
+
+describe('OTLP protobuf and gzip ingest', () => {
+  const ingest = (body: Uint8Array, headers: Record<string, string>) =>
+    fetch(`${collector.url}/v1/traces`, { method: 'POST', headers, body: Buffer.from(body) })
+
+  function payload(name: string) {
+    const exporter = new InMemorySpanExporter()
+    const provider = new BasicTracerProvider({ resource: resourceFromAttributes({ 'service.name': 'proto-shop' }), spanProcessors: [new SimpleSpanProcessor(exporter)] })
+    provider.getTracer('t').startSpan(name, { kind: SpanKind.SERVER }).end()
+    const spans = exporter.getFinishedSpans()
+    return { spans, protobuf: ProtobufTraceSerializer.serializeRequest(spans)!, json: JsonTraceSerializer.serializeRequest(spans)! }
+  }
+  const stored = async (traceId: string) => ((await (await fetch(`${collector.url}/api/traces/${traceId}`)).json()) as { spans: { name: string; service: string }[] }).spans
+
+  it('stores protobuf spans and answers in protobuf (empty ExportTraceServiceResponse)', async () => {
+    const { spans, protobuf } = payload('GET /proto')
+    const res = await ingest(protobuf, { 'content-type': 'application/x-protobuf' })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('application/x-protobuf')
+    expect((await res.arrayBuffer()).byteLength).toBe(0)
+    expect(await stored(spans[0].spanContext().traceId)).toEqual([expect.objectContaining({ name: 'GET /proto', service: 'proto-shop' })])
+  })
+
+  it('accepts gzip for protobuf and JSON', async () => {
+    const a = payload('GET /gzip-proto')
+    expect((await ingest(gzipSync(a.protobuf), { 'content-type': 'application/x-protobuf', 'content-encoding': 'gzip' })).status).toBe(200)
+    const b = payload('GET /gzip-json')
+    expect((await ingest(gzipSync(b.json), { 'content-type': 'application/json', 'content-encoding': 'gzip' })).status).toBe(200)
+    expect((await stored(a.spans[0].spanContext().traceId))[0].name).toBe('GET /gzip-proto')
+    expect((await stored(b.spans[0].spanContext().traceId))[0].name).toBe('GET /gzip-json')
+  })
+
+  it('400 for broken protobuf or gzip; 413 when gzip expands past the limit', async () => {
+    const { protobuf } = payload('GET /broken')
+    expect((await ingest(protobuf.subarray(0, protobuf.length - 5), { 'content-type': 'application/x-protobuf' })).status).toBe(400)
+    expect((await ingest(new Uint8Array([1, 2, 3]), { 'content-type': 'application/json', 'content-encoding': 'gzip' })).status).toBe(400)
+
+    const small = await startCollector({ port: 0, maxBodyBytes: 1024, uiDir: false })
+    try {
+      const bomb = gzipSync(Buffer.alloc(64 * 1024, 32)) // 64 KB of spaces, a few hundred bytes compressed
+      const res = await fetch(`${small.url}/v1/traces`, { method: 'POST', headers: { 'content-type': 'application/json', 'content-encoding': 'gzip' }, body: bomb })
+      expect(bomb.length).toBeLessThan(1024)
+      expect(res.status).toBe(413)
+    } finally {
+      await small.close()
+    }
   })
 })
