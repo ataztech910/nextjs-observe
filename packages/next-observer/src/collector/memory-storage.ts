@@ -1,4 +1,4 @@
-// In-memory StorageAdapter: zero setup for `nxo dev` and tests. Oldest spans are evicted past maxSpans.
+// In-memory StorageAdapter: zero setup for `next-observer dev` and tests. Oldest spans are evicted past maxSpans.
 import type {
   NormalizedSpan,
   OperationFilter,

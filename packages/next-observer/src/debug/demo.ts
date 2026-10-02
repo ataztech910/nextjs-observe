@@ -1,4 +1,4 @@
-// Deterministic "shop" telemetry mirroring the workshop scenario — for tests and for `nxo collector --demo`:
+// Deterministic "shop" telemetry mirroring the workshop scenario — for tests and for `next-observer collector --demo`:
 //   v1 deployed, then v2 where chargePayment got ~8x slower; inventory.check fails 30% of the time; the catalog has an N+1.
 import type { NormalizedSpan, StorageAdapter } from '../collector/types.js'
 

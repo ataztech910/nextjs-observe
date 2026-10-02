@@ -1021,6 +1021,27 @@ with the highest selfMs and its code file.`,
 
 ---
 
+## Шаг 24. Обзервер называется `next-observer`
+
+**Чтобы** обзервер можно было опубликовать,
+**делаем** другое имя пакета: npm отклонил `nxo`.
+
+`npm publish` → `403 Package name too similar to existing packages nx, xo, np, n3, nib, nps, nwb, nyc, nsp, net`. Проверка имени при `npm view` (404 = свободно) этого не ловит — правило похожести срабатывает только при публикации. `next-observe` 0.2.0 к этому моменту уже вышел с README про `npx nxo dev`.
+
+- Пакет и папка: `nxo` → **`next-observer`** (`git mv`). Пара читается сама: приложение — `next-observe`, обзервер — `next-observer`. Выбрал пользователь из трёх вариантов (`@next-observe/cli` и `@ataztech910/nxo` — длиннее для участника).
+- Два бинарника: `next-observer` (его запускает `npx next-observer dev` — npx берёт бинарник с именем пакета) и короткий `nxo` для глобальной установки.
+- `bin` без `./`: npm 11 нормализует `./dist/bin.js` → `dist/bin.js` и пишет пугающее «script name … was invalid and removed», хотя бинарник остаётся (у `next-observe` 0.1.0 в реестре он есть). Проверили на минимальном пакете.
+- `next-observe` 0.2.1 — только README и описание с новым именем.
+
+### Как проверили
+
+- 148 + 36 тестов, `npm publish --dry-run` без предупреждений, в архиве `bin: { next-observer, nxo }`.
+- Копия Porto Shop на `next-observe` 0.2.1 + `npx --package=next-observer-0.1.0.tgz next-observer dev`: баннер, `observe.agents.ts`, трейсы, mock-чат.
+
+**Публикует пользователь:** `next-observer` 0.1.0, затем `next-observe` 0.2.1; `npm deprecate next-observe@0.1.0` с новым текстом и `npm deprecate next-observe@0.2.0` (README про несуществующий `nxo`).
+
+---
+
 ## Дальше
 
 - [ ] DevTools-хук (bippy) в `instrumentation-client.ts`: `actualDuration` всех компонентов в profiling-сборке.
@@ -1052,7 +1073,8 @@ with the highest selfMs and its code file.`,
 - [x] Kitana 0.1.11 опубликована, в `next-observe` поднята (шаг 22); Porto Shop — вместе с переходом на `next-observe` из npm.
 - [x] Карточки: не дублировать внутренние спаны Next (`executing api route …`), шаг 22
 - [x] Обзервер — отдельный пакет `nxo` (`npx nxo dev`), в приложении только `next-observe`, шаг 23
-- [ ] Опубликовать `nxo` 0.1.0 и `next-observe` 0.2.0; `npm deprecate next-observe@0.1.0`; Porto Shop без ADK, скрипты через `npx`.
+- [x] `next-observe` 0.2.0 опубликован, 0.1.0 deprecated; `nxo` отклонён npm → `next-observer`, шаг 24
+- [ ] Опубликовать `next-observer` 0.1.0 и `next-observe` 0.2.1; deprecate 0.2.0; Porto Shop без ADK, скрипты через `npx next-observer`.
 - [ ] Kitana: обновить `@anthropic-ai/sdk` в `@kitana-sdk/core` (0.30.1).
 - [ ] Холодная компиляция в dev: первый запрос маршрута после старта не должен давать «регрессию».
 - [x] `next-observe` готов к публикации (0.1.0), шаг 20

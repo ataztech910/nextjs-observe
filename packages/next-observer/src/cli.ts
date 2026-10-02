@@ -1,4 +1,4 @@
-// `nxo` CLI — the observer for apps instrumented with next-observe. Pure logic lives here; bin.ts wires real process I/O.
+// `next-observer` CLI — the observer for apps instrumented with next-observe. Pure logic lives here; bin.ts wires real process I/O.
 import type { ChildProcess, SpawnOptions } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -9,15 +9,15 @@ import { MemoryStorage, startCollector, type Collector, type CollectorOptions } 
 import { seedDemo } from './debug/demo.js'
 import { AnomalyDetector } from './debug/detector.js'
 
-// Type-only: the agents module (and @google/adk behind it) is loaded lazily, so `nxo --help` stays instant.
+// Type-only: the agents module (and @google/adk behind it) is loaded lazily, so `next-observer --help` stays instant.
 type AgentsModule = typeof import('./agents/index.js')
 
 export const HELP = `Usage:
-  nxo dev [--root <dir>] [--port <n>] [-- <next dev args>]
+  next-observer dev [--root <dir>] [--port <n>] [-- <next dev args>]
       Start the collector and \`next dev\` for the app in <dir> (default: current directory).
-      Example: nxo dev --root apps/web -- -p 3100
+      Example: next-observer dev --root apps/web -- -p 3100
 
-  nxo collector [--host <host>] [--port <n>] [--api-key <key>] [--demo]
+  next-observer collector [--host <host>] [--port <n>] [--api-key <key>] [--demo]
       Start only the collector (e.g. on a server). Reads OBSERVE_HOST, OBSERVE_PORT, OBSERVE_API_KEY.
       --demo preloads the workshop "shop" scenario (a regression in v2, 30% inventory errors, an N+1).
 
@@ -185,7 +185,7 @@ async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collect
     return { collector, chatLine: line }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
-      throw new CliError(`port ${args.port} is already in use — is another nxo running? Use --port <n>`)
+      throw new CliError(`port ${args.port} is already in use — is another next-observer running? Use --port <n>`)
     }
     throw error
   }
@@ -193,7 +193,7 @@ async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collect
 
 function banner(collector: Collector, extra: string[] = []): string {
   return [
-    'nxo — next-observe observer',
+    'next-observer',
     `  ui         ${collector.url}`,
     `  collector  ${collector.url}  (OTLP: /v1/traces, API: /api/traces, /api/operations, /api/services)`,
     ...extra,
@@ -248,7 +248,7 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
     return await (args.command === 'dev' ? runDev(args, deps) : runCollector(args, deps))
   } catch (error) {
     if (!(error instanceof CliError)) throw error
-    deps.log(`nxo: ${error.message}\n\n${HELP}`)
+    deps.log(`next-observer: ${error.message}\n\n${HELP}`)
     return 1
   }
 }

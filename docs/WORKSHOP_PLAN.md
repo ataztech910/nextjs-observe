@@ -14,7 +14,7 @@
 | 0 | Вступление, проверка окружения | 10 | ведущий | `npm run doctor` у всех |
 | 1 | Теория: трейс → OTel → боль → паттерн self-debug | 30 | слайды | |
 | ☕ | Перерыв | 15 | | |
-| 2 | Старт | 10 | все | `npm run dev` + `nxo dev` → трейсы в UI сразу |
+| 2 | Старт | 10 | все | `npm run dev` + `next-observer dev` → трейсы в UI сразу |
 | 3 | Инструментация | 35 | **руками** | `'use observe'` на checkout / payment / inventory, клиент, свой спан. N+1 находят **глазами** в waterfall |
 | 4 | AI-агенты | 40 | **руками** | Пишут Latency Agent (инструкция + 2 инструмента поверх API пакета), остальные агенты готовые. 3 сценария |
 | ☕ | Перерыв | 15 | | |
@@ -153,7 +153,7 @@ POST /api/chat → поток NDJSON: status → step… → card… → report
 - [ ] Коллектор OTLP/HTTP (JSON + protobuf) + хранилище в памяти / SQLite
 - [ ] API запросов: `searchTraces`, `getTrace`, `getOperationStats`, `getServices`, `compareVersions`. Возвращают **агрегаты**
 - [ ] Минимальный UI: список трейсов + waterfall
-- [ ] `nxo dev`
+- [ ] `next-observer dev`
 - [ ] `service.version` на всех спанах
 
 **Для блоков 5–6:**
@@ -171,7 +171,7 @@ POST /api/chat → поток NDJSON: status → step… → card… → report
 | Неделя | Даты | Результат |
 |---|---|---|
 | 1 | 29 сен – 5 окт | Каркас пакета: `withObserve`, loader, runtime, server/client; коллектор + хранилище в памяти + API запросов |
-| 2 | 6 – 12 окт | `nxo dev` + минимальный UI трейсов; `init` |
+| 2 | 6 – 12 окт | `next-observer dev` + минимальный UI трейсов; `init` |
 | 3 | 13 – 19 окт | Стартовый репозиторий: shop app, 3 бага, теги, `load`, `doctor` |
 | 4 | 20 – 26 окт | `debug`: детектор, ADK-агенты (Gemini / Kitana), чат через SSE |
 | 5 | 27 окт – 2 ноя | Прод-демо (Vercel + дроплет), replay, прогон на чистых машинах (macOS / Windows / Linux) |

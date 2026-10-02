@@ -15,33 +15,33 @@ packages/next-observe/   goes INTO the app — OpenTelemetry only, no AI depende
   src/client.ts          browser OTel for instrumentation-client.ts
   src/runtime.ts         __observe.run() used by transformed code
   src/transform/         Babel plugin + Turbopack loader for 'use observe'
-  src/agents.ts          defineSpecialist() + types for the app's observe.agents.ts (no ADK; nxo validates and runs it)
+  src/agents.ts          defineSpecialist() + types for the app's observe.agents.ts (no ADK; next-observer validates and runs it)
   e2e/observe-page.mjs   instrumentation checks against a running observer
-packages/nxo/            the observer, run with `npx nxo dev` — never an app dependency
+packages/next-observer/            the observer, run with `npx next-observer dev` — never an app dependency
   src/collector/         OTLP/JSON ingest, MemoryStorage, query API, chat transport (NDJSON + SSE), static UI
   src/debug/             agent tools as pure functions (queries.ts), anomaly detector, demo data — no ADK imports
   src/agents/            ADK agents (@google/adk, @kitana-sdk/adk are regular deps), MockLlm, chat handler, evidence
                          cards; specialists.ts = specialists as data (built-ins + the app's observe.agents.ts)
-  src/cli.ts, bin.ts     nxo dev | nxo collector [--demo]
+  src/cli.ts, bin.ts     next-observer dev | next-observer collector [--demo]
   ui/                    Vite + React SPA (TanStack Router/Query, shadcn/ui, Tailwind 4), built into dist/ui
   test/                  vitest unit tests; test/fixtures/shop.ts = workshop scenario at a fixed clock
   e2e/                   investigate.real.test.ts (real model), traffic.mjs, agent-tools.mjs
 spikes/adk-kitana/       ADK + Kitana spikes (workshop agent cases)
 ```
 
-## Commands (in packages/next-observe or packages/nxo)
+## Commands (in packages/next-observe or packages/next-observer)
 
 ```bash
 npm test                     # unit tests (real-model e2e is skipped unless OBSERVE_AI=real)
-npm run typecheck            # package (+ ui in nxo)
-npm run build                # tsc (+ vite → dist/ui in nxo)
+npm run typecheck            # package (+ ui in next-observer)
+npm run build                # tsc (+ vite → dist/ui in next-observer)
 npm pack --pack-destination ..            # the artifact users get
-OBSERVE_AI=real npx vitest run e2e/investigate.real.test.ts --testTimeout=300000 --silent=false   # nxo
-node e2e/traffic.mjs healthy 15 failing 25   # nxo: live traffic for the detector
+OBSERVE_AI=real npx vitest run e2e/investigate.real.test.ts --testTimeout=300000 --silent=false   # next-observer
+node e2e/traffic.mjs healthy 15 failing 25   # next-observer: live traffic for the detector
 ```
 
 End-to-end like a participant: install the packed `next-observe` tarball into a copy of the app (no ADK in the app),
-run the observer with `npx --yes --package=<nxo tarball> nxo dev`. Test bench: `../vercel-otel-test`; workshop app:
+run the observer with `npx --yes --package=<next-observer tarball> next-observer dev`. Test bench: `../vercel-otel-test`; workshop app:
 `../workshop-ai-observability` (Porto Shop).
 
 ## How we work

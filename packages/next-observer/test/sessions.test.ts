@@ -70,7 +70,7 @@ describe('investigator sessions', () => {
     expect(spy.orchestratorInputs.join('\n')).not.toContain('Why is checkout slow?')
   })
 
-  it('accepts an unknown session id (e.g. the UI kept it across an nxo restart) as a new conversation', async () => {
+  it('accepts an unknown session id (e.g. the UI kept it across an next-observer restart) as a new conversation', async () => {
     const investigator = createInvestigator({ storage: await shopStorage(), model: new MockLlm(), queryOptions: { now: () => NOW } })
     expect(await investigator.startSession('from-before-restart')).toBe('from-before-restart')
     expect((await investigator.ask('q', { sessionId: 'from-before-restart' })).sessionId).toBe('from-before-restart')

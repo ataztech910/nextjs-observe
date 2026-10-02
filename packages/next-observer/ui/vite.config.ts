@@ -8,6 +8,6 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { '@': path.resolve(import.meta.dirname, './src') } },
   build: { outDir: '../dist/ui', emptyOutDir: true },
-  // `npm run dev` here talks to a collector started with `nxo dev` / `nxo collector`.
+  // `npm run dev` here talks to a collector started with `next-observer dev` / `next-observer collector`.
   server: { proxy: { '/api': 'http://127.0.0.1:4318' } },
 })

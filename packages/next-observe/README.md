@@ -1,11 +1,11 @@
 # next-observe
 
-OpenTelemetry for Next.js 16: server, browser and your own code. Pair it with the **[nxo](https://www.npmjs.com/package/nxo)**
+OpenTelemetry for Next.js 16: server, browser and your own code. Pair it with the **[next-observer](https://www.npmjs.com/package/next-observer)**
 observer for a trace UI and AI agents that investigate problems on their own.
 
 - **Server** traces via `@vercel/otel`, **browser** traces (document load, fetch, React renders), and **your own code**
   with a `'use observe'` directive
-- Only OpenTelemetry in your app: the collector, UI and AI agents live in `nxo`, which you run with `npx` and never
+- Only OpenTelemetry in your app: the collector, UI and AI agents live in `next-observer`, which you run with `npx` and never
   install into the app
 
 > Reference implementation for the workshop *AI-Native Observability: Building Self-Debugging Next.js Applications with
@@ -36,7 +36,7 @@ import 'next-observe/client'
 ```
 
 ```bash
-npx nxo dev          # observer + UI on http://127.0.0.1:4318, then `next dev`
+npx next-observer dev          # observer + UI on http://127.0.0.1:4318, then `next dev`
 ```
 
 Open http://127.0.0.1:4318 for traces and the chat with the agents.
@@ -60,8 +60,8 @@ survives minification.
 
 ## Your own agents
 
-`nxo` runs three built-in specialists (latency, errors, traffic). Add or replace them in `observe.agents.ts` in the app
-root — `next-observe/agents` only gives the types, `nxo` loads and runs the file:
+`next-observer` runs three built-in specialists (latency, errors, traffic). Add or replace them in `observe.agents.ts` in the app
+root — `next-observe/agents` only gives the types, `next-observer` loads and runs the file:
 
 ```ts
 import { defineSpecialist } from 'next-observe/agents'
@@ -76,7 +76,7 @@ export default [
 ]
 ```
 
-See the [nxo README](https://www.npmjs.com/package/nxo) for the tools and models.
+See the [next-observer README](https://www.npmjs.com/package/next-observer) for the tools and models.
 
 ## Configuration
 
