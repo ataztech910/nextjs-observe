@@ -9,6 +9,7 @@ import type {
   TraceFilter,
   TraceSummary,
 } from './types.js'
+import { isFrameworkSpan } from './framework.js'
 
 export interface MemoryStorageOptions {
   /** Default 100_000. */
@@ -100,6 +101,7 @@ export class MemoryStorage implements StorageAdapter {
     for (const s of this.spans) {
       if (filter.service && s.service !== filter.service) continue
       if (filter.operation && !nameMatches(s.name, filter.operation)) continue
+      if (filter.hideFramework && isFrameworkSpan(s)) continue
       if (filter.fromMs !== undefined && s.startTimeMs < filter.fromMs) continue
       if (filter.toMs !== undefined && s.startTimeMs > filter.toMs) continue
       const key = filter.byVersion ? `${s.service}\u0000${s.serviceVersion}\u0000${s.name}` : `${s.service}\u0000${s.name}`
@@ -135,6 +137,7 @@ export class MemoryStorage implements StorageAdapter {
       const s = this.spans[i]
       if (filter.service && s.service !== filter.service) continue
       if (filter.operation && !nameMatches(s.name, filter.operation)) continue
+      if (filter.hideFramework && isFrameworkSpan(s)) continue
       if (filter.status && s.status !== filter.status) continue
       if (filter.fromMs !== undefined && s.startTimeMs < filter.fromMs) continue
       if (filter.toMs !== undefined && s.startTimeMs > filter.toMs) continue

@@ -2,6 +2,7 @@
 // and any agent runtime (ADK today) wraps them in one line.
 // Rules for every tool: compact, token-cheap output (aggregates, not raw spans), rounded numbers, and a `note`
 // instead of an empty result when a name filter matches nothing (users say "checkout", spans say "chargePayment").
+import { isFrameworkSpan } from '../collector/framework.js'
 import type { NormalizedSpan, OperationStats, StorageAdapter } from '../collector/types.js'
 
 export interface QueryOptions {
@@ -33,6 +34,8 @@ export interface TraceRow {
   durationMs: number
   /** Duration minus direct children — where the time was actually spent. */
   selfMs: number
+  /** Self time of hidden Next.js internal spans under this one (routing, rendering, dev compilation) — not user code. */
+  nextInternalMs?: number
   error?: string
   attributes?: Record<string, unknown>
 }
@@ -76,7 +79,7 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
     async getOperationStats(args: { service?: string; operation?: string; limit?: number } & Window = {}) {
       const { service, note: serviceNote } = await resolveService(args.service)
       const { items, note } = await withFallback(args.operation, (operation) =>
-        storage.getOperationStats({ service, operation, fromMs: since(args) }),
+        storage.getOperationStats({ service, hideFramework: true, operation, fromMs: since(args) }),
       )
       return {
         ...joinNotes(serviceNote, note),
@@ -102,7 +105,7 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
 
       const { service, note: serviceNote } = await resolveService(args.service)
       const { items, note } = await withFallback(args.operation, (operation) =>
-        storage.getOperationStats({ service, operation, fromMs: since(args), byVersion: true }),
+        storage.getOperationStats({ service, hideFramework: true, operation, fromMs: since(args), byVersion: true }),
       )
       const byOperation = new Map<string, OperationStats[]>()
       for (const s of items) {
@@ -131,14 +134,14 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
     async getErrors(args: { service?: string; operation?: string; limit?: number } & Window = {}) {
       const fromMs = since(args)
       const { service, note: serviceNote } = await resolveService(args.service)
-      const stats = await storage.getOperationStats({ service, fromMs })
-      const errorSpansFor = (operation?: string) => storage.querySpans({ service, operation, status: 'error', fromMs, limit: 1000 })
+      const stats = await storage.getOperationStats({ service, hideFramework: true, fromMs })
+      const errorSpansFor = (operation?: string) => storage.querySpans({ service, hideFramework: true, operation, status: 'error', fromMs, limit: 1000 })
       let errorSpans = await errorSpansFor(args.operation)
       let note: string | undefined
       // Nothing failing under this name → show what IS failing elsewhere. The note keeps "exists but healthy" apart from
       // "no such operation": a user asking about "product pages" needs to see inventory.check failing on those pages.
       if (errorSpans.length === 0 && args.operation) {
-        const exists = (await storage.getOperationStats({ service, operation: args.operation, fromMs })).length > 0
+        const exists = (await storage.getOperationStats({ service, hideFramework: true, operation: args.operation, fromMs })).length > 0
         note = exists
           ? `"${args.operation}" has no errors in this window; showing failing operations elsewhere`
           : `nothing matches "${args.operation}", showing all operations instead`
@@ -201,10 +204,29 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
       const spans = await storage.getTrace(args.traceId)
       if (spans.length === 0) return { note: `trace ${args.traceId} not found`, spans: [], repeated: [] }
 
-      const ids = new Set(spans.map((s) => s.spanId))
+      // Next's internal steps are left out and their children attached to the nearest visible ancestor: the agent sees
+      // request → user code, and N+1 parents / first error spans are real code, not "executing api route (app) …".
+      // A trace made only of framework spans is shown as is.
+      const hidden = spans.every(isFrameworkSpan) ? new Set<string>() : new Set(spans.filter(isFrameworkSpan).map((s) => s.spanId))
+      const byId = new Map(spans.map((s) => [s.spanId, s]))
+      const visibleParent = (s: NormalizedSpan): string | null => {
+        let parentId = s.parentSpanId
+        for (let hops = 0; parentId && hidden.has(parentId) && hops < spans.length; hops++) parentId = byId.get(parentId)?.parentSpanId ?? null
+        return parentId && byId.has(parentId) && !hidden.has(parentId) ? parentId : null
+      }
+      // Self time is always measured against the real children, so time inside a hidden span stays out of its parent's
+      // selfMs and is reported as nextInternalMs of the nearest visible ancestor instead.
+      const realChildMs = new Map<string, number>()
+      for (const s of spans) if (s.parentSpanId) realChildMs.set(s.parentSpanId, (realChildMs.get(s.parentSpanId) ?? 0) + s.durationMs)
+      const selfOf = (s: NormalizedSpan) => Math.max(0, s.durationMs - (realChildMs.get(s.spanId) ?? 0))
       const children = new Map<string | null, NormalizedSpan[]>()
+      const nextInternalMs = new Map<string, number>()
       for (const s of spans) {
-        const parent = s.parentSpanId && ids.has(s.parentSpanId) ? s.parentSpanId : null
+        const parent = visibleParent(s)
+        if (hidden.has(s.spanId)) {
+          if (parent) nextInternalMs.set(parent, (nextInternalMs.get(parent) ?? 0) + selfOf(s))
+          continue
+        }
         children.set(parent, [...(children.get(parent) ?? []), s])
       }
 
@@ -218,14 +240,15 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
           if (same.length >= 3) repeated.push({ parent: parentName, operation: name, count: same.length, totalMs: round(same.reduce((a, s) => a + s.durationMs, 0)) })
         }
         for (const s of kids) {
-          const childMs = (children.get(s.spanId) ?? []).reduce((a, c) => a + c.durationMs, 0)
+          const internalMs = nextInternalMs.get(s.spanId)
           const attributes = Object.fromEntries(KEY_ATTRIBUTES.filter((k) => s.attributes[k] !== undefined).map((k) => [k, s.attributes[k]]))
           rows.push({
             depth,
             name: s.name,
             service: s.service,
             durationMs: round(s.durationMs),
-            selfMs: round(Math.max(0, s.durationMs - childMs)),
+            selfMs: round(selfOf(s)),
+            ...(internalMs ? { nextInternalMs: round(internalMs) } : {}),
             ...(s.status === 'error' ? { error: exceptionMessage(s) ?? 'error' } : {}),
             ...(Object.keys(attributes).length ? { attributes } : {}),
           })
@@ -238,6 +261,7 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
       return {
         traceId: args.traceId,
         ...(rows.length > max ? { note: `showing ${max} of ${rows.length} spans` } : {}),
+        ...(hidden.size ? { nextInternalSpansHidden: hidden.size } : {}),
         spans: rows.slice(0, max),
         repeated,
       }

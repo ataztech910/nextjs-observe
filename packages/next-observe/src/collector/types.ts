@@ -61,6 +61,8 @@ export interface OperationFilter {
   toMs?: number
   /** Split stats per service.version — the basis for "which deployment introduced the regression". */
   byVersion?: boolean
+  /** Skip Next.js internal spans (see isFrameworkSpan). */
+  hideFramework?: boolean
 }
 
 export interface OperationStats {
@@ -87,6 +89,8 @@ export interface SpanFilter {
   toMs?: number
   /** Default 100. */
   limit?: number
+  /** Skip Next.js internal spans (see isFrameworkSpan). */
+  hideFramework?: boolean
 }
 
 export interface ServiceInfo {
