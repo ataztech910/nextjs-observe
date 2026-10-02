@@ -1,6 +1,9 @@
 import type { NextConfig } from 'next'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { RULE_GLOB, withObserve } from '../src/config.js'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { findProxyRoute, RULE_GLOB, withObserve } from '../src/config.js'
 
 type Rule = { loaders: string[]; condition: { all: [unknown, { content: RegExp }] } }
 const ourRule = (config: NextConfig) => config.turbopack!.rules![RULE_GLOB] as Rule
@@ -92,5 +95,37 @@ describe('withObserve: browser proxy rewrite', () => {
     vi.stubEnv('OBSERVE_ENDPOINT', 'https://observe.example.com/')
     const { beforeFiles } = (await withObserve({}).rewrites!()) as { beforeFiles: unknown[] }
     expect(beforeFiles[0]).toEqual({ source: '/__observe/:path*', destination: 'https://observe.example.com/:path*' })
+  })
+})
+
+describe('withObserve: opt-in runtime proxy route', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  function appWith(dir: string | undefined, ext = 'ts') {
+    const root = mkdtempSync(join(tmpdir(), 'next-observe-app-'))
+    if (dir) {
+      const route = join(root, dir, 'api', 'next-observe', '[...path]')
+      mkdirSync(route, { recursive: true })
+      writeFileSync(join(route, `route.${ext}`), "export { POST } from 'next-observe/proxy'\n")
+    }
+    return root
+  }
+
+  it('finds the route in app/ or src/app/, any route extension', () => {
+    expect(findProxyRoute(appWith('app'))).toMatch(/app\/api\/next-observe\/\[\.\.\.path\]\/route\.ts$/)
+    expect(findProxyRoute(appWith(join('src', 'app'), 'js'))).toMatch(/src\/app\/api\/next-observe\/\[\.\.\.path\]\/route\.js$/)
+    expect(findProxyRoute(appWith(undefined))).toBeUndefined()
+  })
+
+  it('with the route: /__observe/* goes to it (internal), not to a URL fixed at build time', async () => {
+    vi.spyOn(process, 'cwd').mockReturnValue(appWith('app'))
+    const { beforeFiles } = (await withObserve({}).rewrites!()) as { beforeFiles: unknown[] }
+    expect(beforeFiles[0]).toEqual({ source: '/__observe/:path*', destination: '/api/next-observe/:path*' })
+  })
+
+  it('without the route: the build-time rewrite to the collector, as before', async () => {
+    vi.spyOn(process, 'cwd').mockReturnValue(appWith(undefined))
+    const { beforeFiles } = (await withObserve({}).rewrites!()) as { beforeFiles: unknown[] }
+    expect(beforeFiles[0]).toEqual({ source: '/__observe/:path*', destination: 'http://127.0.0.1:4318/:path*' })
   })
 })

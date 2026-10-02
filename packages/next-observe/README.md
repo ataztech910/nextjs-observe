@@ -98,6 +98,17 @@ The server exporter also reads the standard OTel variables, so traces can go to 
 | `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_TRACES_HEADERS` | `key=value,key2=value2` (percent-encoded), e.g. `Authorization=Bearer%20…` |
 | `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` | `http/json` (default) or `http/protobuf` |
 
+Browser spans go to the app's own origin (`/__observe`) and are forwarded by the server. By default that is a rewrite whose
+destination is fixed at `next build`. To read the destination and headers at **runtime** (and keep keys such as
+`Authorization` on the server), add one file:
+
+```ts
+// app/api/next-observe/[...path]/route.ts   (or src/app/…)
+export { POST } from 'next-observe/proxy'
+```
+
+`withObserve()` finds it and routes `/__observe/*` there; the route uses the same settings as `register()`.
+
 `OBSERVE_ENDPOINT` wins over the `OTEL_*` endpoints (so `npx next-observer dev` always receives the traces); options of
 `register({ endpoint, tracesUrl, headers, protocol })` win over both. The nxo observer accepts `http/json`.
 
@@ -111,6 +122,7 @@ Production React profiling: build with `next build --profile` to get component r
 | `next-observe/server` | `register()` for `instrumentation.ts` |
 | `next-observe/client` | browser telemetry for `instrumentation-client.ts` |
 | `next-observe/agents` | `defineSpecialist()` and types for `observe.agents.ts` |
+| `next-observe/proxy` | runtime proxy route for browser spans (optional) |
 
 Traces are sent as OTLP/HTTP **JSON**.
 
