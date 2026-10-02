@@ -85,7 +85,7 @@ export function createInvestigator(options: InvestigatorOptions) {
       compare_versions: tool(agent, 'compare_versions', 'Latest deployed version vs the previous one per operation: p95 ratio and error-rate delta. Use it to name the deployment that caused a regression.', z.object({ service, operation, sinceMinutes: since }), (a) => q.compareVersions(a)),
       get_errors: tool(agent, 'get_errors', 'Failing operations: error rate, top exception messages, example trace ids.', z.object({ service, operation, sinceMinutes: since }), (a) => q.getErrors(a)),
       search_traces: tool(agent, 'search_traces', 'Recent traces matching filters, to get example trace ids.', z.object({ service, operation, minDurationMs: z.number().optional(), hasError: z.boolean().optional(), sinceMinutes: since }), (a) => q.searchTraces(a)),
-      get_trace: tool(agent, 'get_trace', 'One trace as a tree with self time, errors and code file paths; `repeated` lists ≥3 identical sibling calls (N+1).', z.object({ traceId: z.string().describe('32-char hex trace id from search_traces') }), (a) => q.getTrace(a)),
+      get_trace: tool(agent, 'get_trace', 'One trace as a tree with self time, errors and code file paths; `repeated` lists ≥3 identical sibling calls (N+1); `nextInternalMs` is time inside Next.js itself (routing, rendering, dev compilation), not the app code.', z.object({ traceId: z.string().describe('32-char hex trace id from search_traces') }), (a) => q.getTrace(a)),
     })
 
     const agents = specialists.map((spec) => {

@@ -2,4 +2,5 @@ export { startCollector, type Collector, type CollectorOptions } from './server.
 export { MemoryStorage, type MemoryStorageOptions } from './memory-storage.js'
 export { decodeOtlpJson, type OtlpTraceRequest } from './decode.js'
 export type * from './types.js'
+export { isFrameworkSpan } from './framework.js'
 export type { ChatEvent, ChatHandler, ChatRequest, EvidenceCard, ProactiveEvent, VersionStats } from './chat.js'
