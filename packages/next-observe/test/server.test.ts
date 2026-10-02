@@ -16,12 +16,12 @@ vi.mock('@vercel/otel', () => ({
   },
 }))
 
-const { parseOtlpHeaders, register } = await import('../src/server.js')
+const { parseOtlpHeaders, register, resolveServerOptions } = await import('../src/server.js')
 
 const ENV = [
   'OBSERVE_SERVICE_NAME', 'OBSERVE_SERVICE_VERSION', 'OBSERVE_ENDPOINT', 'OBSERVE_API_KEY', 'VERCEL_GIT_COMMIT_SHA',
   'OTEL_EXPORTER_OTLP_ENDPOINT', 'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'OTEL_EXPORTER_OTLP_HEADERS',
-  'OTEL_EXPORTER_OTLP_TRACES_HEADERS', 'OTEL_EXPORTER_OTLP_PROTOCOL', 'OTEL_EXPORTER_OTLP_TRACES_PROTOCOL',
+  'OTEL_EXPORTER_OTLP_TRACES_HEADERS', 'OTEL_EXPORTER_OTLP_PROTOCOL', 'OTEL_EXPORTER_OTLP_TRACES_PROTOCOL', 'VERCEL_OTEL_ENDPOINTS',
 ]
 
 beforeEach(() => {
@@ -129,5 +129,21 @@ describe('parseOtlpHeaders', () => {
   it('skips malformed entries instead of failing startup', () => {
     expect(parseOtlpHeaders('a=1,,=x,noequals, b = %E2%9C%93 ,c=%E0%A4%A')).toEqual({ a: '1', b: '✓', c: '%E0%A4%A' })
     expect(parseOtlpHeaders(undefined)).toEqual({})
+  })
+})
+
+describe('production build details', () => {
+  it('sends each span once: no @vercel/otel env exporter next to ours, except Vercel\'s own collector', () => {
+    vi.stubEnv('OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'https://api.vendor.io/otlp/traces')
+    register()
+    expect(calls.registerOTel[0].spanProcessors).toEqual([])
+    vi.stubEnv('VERCEL_OTEL_ENDPOINTS', '{"port":4319}')
+    register()
+    expect(calls.registerOTel[1].spanProcessors).toEqual(['auto'])
+  })
+
+  it('reads the service name from the literal process.env (inlined by Next at build), even with another env object', () => {
+    vi.stubEnv('OBSERVE_SERVICE_NAME', 'from-build')
+    expect(resolveServerOptions({}, {}).serviceName).toBe('from-build')
   })
 })

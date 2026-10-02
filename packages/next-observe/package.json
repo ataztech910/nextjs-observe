@@ -1,7 +1,7 @@
 {
   "name": "next-observe",
   "version": "0.3.0",
-  "description": "OpenTelemetry for Next.js — server, browser and your own code via 'use observe'. Pair it with the next-observer observer (npx next-observer dev) for a trace UI and AI agents.",
+  "description": "OpenTelemetry for Next.js \u2014 server, browser and your own code via 'use observe'. Pair it with the next-observer observer (npx next-observer dev) for a trace UI and AI agents.",
   "license": "MIT",
   "author": "Andrei Tazetdinov",
   "repository": {
@@ -48,6 +48,10 @@
     "./agents": {
       "types": "./dist/agents.d.ts",
       "default": "./dist/agents.js"
+    },
+    "./proxy": {
+      "types": "./dist/proxy.d.ts",
+      "default": "./dist/proxy.js"
     }
   },
   "files": [

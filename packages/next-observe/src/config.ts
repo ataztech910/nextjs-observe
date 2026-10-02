@@ -1,8 +1,8 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { NextConfig } from 'next'
-import { BROWSER_PROXY_PATH, DEFAULT_ENDPOINT, DEFAULT_SERVICE_NAME } from './constants.js'
+import { BROWSER_PROXY_PATH, DEFAULT_ENDPOINT, DEFAULT_SERVICE_NAME, PROXY_ROUTE_PATH } from './constants.js'
 
 type TurbopackRules = NonNullable<NonNullable<NextConfig['turbopack']>['rules']>
 type RuleCollection = TurbopackRules[string]
@@ -40,6 +40,19 @@ function packageName(): string | undefined {
   }
 }
 
+const ROUTE_EXTENSIONS = ['ts', 'js', 'tsx', 'jsx', 'mts', 'mjs']
+
+/** The opt-in runtime proxy route (`export { POST } from 'next-observe/proxy'`), in app/ or src/app/. */
+export function findProxyRoute(root: string = process.cwd()): string | undefined {
+  for (const appDir of ['app', join('src', 'app')]) {
+    for (const ext of ROUTE_EXTENSIONS) {
+      const file = join(root, appDir, 'api', 'next-observe', '[...path]', `route.${ext}`)
+      if (existsSync(file)) return file
+    }
+  }
+  return undefined
+}
+
 export function resolveObserveOptions(options: ObserveOptions = {}) {
   return {
     serviceName: options.serviceName ?? process.env.OBSERVE_SERVICE_NAME ?? packageName() ?? DEFAULT_SERVICE_NAME,
@@ -47,9 +60,12 @@ export function resolveObserveOptions(options: ObserveOptions = {}) {
   }
 }
 
-// The browser exports to its own origin; this proxies it to the collector — no CORS, no public endpoint env var.
-function withProxy(userRewrites: NextConfig['rewrites'], endpoint: string): NonNullable<NextConfig['rewrites']> {
-  const proxy: Rewrite = { source: `${BROWSER_PROXY_PATH}/:path*`, destination: `${endpoint}/:path*` }
+// The browser exports to its own origin, so no CORS and no public endpoint env var. Without the proxy route this is a
+// rewrite straight to the collector (destination fixed at `next build`); with it, an internal rewrite to the route,
+// which reads the destination and headers at runtime.
+function withProxy(userRewrites: NextConfig['rewrites'], endpoint: string, route: boolean): NonNullable<NextConfig['rewrites']> {
+  const destination = route ? `${PROXY_ROUTE_PATH}/:path*` : `${endpoint}/:path*`
+  const proxy: Rewrite = { source: `${BROWSER_PROXY_PATH}/:path*`, destination }
   return async () => {
     const user = await userRewrites?.()
     if (!user) return { beforeFiles: [proxy], afterFiles: [], fallback: [] }
@@ -66,7 +82,7 @@ function apply(config: NextConfig, options: ObserveOptions): NextConfig {
     ...config,
     // Inlined at build time into server and browser bundles.
     env: { ...config.env, OBSERVE_SERVICE_NAME: serviceName },
-    rewrites: withProxy(config.rewrites, endpoint),
+    rewrites: withProxy(config.rewrites, endpoint, findProxyRoute() !== undefined),
     turbopack: { ...config.turbopack, rules },
   }
 }
