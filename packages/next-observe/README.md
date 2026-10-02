@@ -87,6 +87,20 @@ See the [next-observer README](https://www.npmjs.com/package/next-observer) for 
 | `OBSERVE_SERVICE_VERSION` | `VERCEL_GIT_COMMIT_SHA` | OTel `service.version` — lets agents compare deployments |
 | `OBSERVE_API_KEY` | — | sent as `x-api-key`; the observer requires it when started with one |
 
+### Sending to another OpenTelemetry backend
+
+The server exporter also reads the standard OTel variables, so traces can go to any OTLP/HTTP backend:
+
+| Variable | |
+|---|---|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | base URL, `/v1/traces` is appended |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | full traces URL, used as is |
+| `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_TRACES_HEADERS` | `key=value,key2=value2` (percent-encoded), e.g. `Authorization=Bearer%20…` |
+| `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` | `http/json` (default) or `http/protobuf` |
+
+`OBSERVE_ENDPOINT` wins over the `OTEL_*` endpoints (so `npx next-observer dev` always receives the traces); options of
+`register({ endpoint, tracesUrl, headers, protocol })` win over both. The nxo observer accepts `http/json`.
+
 Production React profiling: build with `next build --profile` to get component render timings.
 
 ## Entry points
