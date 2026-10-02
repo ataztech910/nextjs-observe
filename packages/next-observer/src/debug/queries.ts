@@ -110,7 +110,8 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
      * Biggest p95 increase first — the answer to "which deployment introduced the regression".
      */
     async compareVersions(args: { service?: string; operation?: string } & Window = {}) {
-      const deployOrder = new Map((await storage.getServices()).map((s) => [s.name, s.versions]))
+      const services = await storage.getServices()
+      const deployOrder = new Map(services.map((s) => [s.name, s.versions]))
       const order = (s: OperationStats) => deployOrder.get(s.service)?.indexOf(s.serviceVersion ?? '') ?? -1
 
       const { service, note: serviceNote } = await resolveService(args.service)
@@ -122,6 +123,29 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
         const key = `${s.service}\u0000${s.operation}`
         byOperation.set(key, [...(byOperation.get(key) ?? []), s])
       }
+      // After a deploy the previous version stops sending, and once its traffic is older than the window there is nothing
+      // to compare with — exactly when "which deployment did this?" matters. Then use the previous version's own last
+      // window of traffic, and say so.
+      const windowMs = now() - since(args)
+      const olderNotes: string[] = []
+      const fetched = new Map<string, OperationStats[]>()
+      for (const versions of byOperation.values()) {
+        if (versions.length !== 1) continue
+        const [latest] = versions
+        const all = deployOrder.get(latest.service) ?? []
+        const previous = all[all.indexOf(latest.serviceVersion ?? '') - 1]
+        const lastSeen = previous !== undefined ? services.find((s) => s.name === latest.service)?.versionLastSeenMs[previous] : undefined
+        if (previous === undefined || lastSeen === undefined) continue
+        const key = `${latest.service}\u0000${previous}`
+        if (!fetched.has(key)) {
+          const stats = await storage.getOperationStats({ service: latest.service, hideFramework: true, hideColdStarts: true, fromMs: lastSeen - windowMs, toMs: lastSeen, byVersion: true })
+          fetched.set(key, stats.filter((s) => s.serviceVersion === previous))
+          olderNotes.push(`${previous} has no traffic in this window — compared with its last ${Math.round(windowMs / 60_000)} min of traffic (until ${Math.round((now() - lastSeen) / 60_000)} min ago)`)
+        }
+        const match = fetched.get(key)!.find((s) => s.operation === latest.operation)
+        if (match) versions.push(match)
+      }
+
       const changes = []
       for (const versions of byOperation.values()) {
         if (versions.length < 2) continue
@@ -139,7 +163,7 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
       }
       changes.sort((a, b) => (b.p95Ratio ?? 0) - (a.p95Ratio ?? 0) || b.errorRateDelta - a.errorRateDelta)
       const empty = changes.length === 0 ? 'only one version seen per operation — nothing to compare' : undefined
-      return { ...joinNotes(serviceNote, note, coldNote(items), empty), changes }
+      return { ...joinNotes(serviceNote, note, coldNote(items), ...olderNotes, empty), changes }
     },
 
     /** Failing operations: error rate, most common exception messages and example traces. */

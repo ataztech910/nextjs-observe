@@ -105,6 +105,8 @@ export interface ServiceInfo {
   versions: string[]
   spanCount: number
   lastSeenMs: number
+  /** Latest span time per version — the previous version stops sending after a deploy. */
+  versionLastSeenMs: Record<string, number>
 }
 
 export interface StorageAdapter {

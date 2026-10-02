@@ -41,7 +41,7 @@ describe('collector: ingest from the real OTLP exporter + query API', () => {
 
   it('lists services with versions', async () => {
     const { body } = await get('/api/services')
-    expect(body).toEqual([{ name: 'shop', versions: ['v2'], spanCount: 2, lastSeenMs: expect.any(Number) }])
+    expect(body).toEqual([{ name: 'shop', versions: ['v2'], spanCount: 2, lastSeenMs: expect.any(Number), versionLastSeenMs: { v2: expect.any(Number) } }])
   })
 
   it('searches traces and returns one with all its spans', async () => {

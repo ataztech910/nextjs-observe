@@ -172,10 +172,13 @@ export class MemoryStorage implements StorageAdapter {
   async getServices(): Promise<ServiceInfo[]> {
     const services = new Map<string, ServiceInfo>()
     for (const s of this.spans) {
-      const info = services.get(s.service) ?? { name: s.service, versions: [], spanCount: 0, lastSeenMs: 0 }
+      const info = services.get(s.service) ?? { name: s.service, versions: [], spanCount: 0, lastSeenMs: 0, versionLastSeenMs: {} }
       info.spanCount++
       info.lastSeenMs = Math.max(info.lastSeenMs, s.startTimeMs)
-      if (s.serviceVersion && !info.versions.includes(s.serviceVersion)) info.versions.push(s.serviceVersion)
+      if (s.serviceVersion) {
+        if (!info.versions.includes(s.serviceVersion)) info.versions.push(s.serviceVersion)
+        info.versionLastSeenMs[s.serviceVersion] = Math.max(info.versionLastSeenMs[s.serviceVersion] ?? 0, s.startTimeMs)
+      }
       services.set(s.service, info)
     }
     return [...services.values()].sort((a, b) => a.name.localeCompare(b.name))
