@@ -90,6 +90,7 @@ export class MemoryStorage implements StorageAdapter {
       if (filter.service && !spans.some((s) => s.service === filter.service)) continue
       if (filter.operation && !spans.some((s) => nameMatches(s.name, filter.operation!))) continue
       const summary = summarize(traceId, spans)
+      if (spans.some((s) => this.isColdStart(s))) summary.coldStart = true
       if (filter.hasError !== undefined && summary.errorCount > 0 !== filter.hasError) continue
       if (filter.minDurationMs !== undefined && summary.durationMs < filter.minDurationMs) continue
       if (filter.fromMs !== undefined && summary.startTimeMs < filter.fromMs) continue

@@ -138,3 +138,28 @@ describe('anomaly detector input', () => {
     expect(observed).toEqual(['a2'.padStart(16, '0')])
   })
 })
+
+describe('cold start for people: trace list and trace API', () => {
+  let collector: Collector | undefined
+  afterEach(async () => {
+    await collector?.close()
+    collector = undefined
+  })
+
+  it('the trace list flags traces with a cold request; the trace API flags that span only', async () => {
+    const storage = new MemoryStorage()
+    const cold = request('GET /a', NOW, 580, { instance: 'p1' })
+    const warm = request('GET /a', NOW + 1000, 15, { instance: 'p1' })
+    // The cold server span under a browser fetch: the trace's root is the browser span.
+    const browser = { ...request('GET', NOW - 5, 600, { kind: 'client' }), traceId: cold.traceId }
+    const coldChild = { ...cold, parentSpanId: browser.spanId }
+    await storage.insertSpans([browser, coldChild, warm])
+    const list = await storage.queryTraces({})
+    expect(list.find((t) => t.traceId === cold.traceId)?.coldStart).toBe(true)
+    expect(list.find((t) => t.traceId === warm.traceId)).not.toHaveProperty('coldStart')
+
+    collector = await startCollector({ port: 0, storage, uiDir: false })
+    const { spans } = (await (await fetch(`${collector.url}/api/traces/${cold.traceId}`)).json()) as { spans: { spanId: string; coldStart?: boolean }[] }
+    expect(spans.filter((s) => s.coldStart).map((s) => s.spanId)).toEqual([cold.spanId])
+  })
+})

@@ -52,7 +52,12 @@ export interface TraceSummary {
   durationMs: number
   spanCount: number
   errorCount: number
+  /** A request in this trace is a route's first one after a server start (StorageAdapter.isColdStart). */
+  coldStart?: boolean
 }
+
+/** A span as /api/traces/:id returns it. */
+export type TraceSpan = NormalizedSpan & { coldStart?: boolean }
 
 export interface OperationFilter {
   service?: string
