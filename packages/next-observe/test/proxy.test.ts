@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MAX_BODY_BYTES, POST } from '../src/proxy.js'
 
-const ENV = ['OBSERVE_ENDPOINT', 'OBSERVE_API_KEY', 'OTEL_EXPORTER_OTLP_ENDPOINT', 'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'OTEL_EXPORTER_OTLP_HEADERS', 'OTEL_EXPORTER_OTLP_TRACES_HEADERS']
+const ENV = ['OBSERVE_ENDPOINT', 'OBSERVE_API_KEY', 'OTEL_EXPORTER_OTLP_PROTOCOL', 'OTEL_EXPORTER_OTLP_ENDPOINT', 'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'OTEL_EXPORTER_OTLP_HEADERS', 'OTEL_EXPORTER_OTLP_TRACES_HEADERS']
 const sent: { url: string; init: RequestInit }[] = []
 
 beforeEach(() => {
@@ -62,5 +62,35 @@ describe('next-observe/proxy', () => {
     const res = await call(['v1', 'traces'])
     expect(res.status).toBe(502)
     expect(await res.json()).toEqual({ error: 'trace backend unreachable' })
+  })
+})
+
+describe('next-observe/proxy: several destinations', () => {
+  beforeEach(() => {
+    vi.stubEnv('OBSERVE_ENDPOINT', 'http://observer:4318')
+    vi.stubEnv('OBSERVE_API_KEY', 'observer-key')
+    vi.stubEnv('OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'https://api.vendor.io/otlp/traces')
+    vi.stubEnv('OTEL_EXPORTER_OTLP_HEADERS', 'Authorization=Bearer%20vendor')
+  })
+
+  it('sends the spans to each destination with its own headers', async () => {
+    expect((await call(['v1', 'traces'])).status).toBe(200)
+    expect(sent.map((s) => [s.url, s.init.headers])).toEqual([
+      ['https://api.vendor.io/otlp/traces', { Authorization: 'Bearer vendor', 'content-type': 'application/json' }],
+      ['http://observer:4318/v1/traces', { 'x-api-key': 'observer-key', 'content-type': 'application/json' }],
+    ])
+  })
+
+  it('answers with the first destination; a slow or failing other one neither delays nor fails the browser', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) =>
+      url.startsWith('http://observer') ? Promise.resolve(new Response('{}', { status: 200 })) : new Promise(() => {}),
+    ))
+    expect((await call(['v1', 'traces'])).status).toBe(200)
+
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.startsWith('http://observer')) return new Response('{}', { status: 200 })
+      throw new TypeError('fetch failed')
+    }))
+    expect((await call(['v1', 'traces'])).status).toBe(200)
   })
 })

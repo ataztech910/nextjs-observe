@@ -91,13 +91,9 @@ describe('standard OTel exporter env vars', () => {
     expect(calls.registerOTel[0].instrumentationConfig.fetch.ignoreUrls).toEqual(['http://127.0.0.1:4318/', 'https://api.vendor.io/otlp/traces'])
   })
 
-  it('OBSERVE_ENDPOINT wins over OTEL_* (next-observer dev sets it), and options win over everything', () => {
-    vi.stubEnv('OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'https://api.vendor.io/otlp/traces')
-    vi.stubEnv('OBSERVE_ENDPOINT', 'http://127.0.0.1:4399')
-    register()
-    expect(calls.exporter[0].url).toBe('http://127.0.0.1:4399/v1/traces')
+  it('options.tracesUrl is the observer destination, used as is', () => {
     register({ tracesUrl: 'https://custom.example.com/ingest' })
-    expect(calls.exporter[1].url).toBe('https://custom.example.com/ingest')
+    expect(calls.exporter.map((e) => e.url)).toEqual(['https://custom.example.com/ingest'])
   })
 
   it('headers: OTEL_EXPORTER_OTLP_HEADERS, then the traces-specific ones, then x-api-key, then options', () => {
@@ -133,17 +129,56 @@ describe('parseOtlpHeaders', () => {
 })
 
 describe('production build details', () => {
-  it('sends each span once: no @vercel/otel env exporter next to ours, except Vercel\'s own collector', () => {
+  it('one span processor per destination, no @vercel/otel env exporter — except Vercel\'s own collector', () => {
     vi.stubEnv('OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'https://api.vendor.io/otlp/traces')
     register()
-    expect(calls.registerOTel[0].spanProcessors).toEqual([])
+    const processors = calls.registerOTel[0].spanProcessors
+    expect(processors).toHaveLength(1)
+    expect(processors[0].constructor.name).toBe('BatchSpanProcessor')
+    expect(calls.registerOTel[0].traceExporter).toBeUndefined()
     vi.stubEnv('VERCEL_OTEL_ENDPOINTS', '{"port":4319}')
     register()
-    expect(calls.registerOTel[1].spanProcessors).toEqual(['auto'])
+    expect(calls.registerOTel[1].spanProcessors[0]).toBe('auto')
+    expect(calls.registerOTel[1].spanProcessors).toHaveLength(2)
   })
 
   it('reads the service name from the literal process.env (inlined by Next at build), even with another env object', () => {
     vi.stubEnv('OBSERVE_SERVICE_NAME', 'from-build')
     expect(resolveServerOptions({}, {}).serviceName).toBe('from-build')
+  })
+})
+
+describe('several destinations', () => {
+  it('OBSERVE_ENDPOINT and OTEL_* together: both get every span, each with its own headers and protocol', () => {
+    vi.stubEnv('OBSERVE_ENDPOINT', 'http://127.0.0.1:4318')
+    vi.stubEnv('OBSERVE_API_KEY', 'observer-key')
+    vi.stubEnv('OTEL_EXPORTER_OTLP_ENDPOINT', 'https://otlp.vendor.io')
+    vi.stubEnv('OTEL_EXPORTER_OTLP_HEADERS', 'Authorization=Bearer%20vendor')
+    vi.stubEnv('OTEL_EXPORTER_OTLP_PROTOCOL', 'http/protobuf')
+    register()
+    expect(calls.exporter).toEqual([
+      { url: 'http://127.0.0.1:4318/v1/traces', headers: { 'x-api-key': 'observer-key' }, protocol: 'http/json' },
+      { url: 'https://otlp.vendor.io/v1/traces', headers: { Authorization: 'Bearer vendor' }, protocol: 'http/protobuf' },
+    ])
+    expect(calls.registerOTel[0].spanProcessors).toHaveLength(2)
+    expect(calls.registerOTel[0].instrumentationConfig.fetch.ignoreUrls).toEqual(['http://127.0.0.1:4318/', 'https://otlp.vendor.io/v1/traces'])
+  })
+
+  it('the same URL from both sides is one destination with merged headers', () => {
+    vi.stubEnv('OBSERVE_ENDPOINT', 'http://127.0.0.1:4318')
+    vi.stubEnv('OTEL_EXPORTER_OTLP_ENDPOINT', 'http://127.0.0.1:4318/')
+    vi.stubEnv('OTEL_EXPORTER_OTLP_HEADERS', 'x-team=porto')
+    register()
+    expect(calls.exporter).toEqual([{ url: 'http://127.0.0.1:4318/v1/traces', headers: { 'x-team': 'porto' }, protocol: 'http/json' }])
+  })
+
+  it('options.destinations replaces the env-based ones', () => {
+    vi.stubEnv('OBSERVE_ENDPOINT', 'http://127.0.0.1:4318')
+    vi.stubEnv('OTEL_EXPORTER_OTLP_ENDPOINT', 'https://otlp.vendor.io')
+    register({ destinations: [{ url: 'https://a.example/v1/traces' }, { url: 'https://b.example/t', headers: { k: 'v' }, protocol: 'http/protobuf' }] })
+    expect(calls.exporter).toEqual([
+      { url: 'https://a.example/v1/traces', headers: {}, protocol: 'http/json' },
+      { url: 'https://b.example/t', headers: { k: 'v' }, protocol: 'http/protobuf' },
+    ])
   })
 })

@@ -109,8 +109,17 @@ export { POST } from 'next-observe/proxy'
 
 `withObserve()` finds it and routes `/__observe/*` there; the route uses the same settings as `register()`.
 
-`OBSERVE_ENDPOINT` wins over the `OTEL_*` endpoints (so `npx next-observer dev` always receives the traces); options of
-`register({ endpoint, tracesUrl, headers, protocol })` win over both. The nxo observer accepts `http/json`.
+**Several destinations.** `OBSERVE_*` describes the next-observer observer, `OTEL_EXPORTER_OTLP_*` your OTel backend. With
+both set, every span goes to both, each with its own headers and protocol — the backend's `Authorization` never reaches
+the observer and `x-api-key` never reaches the backend. Browser spans fan out the same way through the proxy route
+(without it, the build-time rewrite reaches the observer only). Full control from code:
+
+```ts
+register({ destinations: [{ url: 'https://observer.example.com/v1/traces' }, { url: 'https://otlp.vendor.io/v1/traces', headers: { Authorization: 'Bearer …' }, protocol: 'http/protobuf' }] })
+```
+
+`register({ endpoint, tracesUrl, headers, apiKey, protocol })` configures the observer destination. The next-observer
+observer accepts `http/json`.
 
 Production React profiling: build with `next build --profile` to get component render timings.
 
