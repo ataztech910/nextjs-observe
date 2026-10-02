@@ -1071,6 +1071,31 @@ with the highest selfMs and its code file.`,
 
 ---
 
+## Шаг 26. Сервер шлёт в любой OTLP-бэкенд: стандартные переменные OTel
+
+**Чтобы** приложение с `next-observe` могло отправлять трейсы не только в наш обзервер,
+**делаем** серверный экспортёр настраиваемым так, как принято в OpenTelemetry.
+
+Пользователь спросил про транспорт, и разбор нашёл четыре ограничения: путь `/v1/traces` дописывался всегда; из заголовков был только `x-api-key`; адрес один; браузерный прокси — rewrite, зашитый при `next build`; а обзервер не принимает protobuf. Решили закрыть все, по шагу: 26 — сервер, 27 — браузерный прокси, 28 — несколько получателей, 29 — protobuf в обзервере.
+
+- `register()` читает стандартные `OTEL_EXPORTER_OTLP_ENDPOINT` (база, `+ /v1/traces`), `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (полный URL как есть), `OTEL_EXPORTER_OTLP_(TRACES_)HEADERS` (`k=v,k2=v2`, значения percent-encoded) и `OTEL_EXPORTER_OTLP_(TRACES_)PROTOCOL` (`http/json` | `http/protobuf`; `grpc` — предупреждение и JSON: экспортёры `@vercel/otel` работают через fetch, в Node и Edge).
+- Опции: `register({ endpoint, tracesUrl, headers, protocol })`.
+- **Приоритет:** опции → `OBSERVE_ENDPOINT` → `OTEL_*` → локальный обзервер. `OBSERVE_*` главнее, иначе глобальная `OTEL_EXPORTER_OTLP_ENDPOINT` у человека увела бы трейсы мимо `next-observer dev`.
+- Битые записи в заголовках пропускаются, а не роняют запуск приложения.
+- Собственные запросы экспортёра в чужой бэкенд тоже не трассируются (`ignoreUrls`).
+- `next-observe` 0.3.0 (новые возможности).
+
+### Как тестировали
+
+- 43 теста: база и полный URL, приоритеты (`OBSERVE` над `OTEL`, опции над всем), порядок слияния заголовков, разбор с битыми записями и процент-кодированием, выбор protobuf-экспортёра, `grpc` → предупреждение. Мутации (7): игнор полного URL; `OTEL` главнее `OBSERVE`; игнор traces-заголовков; без декодирования; битые записи не пропускаются; protobuf игнорируется; запросы экспортёра трассируются — каждый раз падает тест.
+- E2E: фейковый «чужой бэкенд», записывающий путь, заголовки и тип; копия Porto Shop на tarball без `OBSERVE_ENDPOINT`, только `OTEL_*`: `POST /custom/otlp/traces`, `Authorization: Bearer xyz`, `x-team: porto` — в `application/json` и в `application/x-protobuf`.
+
+### Что узнали
+
+- Браузер пока по-прежнему идёт через rewrite на `OBSERVE_ENDPOINT` — это шаг 27. Наш обзервер на protobuf отвечает 415 — шаг 29.
+
+---
+
 ## Дальше
 
 - [ ] DevTools-хук (bippy) в `instrumentation-client.ts`: `actualDuration` всех компонентов в profiling-сборке.
@@ -1107,11 +1132,15 @@ with the highest selfMs and its code file.`,
 - [ ] Kitana: обновить `@anthropic-ai/sdk` в `@kitana-sdk/core` (0.30.1).
 - [x] Холодный старт не регрессия: `service.instance.id`, исключение из латентности и детектора, шаг 25
 - [ ] Карточка регрессии по доле ошибок: минимум запросов / значимость разницы (на 15–20 запросах 30% падений «скачут»).
-- [ ] Опубликовать `next-observer` 0.1.1 и `next-observe` 0.2.2; Porto Shop `next-observe@^0.2.2`.
+- [x] `next-observer` 0.1.1 и `next-observe` 0.2.2 опубликованы, Porto Shop PR #1 (шаг 26)
 - [x] `next-observe` готов к публикации (0.1.0), шаг 20
 - [x] `next-observe` 0.1.0 опубликован, Porto Shop на нём (шаг 23)
 - [x] Репозиторий `workshop-ai-observability` на GitHub (шаг 25)
 - [ ] Porto Shop: git-теги по блокам воркшопа.
+- [x] Сервер: стандартные `OTEL_EXPORTER_OTLP_*` (URL, заголовки, протокол), шаг 26
+- [ ] Браузерный прокси: свой маршрут вместо rewrite (адрес при запуске, заголовки), шаг 27
+- [ ] Несколько получателей трейсов, шаг 28
+- [ ] Обзервер принимает OTLP protobuf, шаг 29
 - [ ] UI: страница операций (p50/p95/p99, error rate) из `/api/operations`.
 - [ ] Разобраться с зависанием `nxo` при остановке, если повторится (см. шаг 9).
 - [ ] Хранилище `node:sqlite` (данные переживают перезапуск).
