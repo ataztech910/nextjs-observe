@@ -58,6 +58,8 @@ export class AnomalyDetector {
   private lastSeenMs: number | null = null
   /** Cooldown per type (app-wide) or per type + operation. */
   private readonly lastReportedMs = new Map<string, number>()
+  /** Reported anomalies within the cooldown — to skip ones that only repeat them at the other scope. */
+  private reported: Anomaly[] = []
   private seq = 0
 
   constructor(options: DetectorOptions = {}) {
@@ -108,13 +110,34 @@ export class AnomalyDetector {
       found.push(this.anomaly('no_traffic', Math.round((now - this.lastSeenMs) / 1000), o.noTrafficMs / 1000, [], now, true, o.windowMs))
     }
 
+    this.reported = this.reported.filter((r) => now - r.detectedAtMs < o.cooldownMs)
     return found.filter((a) => {
       const key = a.subject ? `${a.type}\u0000${a.subject.service}\u0000${a.subject.operation}` : a.type
       const last = this.lastReportedMs.get(key)
       if (last !== undefined && now - last < o.cooldownMs) return false
+      if (this.alreadyExplained(a)) return false
       this.lastReportedMs.set(key, now)
+      this.reported.push(a)
       return true
     })
+  }
+
+  /**
+   * The same problem seen at the other scope, in another check: one failing endpoint first trips its operation rule
+   * (30 s window), seconds later the app-wide one (10 s) — two investigations of one problem. An app-wide anomaly is
+   * explained when every culprit operation already had its own anomaly of that type; an operation anomaly when a recent
+   * app-wide one already named it. An app-wide anomaly with a culprit nobody reported yet still says something new.
+   */
+  private alreadyExplained(a: Anomaly): boolean {
+    if (a.type === 'no_traffic') return false
+    const op = (service: string, operation: string) => `${service}\u0000${operation}`
+    const recent = (scope: Anomaly['scope']) => this.reported.filter((r) => r.type === a.type && r.scope === scope)
+    if (a.scope === 'all') {
+      const reportedOps = new Set(recent('operation').map((r) => op(r.subject!.service, r.subject!.operation)))
+      return a.operations.length > 0 && a.operations.every((c) => reportedOps.has(op(c.service, c.operation)))
+    }
+    const self = op(a.subject!.service, a.subject!.operation)
+    return recent('all').some((r) => r.operations.some((c) => op(c.service, c.operation) === self))
   }
 
   private anomaly(type: AnomalyType, value: number, threshold: number, requests: NormalizedSpan[], now: number, critical: boolean, windowMs: number, subject?: Anomaly['subject']): Anomaly {

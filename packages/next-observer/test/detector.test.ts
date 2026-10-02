@@ -202,3 +202,80 @@ describe('AnomalyDetector: an operation with modest traffic (the workshop rehear
     expect(found.some((a) => a.type === 'high_latency' && a.scope === 'all')).toBe(false)
   })
 })
+
+describe('AnomalyDetector: one problem, one investigation', () => {
+  const kinds = (found: { type: string; subject?: { operation: string } }[]) => found.map((a) => [a.type, a.subject?.operation ?? 'all'])
+
+  it('an app-wide anomaly that only repeats an operation anomaly from an earlier check is skipped', () => {
+    const c = clock()
+    const d = new AnomalyDetector({ now: c.now })
+    // 30 s of traffic: inventory fails 1 in 3 — enough for its own rule, not yet app-wide in 10 s.
+    const found = []
+    for (let second = 0; second < 30; second++) {
+      c.advance(1000)
+      d.observe([request('GET /'), second % 3 === 0 ? failing('GET /api/inventory/[id]') : request('GET /api/inventory/[id]')])
+      if (second % 5 === 4) found.push(...d.check())
+    }
+    // Then a burst that makes it app-wide too — still the same problem.
+    c.advance(1000)
+    d.observe([...Array.from({ length: 6 }, () => failing('GET /api/inventory/[id]')), request('GET /')])
+    found.push(...d.check())
+    expect(kinds(found)).toEqual([['high_error_rate', 'GET /api/inventory/[id]']])
+  })
+
+  it('an operation anomaly after an app-wide one that already named it is skipped', () => {
+    const c = clock()
+    const d = new AnomalyDetector({ now: c.now })
+    d.observe([...Array.from({ length: 6 }, () => slow('POST /api/checkout')), ...Array.from({ length: 4 }, () => request('GET /'))])
+    const first = d.check()
+    expect(kinds(first)).toEqual([['high_latency', 'all']])
+    c.advance(12_000) // past the app-wide window, still inside the operation one
+    d.observe(Array.from({ length: 4 }, () => request('GET /')))
+    expect(d.check()).toEqual([])
+  })
+
+  it('an app-wide anomaly with a culprit nobody reported yet is still reported', () => {
+    const c = clock()
+    const d = new AnomalyDetector({ now: c.now })
+    d.observe([...Array.from({ length: 5 }, () => failing('GET /a')), ...Array.from({ length: 20 }, () => request('GET /'))])
+    expect(kinds(d.check())).toEqual([['high_error_rate', 'GET /a']])
+    c.advance(1000)
+    d.observe([...Array.from({ length: 6 }, () => failing('GET /b')), ...Array.from({ length: 6 }, () => failing('GET /a'))])
+    expect(kinds(d.check())).toEqual([['high_error_rate', 'all']])
+  })
+
+  it('after the cooldown the same problem is reported again', () => {
+    const c = clock()
+    const d = new AnomalyDetector({ now: c.now, cooldownMs: 60_000 })
+    const burst = () => d.observe([...Array.from({ length: 6 }, () => failing('GET /a')), ...Array.from({ length: 4 }, () => request('GET /'))])
+    burst()
+    expect(kinds(d.check())).toEqual([['high_error_rate', 'all']])
+    c.advance(61_000)
+    burst()
+    expect(kinds(d.check())).toEqual([['high_error_rate', 'all']])
+  })
+
+  it('an old operation report stops explaining things after the cooldown', () => {
+    const c = clock()
+    const d = new AnomalyDetector({ now: c.now, cooldownMs: 60_000 })
+    d.observe([...Array.from({ length: 5 }, () => failing('GET /a')), ...Array.from({ length: 20 }, () => request('GET /'))])
+    expect(kinds(d.check())).toEqual([['high_error_rate', 'GET /a']])
+    c.advance(61_000)
+    d.observe([...Array.from({ length: 6 }, () => failing('GET /a')), ...Array.from({ length: 4 }, () => request('GET /'))])
+    expect(kinds(d.check())).toEqual([['high_error_rate', 'all']])
+  })
+
+  it('the rehearsal traffic: inventory failing and checkout slow give exactly two investigations', () => {
+    const c = clock()
+    const d = new AnomalyDetector({ now: c.now })
+    const found = []
+    for (let second = 0; second < 60; second++) {
+      c.advance(1000)
+      const traffic = [request('GET /'), request('GET /api/products'), second % 3 === 0 ? failing('GET /api/inventory/[id]') : request('GET /api/inventory/[id]')]
+      if (second % 5 < 3) traffic.push(slow('POST /api/checkout'))
+      d.observe(traffic)
+      if (second % 5 === 4) found.push(...d.check())
+    }
+    expect(kinds(found).sort()).toEqual([['high_error_rate', 'GET /api/inventory/[id]'], ['high_latency', 'POST /api/checkout']])
+  })
+})
