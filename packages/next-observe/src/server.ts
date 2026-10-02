@@ -24,12 +24,17 @@ export function resolveServerOptions(options: ObserveServerOptions = {}) {
   }
 }
 
+// One id per server process (each `next dev` start, each serverless instance) — OTel's service.instance.id. The observer
+// uses it to recognise a route's first request in a fresh process: in dev that request includes compiling the route.
+// globalThis.crypto works in both the Node and the Edge runtime.
+const INSTANCE_ID = globalThis.crypto.randomUUID()
+
 // OTLP/JSON on purpose: our collector accepts JSON only until protobuf lands (Sprint 2, phase B).
 export function register(options?: ObserveServerOptions): void {
   const { serviceName, serviceVersion, endpoint, apiKey } = resolveServerOptions(options)
   registerOTel({
     serviceName,
-    attributes: serviceVersion ? { 'service.version': serviceVersion } : {},
+    attributes: { 'service.instance.id': INSTANCE_ID, ...(serviceVersion ? { 'service.version': serviceVersion } : {}) },
     // Next's /__observe rewrite forwards browser exports with fetch; tracing that adds a noise span per batch.
     instrumentationConfig: { fetch: { ignoreUrls: [`${endpoint}/`] } },
     traceExporter: new OTLPHttpJsonTraceExporter({

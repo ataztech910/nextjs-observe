@@ -34,6 +34,8 @@ export interface TraceRow {
   durationMs: number
   /** Duration minus direct children — where the time was actually spent. */
   selfMs: number
+  /** First request of this route after a server start — in next dev its time includes compiling the route. */
+  coldStart?: boolean
   /** Self time of hidden Next.js internal spans under this one (routing, rendering, dev compilation) — not user code. */
   nextInternalMs?: number
   error?: string
@@ -61,6 +63,12 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
     return { note: `no service "${service}" (services: ${names.join(', ') || 'none yet'}), showing all services instead` }
   }
 
+  // Cold starts are left out of latency aggregates; the agent is told how many, so it can mention it.
+  const coldNote = (items: OperationStats[]) => {
+    const left = items.filter((s) => !s.onlyColdStarts).reduce((n, s) => n + (s.coldStarts ?? 0), 0)
+    return left > 0 ? `${left} cold-start request(s) left out — the first request of a route after a server start (in next dev it includes compiling the route)` : undefined
+  }
+
   const joinNotes = (...notes: (string | undefined)[]) => {
     const text = notes.filter(Boolean).join('; ')
     return text ? { note: text } : {}
@@ -79,10 +87,10 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
     async getOperationStats(args: { service?: string; operation?: string; limit?: number } & Window = {}) {
       const { service, note: serviceNote } = await resolveService(args.service)
       const { items, note } = await withFallback(args.operation, (operation) =>
-        storage.getOperationStats({ service, hideFramework: true, operation, fromMs: since(args) }),
+        storage.getOperationStats({ service, hideFramework: true, hideColdStarts: true, operation, fromMs: since(args) }),
       )
       return {
-        ...joinNotes(serviceNote, note),
+        ...joinNotes(serviceNote, note, coldNote(items)),
         operations: items.slice(0, args.limit ?? 15).map((s) => ({
           service: s.service,
           operation: s.operation,
@@ -91,6 +99,7 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
           p50Ms: round(s.p50Ms),
           p95Ms: round(s.p95Ms),
           p99Ms: round(s.p99Ms),
+          ...(s.onlyColdStarts ? { onlyColdStarts: true } : {}),
         })),
       }
     },
@@ -105,7 +114,7 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
 
       const { service, note: serviceNote } = await resolveService(args.service)
       const { items, note } = await withFallback(args.operation, (operation) =>
-        storage.getOperationStats({ service, hideFramework: true, operation, fromMs: since(args), byVersion: true }),
+        storage.getOperationStats({ service, hideFramework: true, hideColdStarts: true, operation, fromMs: since(args), byVersion: true }),
       )
       const byOperation = new Map<string, OperationStats[]>()
       for (const s of items) {
@@ -119,15 +128,15 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
         changes.push({
           service: latest.service,
           operation: latest.operation,
-          from: { version: previous.serviceVersion ?? 'unknown', count: previous.count, p50Ms: round(previous.p50Ms), p95Ms: round(previous.p95Ms), errorRate: previous.errorRate },
-          to: { version: latest.serviceVersion ?? 'unknown', count: latest.count, p50Ms: round(latest.p50Ms), p95Ms: round(latest.p95Ms), errorRate: latest.errorRate },
+          from: { version: previous.serviceVersion ?? 'unknown', count: previous.count, p50Ms: round(previous.p50Ms), p95Ms: round(previous.p95Ms), errorRate: previous.errorRate, ...(previous.onlyColdStarts ? { onlyColdStarts: true } : {}) },
+          to: { version: latest.serviceVersion ?? 'unknown', count: latest.count, p50Ms: round(latest.p50Ms), p95Ms: round(latest.p95Ms), errorRate: latest.errorRate, ...(latest.onlyColdStarts ? { onlyColdStarts: true } : {}) },
           p95Ratio: previous.p95Ms > 0 ? round(latest.p95Ms / previous.p95Ms) : null,
           errorRateDelta: round(latest.errorRate - previous.errorRate),
         })
       }
       changes.sort((a, b) => (b.p95Ratio ?? 0) - (a.p95Ratio ?? 0) || b.errorRateDelta - a.errorRateDelta)
       const empty = changes.length === 0 ? 'only one version seen per operation — nothing to compare' : undefined
-      return { ...joinNotes(serviceNote, note, empty), changes }
+      return { ...joinNotes(serviceNote, note, coldNote(items), empty), changes }
     },
 
     /** Failing operations: error rate, most common exception messages and example traces. */
@@ -248,6 +257,7 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
             service: s.service,
             durationMs: round(s.durationMs),
             selfMs: round(selfOf(s)),
+            ...(storage.isColdStart(s) ? { coldStart: true } : {}),
             ...(internalMs ? { nextInternalMs: round(internalMs) } : {}),
             ...(s.status === 'error' ? { error: exceptionMessage(s) ?? 'error' } : {}),
             ...(Object.keys(attributes).length ? { attributes } : {}),

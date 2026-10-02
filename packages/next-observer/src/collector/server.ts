@@ -126,7 +126,8 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     }
     const spans = decodeOtlpJson(payload)
     await storage.insertSpans(spans)
-    options.detector?.observe(spans)
+    // A restart of next dev compiles each route on its first request — not an anomaly to investigate.
+    options.detector?.observe(spans.filter((s) => !storage.isColdStart(s)))
     send(res, 200, {})
   }
 

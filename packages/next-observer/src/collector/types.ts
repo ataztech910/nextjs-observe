@@ -63,6 +63,8 @@ export interface OperationFilter {
   byVersion?: boolean
   /** Skip Next.js internal spans (see isFrameworkSpan). */
   hideFramework?: boolean
+  /** Skip each route's first request in a fresh process (StorageAdapter.isColdStart); counted in `coldStarts`. */
+  hideColdStarts?: boolean
 }
 
 export interface OperationStats {
@@ -78,6 +80,10 @@ export interface OperationStats {
   p95Ms: number
   p99Ms: number
   maxMs: number
+  /** With hideColdStarts: how many cold-start requests were left out. */
+  coldStarts?: number
+  /** With hideColdStarts: every request was a cold start, so they are kept — these numbers include compile time. */
+  onlyColdStarts?: boolean
 }
 
 export interface SpanFilter {
@@ -110,4 +116,9 @@ export interface StorageAdapter {
   querySpans(filter: SpanFilter): Promise<NormalizedSpan[]>
   getServices(): Promise<ServiceInfo[]>
   count(): Promise<number>
+  /**
+   * True for the first server span of a route in a process (resource `service.instance.id`, sent by next-observe): in
+   * `next dev` that request includes compiling the route, so it is not representative latency. False without an id.
+   */
+  isColdStart(span: NormalizedSpan): boolean
 }
