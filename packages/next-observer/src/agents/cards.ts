@@ -5,7 +5,9 @@ import type { AgentQueries } from '../debug/queries.js'
 export const THRESHOLDS = {
   /** p95 latest / previous version. */
   regressionRatio: 1.5,
-  /** errorRate latest − previous version. */
+  /** …and p95 grew by at least this much: a 22 → 49 ms blip on a fast call is ×2.2 but not worth a card. */
+  regressionMinMs: 50,
+  /** errorRate latest − previous version; also has to pass the significance test (debug/stats.ts). */
   regressionErrorDelta: 0.1,
   errorRate: 0.05,
   /** One span's self time as a share of the whole trace. */
@@ -27,7 +29,11 @@ export function cardsFromResult(tool: string, args: Record<string, unknown>, res
     case 'compare_versions': {
       const { changes } = result as Result<'compareVersions'>
       return changes
-        .filter((c) => (c.p95Ratio ?? 0) >= THRESHOLDS.regressionRatio || c.errorRateDelta >= THRESHOLDS.regressionErrorDelta)
+        .filter(
+          (c) =>
+            ((c.p95Ratio ?? 0) >= THRESHOLDS.regressionRatio && c.to.p95Ms - c.from.p95Ms >= THRESHOLDS.regressionMinMs) ||
+            (c.errorRateDelta >= THRESHOLDS.regressionErrorDelta && c.errorRateChangeSignificant),
+        )
         .map((c) => ({ kind: 'regression', service: c.service, operation: c.operation, from: c.from, to: c.to, p95Ratio: c.p95Ratio, errorRateDelta: c.errorRateDelta }))
     }
     case 'get_errors': {

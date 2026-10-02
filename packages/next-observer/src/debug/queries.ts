@@ -3,6 +3,7 @@
 // Rules for every tool: compact, token-cheap output (aggregates, not raw spans), rounded numbers, and a `note`
 // instead of an empty result when a name filter matches nothing (users say "checkout", spans say "chargePayment").
 import { isFrameworkSpan } from '../collector/framework.js'
+import { errorRateChangeIsSignificant } from './stats.js'
 import type { NormalizedSpan, OperationStats, StorageAdapter } from '../collector/types.js'
 
 export interface QueryOptions {
@@ -132,6 +133,8 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
           to: { version: latest.serviceVersion ?? 'unknown', count: latest.count, p50Ms: round(latest.p50Ms), p95Ms: round(latest.p95Ms), errorRate: latest.errorRate, ...(latest.onlyColdStarts ? { onlyColdStarts: true } : {}) },
           p95Ratio: previous.p95Ms > 0 ? round(latest.p95Ms / previous.p95Ms) : null,
           errorRateDelta: round(latest.errorRate - previous.errorRate),
+          // A z-test, not the raw delta: with few requests a random 30% failure rate jumps around between versions.
+          errorRateChangeSignificant: errorRateChangeIsSignificant(previous, latest),
         })
       }
       changes.sort((a, b) => (b.p95Ratio ?? 0) - (a.p95Ratio ?? 0) || b.errorRateDelta - a.errorRateDelta)
