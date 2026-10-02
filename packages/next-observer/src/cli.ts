@@ -6,7 +6,7 @@ import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 import { MemoryStorage, startCollector, type Collector, type CollectorOptions } from './collector/index.js'
-import { seedDemo } from './debug/demo.js'
+import { seedDemo, startLiveDemo } from './debug/demo.js'
 import { AnomalyDetector } from './debug/detector.js'
 
 // Type-only: the agents module (and @google/adk behind it) is loaded lazily, so `next-observer --help` stays instant.
@@ -168,7 +168,7 @@ async function loadChat(storage: MemoryStorage, root: string, deps: CliDeps): Pr
   }
 }
 
-async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collector; chatLine: string }> {
+async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collector; chatLine: string; stop: () => Promise<void> }> {
   const storage = new MemoryStorage()
   if (args.demo) await seedDemo(storage)
   const { chat, line: chatLine } = await loadChat(storage, args.root, deps)
@@ -178,11 +178,19 @@ async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collect
     const o = detector.options
     lines.push(`  detector   errors > ${o.errorRate * 100}%, slow (>${o.slowMs}ms) > ${o.slowRate * 100}%, silence > ${o.noTrafficMs / 1000}s → agents investigate on their own`)
   } else lines.push('  detector   off (OBSERVE_DETECTOR=off)')
-  if (args.demo) lines.push('  demo       "shop" scenario loaded: v1 → v2 regression, inventory errors, catalog N+1')
+  if (args.demo) lines.push('  demo       "shop" scenario: v1 → v2 regression, inventory errors, catalog N+1 — live v2 traffic every 2 s')
   const line = lines.join('\n')
   try {
     const collector = await startCollector({ port: args.port, host: args.host, apiKey: args.apiKey, storage, chat, detector })
-    return { collector, chatLine: line }
+    const stopDemo = args.demo ? startLiveDemo({ storage, detector }) : undefined
+    return {
+      collector,
+      chatLine: line,
+      stop: async () => {
+        stopDemo?.()
+        await collector.close()
+      },
+    }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
       throw new CliError(`port ${args.port} is already in use — is another next-observer running? Use --port <n>`)
@@ -201,16 +209,16 @@ function banner(collector: Collector, extra: string[] = []): string {
 }
 
 async function runCollector(args: CliArgs, deps: CliDeps): Promise<number> {
-  const { collector, chatLine } = await start(args, deps)
+  const { collector, chatLine, stop } = await start(args, deps)
   deps.log(banner(collector, [chatLine, ...(args.apiKey ? ['  auth       x-api-key required'] : [])]))
   await deps.shutdownSignal
-  await collector.close()
+  await stop()
   return 0
 }
 
 async function runDev(args: CliArgs, deps: CliDeps): Promise<number> {
   const nextBin = resolveNextBin(args.root)
-  const { collector, chatLine } = await start(args, deps)
+  const { collector, chatLine, stop } = await start(args, deps)
   deps.log(banner(collector, [chatLine, `  app        ${['next dev', ...args.nextArgs].join(' ')} in ${args.root}`]))
 
   const child = deps.spawn(process.execPath, [nextBin, 'dev', ...args.nextArgs], {
@@ -234,7 +242,7 @@ async function runDev(args: CliArgs, deps: CliDeps): Promise<number> {
     await exited
     code = 0
   }
-  await collector.close()
+  await stop()
   return code
 }
 
