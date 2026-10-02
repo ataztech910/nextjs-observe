@@ -75,13 +75,20 @@ describe('AnomalyDetector', () => {
     expect(d.check()).toEqual([])
   })
 
-  it('forgets requests older than the window', () => {
+  it('forgets requests older than the window: 10 s app-wide, 30 s per operation', () => {
     const c = clock()
     const d = new AnomalyDetector({ now: c.now })
     d.observe(Array.from({ length: 10 }, () => failing('GET /x')))
     c.advance(11_000)
     d.observe(Array.from({ length: 10 }, () => request('GET /')))
-    expect(d.check()).toEqual([])
+    // App-wide the failures are gone; GET /x on its own still is within its 30 s window.
+    expect(d.check().map((a) => [a.scope, a.subject?.operation, a.windowMs])).toEqual([['operation', 'GET /x', 30_000]])
+
+    const later = new AnomalyDetector({ now: c.now })
+    later.observe(Array.from({ length: 10 }, () => failing('GET /x')))
+    c.advance(31_000)
+    later.observe(Array.from({ length: 10 }, () => request('GET /')))
+    expect(later.check()).toEqual([])
   })
 
   it('reports the same anomaly type once per cooldown, then again', () => {
@@ -162,7 +169,7 @@ describe('AnomalyDetector per operation', () => {
     const c = clock()
     const d = new AnomalyDetector({ now: c.now })
     d.observe(realisticMix())
-    expect(questionFor(d.check()[0])).toMatch(/^Anomaly detected: 30% of GET \/api\/inventory\/\[id\] requests failed in the last 10s \(10 requests\)/)
+    expect(questionFor(d.check()[0])).toMatch(/^Anomaly detected: 30% of GET \/api\/inventory\/\[id\] requests failed in the last 30s \(10 requests\)/)
   })
 })
 
@@ -174,5 +181,24 @@ describe('questionFor', () => {
     expect(questionFor(d.check()[0])).toBe(
       'Anomaly detected: 40% of server requests failed in the last 10s (10 requests). Most affected: GET /api/inventory/[id] (shop: 4 errors, 0 slow of 4). Find the failing operation, the exact error and its source.',
     )
+  })
+})
+
+describe('AnomalyDetector: an operation with modest traffic (the workshop rehearsal)', () => {
+  // npm run load: 3 requests/s over 5 routes — checkout gets ~0.6/s. v2's payment makes every checkout ~2.4 s.
+  it('catches the slow checkout on its own, although 10 s never hold minSamples checkouts', () => {
+    const c = clock()
+    const d = new AnomalyDetector({ now: c.now })
+    const found = []
+    for (let second = 0; second < 30; second++) {
+      c.advance(1000)
+      const traffic = [request('GET /'), request('GET /api/products'), request('GET /api/inventory/[id]')]
+      if (second % 5 < 3) traffic.push(slow('POST /api/checkout')) // 3 checkouts every 5 s
+      d.observe(traffic)
+      if (second % 5 === 4) found.push(...d.check())
+    }
+    expect(found.map((a) => [a.type, a.subject?.operation ?? 'all'])).toContainEqual(['high_latency', 'POST /api/checkout'])
+    // Slow requests are under 20% of all traffic: the app-wide rule alone would never fire here.
+    expect(found.some((a) => a.type === 'high_latency' && a.scope === 'all')).toBe(false)
   })
 })
