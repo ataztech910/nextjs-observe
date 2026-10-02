@@ -9,7 +9,7 @@ const rootRoute = createRootRoute({
     <div className="min-h-screen bg-background text-foreground">
       <header className="flex h-12 items-center gap-6 border-b px-6">
         <Link to="/traces" className="font-semibold">
-          next-observe
+          next-observer
         </Link>
         <Link to="/traces" className="text-sm text-muted-foreground [&.active]:text-foreground">
           Traces

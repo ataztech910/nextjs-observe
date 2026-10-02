@@ -24,11 +24,13 @@ function exporterFor({ url, headers = {}, protocol = 'http/json' }: Destination)
 export function register(options?: ObserveServerOptions): void {
   const { serviceName, serviceVersion, destinations, endpoint } = resolveServerOptions(options)
   const foreign = destinations.map((d) => d.url).filter((url) => !url.startsWith(`${endpoint}/`))
+  // `next dev` checks npm for a newer Next.js — a fetch from the server process that is not the app's traffic.
+  const devNoise = process.env.NODE_ENV === 'development' ? ['https://registry.npmjs.org/'] : []
   registerOTel({
     serviceName,
     attributes: { 'service.instance.id': INSTANCE_ID, ...(serviceVersion ? { 'service.version': serviceVersion } : {}) },
     // Exporting traces is a fetch too, and so is the /__observe proxy forwarding browser spans — neither is app traffic.
-    instrumentationConfig: { fetch: { ignoreUrls: [`${endpoint}/`, ...foreign] } },
+    instrumentationConfig: { fetch: { ignoreUrls: [`${endpoint}/`, ...foreign, ...devNoise] } },
     // One batch processor per destination, every span goes to each. No `traceExporter`, and no 'auto' — @vercel/otel's
     // 'auto' adds its own exporter whenever OTEL_EXPORTER_OTLP_*_ENDPOINT is set, and every span would go twice. Kept only
     // on Vercel with its collector (VERCEL_OTEL_ENDPOINTS: trace drains), where it adds just that.

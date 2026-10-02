@@ -10,6 +10,7 @@ import type {
   TraceSummary,
 } from './types.js'
 import { isFrameworkSpan } from './framework.js'
+import { spanLabel } from './span-label.js'
 
 export interface MemoryStorageOptions {
   /** Default 100_000. */
@@ -35,7 +36,7 @@ function summarize(traceId: string, spans: NormalizedSpan[]): TraceSummary {
   const end = Math.max(...spans.map((s) => s.startTimeMs + s.durationMs))
   return {
     traceId,
-    rootName: root.name,
+    rootName: spanLabel(root),
     rootService: root.service,
     services: [...new Set(spans.map((s) => s.service))].sort(),
     startTimeMs: start,

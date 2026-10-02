@@ -31,3 +31,31 @@ describe('module side effect', () => {
     expect(trace.getTracerProvider()).toBe(before)
   })
 })
+
+describe('flushWhenHidden', () => {
+  it('sends the batched spans when the page is left or hidden — not when it becomes visible', async () => {
+    const { flushWhenHidden } = await import('../src/client.js')
+    let flushes = 0
+    const provider = { forceFlush: async () => void flushes++ }
+    const win = new EventTarget()
+    const doc = Object.assign(new EventTarget(), { visibilityState: 'visible' })
+    flushWhenHidden(provider, win, doc)
+
+    win.dispatchEvent(new Event('pagehide'))
+    expect(flushes).toBe(1)
+    doc.visibilityState = 'hidden'
+    doc.dispatchEvent(new Event('visibilitychange'))
+    expect(flushes).toBe(2)
+    doc.visibilityState = 'visible'
+    doc.dispatchEvent(new Event('visibilitychange'))
+    expect(flushes).toBe(2)
+  })
+
+  it('a failing flush does not throw into the page', async () => {
+    const { flushWhenHidden } = await import('../src/client.js')
+    const win = new EventTarget()
+    flushWhenHidden({ forceFlush: () => Promise.reject(new Error('offline')) }, win, Object.assign(new EventTarget(), { visibilityState: 'visible' }))
+    expect(() => win.dispatchEvent(new Event('pagehide'))).not.toThrow()
+    await new Promise((r) => setTimeout(r, 0))
+  })
+})
