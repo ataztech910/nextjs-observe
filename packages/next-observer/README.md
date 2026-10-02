@@ -28,7 +28,7 @@ Run them with `npx next-observer <command>`; installed globally (`npm i -g next-
 available as `nxo`.
 
 `next-observer collector` runs the observer alone — next to `next dev` in another terminal, or on a server for production.
-`--demo` preloads a sample "shop" scenario (a regression between versions, a failing endpoint, an N+1).
+`--demo` preloads a sample "shop" scenario (a regression between versions, a failing endpoint, an N+1) and keeps sending live v2 traffic, so the detector and the agents have something to find without an app.
 
 ## Models
 

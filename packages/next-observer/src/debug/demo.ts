@@ -98,3 +98,38 @@ export async function seedDemo(storage: StorageAdapter, now: number = Date.now()
   const spans = demoSpans(now)
   await storage.insertSpans([...spans.slice(-3), ...spans.slice(0, -3)])
 }
+
+export interface LiveDemoOptions {
+  storage: StorageAdapter
+  /** Gets the same spans as ingested traffic would give it. */
+  detector?: { observe(spans: NormalizedSpan[]): void }
+  /** Default 2000. */
+  intervalMs?: number
+  now?: () => number
+}
+
+/** One tick of v2 traffic, with the same three bugs: slow payment, 30% inventory failures, the catalog N+1. */
+export function liveDemoSpans(now: number, tick: number): NormalizedSpan[] {
+  return [
+    ...checkout('v2', now, PAYMENT_V2[tick % PAYMENT_V2.length]),
+    // 3 in 10, spread out like random failures (ticks 2, 5, 8): three in a row — or one in the first ticks, while the
+    // detector's window still holds few requests — would look like an app-wide error spike instead of a broken endpoint.
+    ...inventory('v2', now + 100, [2, 5, 8].includes(tick % 10)),
+    ...(tick % 5 === 0 ? catalog('v2', now + 200) : []),
+  ]
+}
+
+/**
+ * Keeps `--demo` alive: without new traffic the shop looks silent after a few minutes and nothing triggers the detector.
+ * Returns stop(); call it before closing the collector.
+ */
+export function startLiveDemo(options: LiveDemoOptions): () => void {
+  const now = options.now ?? Date.now
+  let tick = 0
+  const timer = setInterval(() => {
+    const spans = liveDemoSpans(now(), tick++)
+    void options.storage.insertSpans(spans).then(() => options.detector?.observe(spans))
+  }, options.intervalMs ?? 2000)
+  timer.unref()
+  return () => clearInterval(timer)
+}

@@ -260,9 +260,21 @@ describe('--demo', () => {
     const h = harness({})
     const exit = run(['collector', '--port', '0', '--demo'], h.deps)
     await until(h.collectorUrl)
-    expect(h.logs[0]).toContain('demo       "shop" scenario loaded')
+    expect(h.logs[0]).toContain('demo       "shop" scenario: v1 → v2 regression, inventory errors, catalog N+1 — live v2 traffic every 2 s')
     const services = await (await fetch(`${h.collectorUrl()}/api/services`)).json()
     expect(services[0]).toMatchObject({ name: 'shop', versions: ['v0', 'v1', 'v2'] })
+    h.stop()
+    expect(await exit).toBe(0)
+  })
+
+  it('keeps sending v2 traffic, so the shop never looks silent', async () => {
+    const h = harness({ OBSERVE_DETECTOR: 'off' })
+    const exit = run(['collector', '--port', '0', '--demo'], h.deps)
+    await until(h.collectorUrl)
+    const spans = async () => ((await (await fetch(`${h.collectorUrl()}/api/services`)).json()) as { spanCount: number }[])[0].spanCount
+    const before = await spans()
+    await new Promise((r) => setTimeout(r, 2300))
+    expect(await spans()).toBeGreaterThan(before)
     h.stop()
     expect(await exit).toBe(0)
   })
