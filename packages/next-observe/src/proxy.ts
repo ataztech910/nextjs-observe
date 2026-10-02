@@ -2,7 +2,7 @@
 //   app/api/next-observe/[...path]/route.ts   →   export { POST } from 'next-observe/proxy'
 // withObserve() then sends /__observe/* here instead of the build-time rewrite, so the destination and headers are read
 // when the server runs (OBSERVE_*, OTEL_EXPORTER_OTLP_*), and secrets such as Authorization stay on the server.
-import { resolveServerOptions } from './exporter-config.js'
+import { resolveServerOptions, type Destination } from './exporter-config.js'
 
 export const MAX_BODY_BYTES = 5 * 1024 * 1024
 
@@ -18,14 +18,14 @@ export async function POST(request: Request, context: { params: Promise<{ path?:
   const body = await request.arrayBuffer()
   if (body.byteLength > MAX_BODY_BYTES) return json(413, { error: 'body too large' })
 
-  const { tracesUrl, headers } = resolveServerOptions()
+  const [primary, ...others] = resolveServerOptions().destinations
+  const type = request.headers.get('content-type') ?? 'application/json'
+  // The browser sends OTLP/JSON; each destination gets its own headers (API keys, Authorization) here, never in the browser.
+  const send = ({ url, headers }: Destination) => fetch(url, { method: 'POST', headers: { ...headers, 'content-type': type }, body })
+  // Every destination gets the spans; the browser sees the first one's answer (the others must not slow it down or fail it).
+  for (const destination of others) send(destination).catch(() => {})
   try {
-    const upstream = await fetch(tracesUrl, {
-      method: 'POST',
-      // The browser sends OTLP/JSON; the configured headers (API keys, Authorization) are added here, never in the browser.
-      headers: { ...headers, 'content-type': request.headers.get('content-type') ?? 'application/json' },
-      body,
-    })
+    const upstream = await send(primary)
     return new Response(await upstream.arrayBuffer(), {
       status: upstream.status,
       headers: { 'content-type': upstream.headers.get('content-type') ?? 'application/json' },
