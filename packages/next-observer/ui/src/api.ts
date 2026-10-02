@@ -28,6 +28,7 @@ function query(params: Record<string, string | number | boolean | undefined>): s
 }
 
 export const api = {
+  health: () => get<{ status: string; spans: number }>('/health'),
   services: () => get<ServiceInfo[]>('/api/services'),
   traces: (search: TraceSearch) => get<TraceSummary[]>(`/api/traces${query({ ...search, limit: 200 })}`),
   trace: (traceId: string) => get<{ traceId: string; spans: TraceSpan[] }>(`/api/traces/${traceId}`),

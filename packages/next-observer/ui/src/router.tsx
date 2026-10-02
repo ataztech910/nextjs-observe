@@ -1,5 +1,6 @@
 import { createRootRoute, createRoute, createRouter, Link, Outlet, redirect } from '@tanstack/react-router'
 import type { TraceSearch } from '@/api'
+import { ObserverOffline } from '@/components/observer-offline'
 import { ChatPage } from '@/pages/chat-page'
 import { TracePage } from '@/pages/trace-page'
 import { TracesPage } from '@/pages/traces-page'
@@ -18,6 +19,7 @@ const rootRoute = createRootRoute({
           Chat
         </Link>
       </header>
+      <ObserverOffline />
       <main className="p-6">
         <Outlet />
       </main>
