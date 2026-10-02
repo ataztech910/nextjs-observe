@@ -92,11 +92,11 @@ interface BrokerAdapter {
 - [ ] Integration test: send real OTLP JSON, assert stored correctly
 
 **Phase B — OTLP/protobuf (required before production)**:
-- [ ] Accept `application/x-protobuf` on all three endpoints — the OTLP default for most SDKs and for `@vercel/otel` without an explicit exporter, and what the OTel Collector sends
-- [ ] Decoder via `protobufjs` + official OTLP `.proto` files (`opentelemetry-proto`, pinned version), precompiled with `pbjs` into a static module — no runtime `.proto` parsing
-- [ ] Protobuf and JSON produce identical `NormalizedSpan[]` — one shared normalizer after decoding
-- [ ] `Content-Encoding: gzip` support (the OTel Collector's `otlphttp` exporter sends gzip by default; SDKs enable it via `OTEL_EXPORTER_OTLP_COMPRESSION`)
-- [ ] Contract tests: the same spans exported by the real `@opentelemetry/exporter-trace-otlp-proto` and `-http` (JSON) → identical rows in storage
+- [x] Accept `application/x-protobuf` on `/v1/traces` (step 29; metrics/logs endpoints don't exist yet) — the OTLP default for most SDKs and for `@vercel/otel` without an explicit exporter, and what the OTel Collector sends
+- [x] ~~Decoder via `protobufjs` + `.proto` files~~ → own ~200-line wire-format reader for the trace messages only, no dependency (step 29); verified byte-for-byte against the official serializers
+- [x] Protobuf and JSON produce identical `NormalizedSpan[]` — one shared normalizer after decoding
+- [x] `Content-Encoding: gzip` support (the OTel Collector's `otlphttp` exporter sends gzip by default; SDKs enable it via `OTEL_EXPORTER_OTLP_COMPRESSION`)
+- [x] Contract tests: the same spans serialized by the real OTel protobuf and JSON serializers → identical rows (unit), plus e2e with `@opentelemetry/exporter-trace-otlp-proto` + gzip
 - [ ] Then switch `next-observe/server` default to protobuf (smaller payloads), keep JSON as an option
 
 ### Key decisions

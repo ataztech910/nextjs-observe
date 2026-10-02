@@ -68,7 +68,8 @@ Tools: `get_services`, `get_operation_stats`, `compare_versions`, `get_errors`, 
 | `OBSERVE_API_KEY` | — | require `x-api-key` on ingest and API |
 | `OBSERVE_PORT`, `OBSERVE_HOST`, `OBSERVE_ROOT` | `4318`, `127.0.0.1`, `.` | same as `--port`, `--host`, `--root` |
 
-Accepts OTLP/HTTP **JSON** (what `next-observe` sends); protobuf is planned.
+Accepts OTLP/HTTP traces from any OpenTelemetry SDK or Collector: `application/json` and `application/x-protobuf`,
+optionally `Content-Encoding: gzip`, on `/v1/traces`.
 
 ## Entry points
 
