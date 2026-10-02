@@ -17,6 +17,14 @@ export {
 // globalThis.crypto works in both the Node and the Edge runtime.
 const INSTANCE_ID = globalThis.crypto.randomUUID()
 
+/**
+ * How often server spans are sent. OTel's default is 5 s — in `next dev` that means clicking in the app and waiting
+ * seconds for the server half of the trace to appear in the observer. Production keeps the default: fewer requests.
+ */
+export function serverBatchDelayMs(nodeEnv: string | undefined = process.env.NODE_ENV): number {
+  return nodeEnv === 'development' ? 1000 : 5000
+}
+
 function exporterFor({ url, headers = {}, protocol = 'http/json' }: Destination) {
   return protocol === 'http/protobuf' ? new OTLPHttpProtoTraceExporter({ url, headers }) : new OTLPHttpJsonTraceExporter({ url, headers })
 }
@@ -34,6 +42,6 @@ export function register(options?: ObserveServerOptions): void {
     // One batch processor per destination, every span goes to each. No `traceExporter`, and no 'auto' — @vercel/otel's
     // 'auto' adds its own exporter whenever OTEL_EXPORTER_OTLP_*_ENDPOINT is set, and every span would go twice. Kept only
     // on Vercel with its collector (VERCEL_OTEL_ENDPOINTS: trace drains), where it adds just that.
-    spanProcessors: [...(process.env.VERCEL_OTEL_ENDPOINTS ? (['auto'] as const) : []), ...destinations.map((d) => new BatchSpanProcessor(exporterFor(d)))],
+    spanProcessors: [...(process.env.VERCEL_OTEL_ENDPOINTS ? (['auto'] as const) : []), ...destinations.map((d) => new BatchSpanProcessor(exporterFor(d), { scheduledDelayMillis: serverBatchDelayMs() }))],
   })
 }

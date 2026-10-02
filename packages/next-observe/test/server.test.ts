@@ -16,7 +16,7 @@ vi.mock('@vercel/otel', () => ({
   },
 }))
 
-const { parseOtlpHeaders, register, resolveServerOptions } = await import('../src/server.js')
+const { parseOtlpHeaders, register, resolveServerOptions, serverBatchDelayMs } = await import('../src/server.js')
 
 const ENV = [
   'OBSERVE_SERVICE_NAME', 'OBSERVE_SERVICE_VERSION', 'OBSERVE_ENDPOINT', 'OBSERVE_API_KEY', 'VERCEL_GIT_COMMIT_SHA',
@@ -191,5 +191,23 @@ describe('dev noise', () => {
     vi.stubEnv('NODE_ENV', 'production')
     register()
     expect(calls.registerOTel[1].instrumentationConfig.fetch.ignoreUrls).not.toContain('https://registry.npmjs.org/')
+  })
+})
+
+describe('server batch delay', () => {
+  it('1 s in development so traces show up right after a click; the OTel default 5 s otherwise', () => {
+    expect(serverBatchDelayMs('development')).toBe(1000)
+    expect(serverBatchDelayMs('production')).toBe(5000)
+    expect(serverBatchDelayMs(undefined)).toBe(5000)
+  })
+
+  it('register() uses it for every destination', () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    vi.stubEnv('OBSERVE_ENDPOINT', 'http://127.0.0.1:4318')
+    vi.stubEnv('OTEL_EXPORTER_OTLP_ENDPOINT', 'https://otlp.vendor.io')
+    register()
+    // BatchSpanProcessor keeps the option privately; reading it is the only way to see what register() passed.
+    const delays = calls.registerOTel[0].spanProcessors.map((p: { _scheduledDelayMillis: number }) => p._scheduledDelayMillis)
+    expect(delays).toEqual([1000, 1000])
   })
 })
