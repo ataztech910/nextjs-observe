@@ -77,3 +77,40 @@ describe('chat turn with cards (mock model)', () => {
     expect(events.findIndex((e) => e.type === 'card')).toBeLessThan(events.findIndex((e) => e.type === 'report'))
   })
 })
+
+describe('regression card on error rate', () => {
+  const change = (errorRateDelta: number, errorRateChangeSignificant: boolean) => ({
+    service: 'shop',
+    operation: 'GET /api/inventory/[id]',
+    from: { version: 'v1', count: 32, p50Ms: 15, p95Ms: 115, errorRate: 0.29 },
+    to: { version: 'v2', count: 18, p50Ms: 16, p95Ms: 140, errorRate: 0.29 + errorRateDelta },
+    p95Ratio: 1.2,
+    errorRateDelta,
+    errorRateChangeSignificant,
+  })
+
+  it('needs the change to be significant, not just ≥ 0.1', () => {
+    expect(cardsFromResult('compare_versions', {}, { changes: [change(0.15, false)] })).toEqual([])
+    expect(cardsFromResult('compare_versions', {}, { changes: [change(0.15, true)] })).toHaveLength(1)
+  })
+})
+
+describe('regression card on latency', () => {
+  const change = (fromMs: number, toMs: number) => ({
+    service: 'shop',
+    operation: 'op',
+    from: { version: 'v1', count: 97, p50Ms: fromMs, p95Ms: fromMs, errorRate: 0 },
+    to: { version: 'v2', count: 63, p50Ms: toMs, p95Ms: toMs, errorRate: 0 },
+    p95Ratio: Math.round((toMs / fromMs) * 10) / 10,
+    errorRateDelta: 0,
+    errorRateChangeSignificant: false,
+  })
+
+  it('needs ×1.5 and at least +50 ms: the real chargePayment regression yes, a fast call\'s 22 → 49 ms blip no', () => {
+    expect(cardsFromResult('compare_versions', {}, { changes: [change(233, 2487)] })).toHaveLength(1)
+    expect(cardsFromResult('compare_versions', {}, { changes: [change(21.9, 49)] })).toEqual([])
+    expect(cardsFromResult('compare_versions', {}, { changes: [change(100, 140)] })).toEqual([])
+    // +100 ms on a 1 s operation is only ×1.1 — the ratio is the main criterion.
+    expect(cardsFromResult('compare_versions', {}, { changes: [change(1000, 1100)] })).toEqual([])
+  })
+})

@@ -67,6 +67,13 @@ describe('compareVersions', () => {
   })
 })
 
+describe('compareVersions: error-rate significance', () => {
+  it('flags the random 30% inventory failures as not significant, in both versions of the demo', async () => {
+    const inventory = (await q.compareVersions()).changes.find((c) => c.operation === 'GET /api/inventory/[id]')!
+    expect(inventory.errorRateChangeSignificant).toBe(false)
+  })
+})
+
 describe('getErrors', () => {
   it('finds the failing operation with its rate, message and example traces', async () => {
     const { errors } = await q.getErrors()
