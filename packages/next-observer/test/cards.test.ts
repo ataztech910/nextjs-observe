@@ -18,7 +18,8 @@ describe('cardsFromResult', () => {
     expect(payment).toMatchObject({ from: { version: 'v1' }, to: { version: 'v2' }, errorRateDelta: 0 })
     expect(payment.p95Ratio).toBeGreaterThan(7)
     expect(cards.every((c) => c.kind === 'regression' && (c.p95Ratio ?? 0) >= 1.5)).toBe(true)
-    expect(cardsFromResult('compare_versions', {}, await q.compareVersions({ sinceMinutes: 5 }))).toEqual([])
+    // A window holding only v2 still compares with v1's last window of traffic.
+    expect(byKind(cardsFromResult('compare_versions', {}, await q.compareVersions({ sinceMinutes: 5 })), 'regression').map((c) => c.operation)).toContain('chargePayment')
   })
 
   it('get_errors → an errors card with the exact message and example traces; tiny error rates are ignored', async () => {

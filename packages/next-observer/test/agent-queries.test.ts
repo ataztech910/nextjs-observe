@@ -60,8 +60,41 @@ describe('compareVersions', () => {
     expect(changes[0]).toMatchObject({ from: { version: 'f00d' }, to: { version: 'a1b2' }, p95Ratio: 5 })
   })
 
-  it('says so when there is only one version', async () => {
+  it('a previous version without traffic in the window is compared on its own last window of traffic', async () => {
+    // v1 ran 12–8 min ago; a 5-minute window only holds v2.
     const { note, changes } = await q.compareVersions({ sinceMinutes: 5 })
+    expect(changes.find((c) => c.operation === 'chargePayment')).toMatchObject({ from: { version: 'v1' }, to: { version: 'v2' } })
+    expect(note).toContain('v1 has no traffic in this window — compared with its last 5 min of traffic (until 8 min ago)')
+  })
+
+  it('keeps naming the deployment long after it: 20 minutes later the regression is still v1 → v2', async () => {
+    const later = createAgentQueries(await shopStorage(), { now: () => NOW + 20 * 60_000 })
+    const { changes } = await later.compareVersions({ sinceMinutes: 30 })
+    expect(changes[0]).toMatchObject({ operation: 'chargePayment', from: { version: 'v1' }, to: { version: 'v2' } })
+    expect(changes[0].p95Ratio).toBeGreaterThan(7)
+  })
+
+  it('uses the previous version\'s LAST window, not its whole history (an old incident must not hide the regression)', async () => {
+    const span = (id: number, version: string, startTimeMs: number, durationMs: number) => ({
+      traceId: id.toString(16).padStart(32, '0'), spanId: id.toString(16).padStart(16, '0'), parentSpanId: null, name: 'POST /pay', kind: 'server' as const,
+      service: 'pay', serviceVersion: version, scope: null, startTimeMs, durationMs, status: 'unset' as const, statusMessage: null, attributes: {}, resource: {}, events: [],
+    })
+    const storage = new MemoryStorage()
+    const spans = []
+    let id = 1
+    for (let i = 0; i < 20; i++) spans.push(span(id++, 'v1', NOW - 120 * 60_000 + i * 1000, 3000)) // incident two hours ago
+    for (let i = 0; i < 20; i++) spans.push(span(id++, 'v1', NOW - 30 * 60_000 + i * 1000, 200)) // healthy right before the deploy
+    for (let i = 0; i < 20; i++) spans.push(span(id++, 'v2', NOW - 5 * 60_000 + i * 1000, 2400))
+    await storage.insertSpans(spans)
+    const { changes } = await createAgentQueries(storage, { now: () => NOW }).compareVersions()
+    expect(changes[0]).toMatchObject({ from: { version: 'v1', p95Ms: 200, count: 20 }, to: { version: 'v2' } })
+    expect(changes[0].p95Ratio).toBe(12)
+  })
+
+  it('says so when there is really only one version', async () => {
+    const storage = new MemoryStorage()
+    await storage.insertSpans([{ traceId: 'a'.repeat(32), spanId: 'b'.repeat(16), parentSpanId: null, name: 'GET /', kind: 'server', service: 'solo', serviceVersion: 'v1', scope: null, startTimeMs: NOW - 60_000, durationMs: 10, status: 'unset', statusMessage: null, attributes: {}, resource: {}, events: [] }])
+    const { note, changes } = await createAgentQueries(storage, { now: () => NOW }).compareVersions()
     expect(changes).toEqual([])
     expect(note).toContain('only one version')
   })

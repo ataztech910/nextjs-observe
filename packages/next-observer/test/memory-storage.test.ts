@@ -132,8 +132,8 @@ describe('MemoryStorage.getTrace / getOperationStats / getServices', () => {
       span({ traceId: T(3), service: 'shop-browser', serviceVersion: null }),
     ])
     expect(await storage.getServices()).toEqual([
-      { name: 'shop', versions: ['v1', 'v2'], spanCount: 2, lastSeenMs: 30 },
-      { name: 'shop-browser', versions: [], spanCount: 1, lastSeenMs: 1000 },
+      { name: 'shop', versions: ['v1', 'v2'], spanCount: 2, lastSeenMs: 30, versionLastSeenMs: { v1: 10, v2: 30 } },
+      { name: 'shop-browser', versions: [], spanCount: 1, lastSeenMs: 1000, versionLastSeenMs: {} },
     ])
   })
 })
