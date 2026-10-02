@@ -23,7 +23,13 @@ export interface Anomaly {
 }
 
 export interface DetectorOptions {
+  /** Window for the app-wide rule. */
   windowMs?: number
+  /**
+   * Window for the per-operation rule. Longer than the app-wide one: an operation is a fraction of the traffic, and in
+   * 10 s a checkout at ~0.6 requests/s gets 3–5 samples — under minSamples, so a ×7 slowdown went unnoticed.
+   */
+  operationWindowMs?: number
   /** Error share of server requests in the window. */
   errorRate?: number
   /** A request slower than this counts as slow. */
@@ -39,7 +45,7 @@ export interface DetectorOptions {
   now?: () => number
 }
 
-const DEFAULTS = { windowMs: 10_000, errorRate: 0.2, slowMs: 1000, slowRate: 0.3, noTrafficMs: 120_000, minSamples: 5, cooldownMs: 300_000 }
+const DEFAULTS = { windowMs: 10_000, operationWindowMs: 30_000, errorRate: 0.2, slowMs: 1000, slowRate: 0.3, noTrafficMs: 120_000, minSamples: 5, cooldownMs: 300_000 }
 
 // Only server entry spans count: Next emits ~7 internal spans per request, which would dilute a 30% error rate below
 // any threshold. Browser and internal spans are ignored.
@@ -71,35 +77,35 @@ export class AnomalyDetector {
   check(): Anomaly[] {
     const now = this.now()
     const o = this.options
-    this.window = this.window.filter((w) => now - w.atMs <= o.windowMs)
-    const requests = this.window.map((w) => w.span)
+    this.window = this.window.filter((w) => now - w.atMs <= Math.max(o.windowMs, o.operationWindowMs))
+    const within = (ms: number) => this.window.filter((w) => now - w.atMs <= ms).map((w) => w.span)
     const found: Anomaly[] = []
 
-    const judge = (list: NormalizedSpan[], subject?: Anomaly['subject']) => {
+    const judge = (list: NormalizedSpan[], windowMs: number, subject?: Anomaly['subject']) => {
       if (list.length < o.minSamples) return
       const errorRate = list.filter((s) => s.status === 'error').length / list.length
       const slowRate = list.filter((s) => s.durationMs > o.slowMs).length / list.length
       // An operation-level anomaly would only repeat an app-wide one of the same type.
       const covered = (type: AnomalyType) => subject && found.some((a) => a.type === type && a.scope === 'all')
       if (errorRate > o.errorRate && !covered('high_error_rate')) {
-        found.push(this.anomaly('high_error_rate', errorRate, o.errorRate, list, now, errorRate >= 2 * o.errorRate, subject))
+        found.push(this.anomaly('high_error_rate', errorRate, o.errorRate, list, now, errorRate >= 2 * o.errorRate, windowMs, subject))
       }
       if (slowRate > o.slowRate && !covered('high_latency')) {
-        found.push(this.anomaly('high_latency', slowRate, o.slowRate, list, now, slowRate >= 2 * o.slowRate, subject))
+        found.push(this.anomaly('high_latency', slowRate, o.slowRate, list, now, slowRate >= 2 * o.slowRate, windowMs, subject))
       }
     }
-    judge(requests)
+    judge(within(o.windowMs), o.windowMs)
     // Per operation: on a realistic route mix one broken endpoint (30% errors) is only ~10% of all requests —
     // below the app-wide threshold, yet clearly an incident.
     const byOperation = new Map<string, NormalizedSpan[]>()
-    for (const s of requests) {
+    for (const s of within(o.operationWindowMs)) {
       const key = `${s.service}\u0000${s.name}`
       byOperation.set(key, [...(byOperation.get(key) ?? []), s])
     }
-    for (const list of byOperation.values()) judge(list, { service: list[0].service, operation: list[0].name })
+    for (const list of byOperation.values()) judge(list, o.operationWindowMs, { service: list[0].service, operation: list[0].name })
 
     if (this.lastSeenMs !== null && now - this.lastSeenMs > o.noTrafficMs) {
-      found.push(this.anomaly('no_traffic', Math.round((now - this.lastSeenMs) / 1000), o.noTrafficMs / 1000, [], now, true))
+      found.push(this.anomaly('no_traffic', Math.round((now - this.lastSeenMs) / 1000), o.noTrafficMs / 1000, [], now, true, o.windowMs))
     }
 
     return found.filter((a) => {
@@ -111,7 +117,7 @@ export class AnomalyDetector {
     })
   }
 
-  private anomaly(type: AnomalyType, value: number, threshold: number, requests: NormalizedSpan[], now: number, critical: boolean, subject?: Anomaly['subject']): Anomaly {
+  private anomaly(type: AnomalyType, value: number, threshold: number, requests: NormalizedSpan[], now: number, critical: boolean, windowMs: number, subject?: Anomaly['subject']): Anomaly {
     const byOperation = new Map<string, Anomaly['operations'][number]>()
     for (const s of requests) {
       const key = `${s.service}\u0000${s.name}`
@@ -136,7 +142,7 @@ export class AnomalyDetector {
       value: Math.round(value * 1000) / 1000,
       threshold,
       sampleSize: requests.length,
-      windowMs: this.options.windowMs,
+      windowMs,
       operations,
     }
   }
