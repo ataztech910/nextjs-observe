@@ -2,7 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 import { spanLabel } from '../../../src/collector/span-label'
 import { getRouteApi, Link } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
-import { api, type NormalizedSpan } from '@/api'
+import { api, type NormalizedSpan, type TraceSpan } from '@/api'
+import { ColdStartBadge } from '@/components/cold-start-badge'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { layoutWaterfall, formatDuration } from '@/lib/waterfall'
@@ -33,7 +34,10 @@ export function TracePage() {
         <Link to="/traces" className="text-sm text-muted-foreground hover:underline">
           ← Traces
         </Link>
-        <h1 className="text-lg font-semibold">{layout.rows[0] ? spanLabel(layout.rows[0].span) : ''}</h1>
+        <h1 className="text-lg font-semibold">
+          {layout.rows[0] ? spanLabel(layout.rows[0].span) : ''}
+          {trace.data.spans.some((s) => s.coldStart) && <ColdStartBadge />}
+        </h1>
         <span className="text-sm text-muted-foreground tabular-nums">
           {formatDuration(layout.durationMs)} · {layout.rows.length} spans
         </span>
@@ -55,6 +59,7 @@ export function TracePage() {
             >
               <span className="truncate" style={{ paddingLeft: depth * 14 }}>
                 <span className={span.status === 'error' ? 'font-medium text-destructive' : ''}>{spanLabel(span)}</span>
+                {(span as TraceSpan).coldStart && <ColdStartBadge />}
                 <span className="ml-2 text-xs text-muted-foreground">{span.service}</span>
               </span>
               <span className="relative h-4">

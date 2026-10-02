@@ -1,9 +1,9 @@
 // Types come straight from the collector, so the UI can't drift from the API.
 import type { ChatEvent, EvidenceCard, ProactiveEvent, VersionStats } from '../../src/collector/chat'
 import type { Anomaly } from '../../src/debug/detector'
-import type { NormalizedSpan, OperationStats, ServiceInfo, TraceSummary } from '../../src/collector/types'
+import type { NormalizedSpan, OperationStats, ServiceInfo, TraceSpan, TraceSummary } from '../../src/collector/types'
 
-export type { Anomaly, ChatEvent, EvidenceCard, ProactiveEvent, VersionStats, NormalizedSpan, OperationStats, ServiceInfo, TraceSummary }
+export type { Anomaly, ChatEvent, EvidenceCard, ProactiveEvent, VersionStats, NormalizedSpan, OperationStats, ServiceInfo, TraceSpan, TraceSummary }
 
 export type ChatInfo = { enabled: true; mode: 'mock' | 'real' } | { enabled: false; reason: string }
 
@@ -30,7 +30,7 @@ function query(params: Record<string, string | number | boolean | undefined>): s
 export const api = {
   services: () => get<ServiceInfo[]>('/api/services'),
   traces: (search: TraceSearch) => get<TraceSummary[]>(`/api/traces${query({ ...search, limit: 200 })}`),
-  trace: (traceId: string) => get<{ traceId: string; spans: NormalizedSpan[] }>(`/api/traces/${traceId}`),
+  trace: (traceId: string) => get<{ traceId: string; spans: TraceSpan[] }>(`/api/traces/${traceId}`),
   chatInfo: () => get<ChatInfo>('/api/chat'),
 
   /** Streams one chat turn: calls onEvent for every NDJSON line as the agents work. */

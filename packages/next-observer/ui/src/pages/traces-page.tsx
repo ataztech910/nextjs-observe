@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { getRouteApi, Link, useNavigate } from '@tanstack/react-router'
 import { api, type TraceSearch } from '@/api'
 import { Badge } from '@/components/ui/badge'
+import { ColdStartBadge } from '@/components/cold-start-badge'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -78,6 +79,7 @@ export function TracesPage() {
                 <Link to="/traces/$traceId" params={{ traceId: t.traceId }} className="font-medium hover:underline">
                   {t.rootName}
                 </Link>
+                {t.coldStart && <ColdStartBadge />}
                 <div className="font-mono text-xs text-muted-foreground">{t.traceId.slice(0, 16)}</div>
               </TableCell>
               <TableCell className="space-x-1">

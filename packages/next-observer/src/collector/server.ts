@@ -247,7 +247,8 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     if (traceMatch) {
       const spans = await storage.getTrace(traceMatch[1])
       if (spans.length === 0) throw new HttpError(404, 'trace not found')
-      return send(res, 200, { traceId: traceMatch[1], spans })
+      // The UI marks the cold request: "671 ms" next to "18 ms" needs its explanation right there.
+      return send(res, 200, { traceId: traceMatch[1], spans: spans.map((s) => (storage.isColdStart(s) ? { ...s, coldStart: true } : s)) })
     }
     if (url.pathname === '/api/operations') {
       return send(
