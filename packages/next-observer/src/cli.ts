@@ -7,12 +7,17 @@ import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 import { MemoryStorage, startCollector, type Collector, type CollectorOptions } from './collector/index.js'
 import { seedDemo, startLiveDemo } from './debug/demo.js'
+import { detectPackageManager, init, type InitChange, type PackageManager } from './init.js'
 import { AnomalyDetector } from './debug/detector.js'
 
 // Type-only: the agents module (and @google/adk behind it) is loaded lazily, so `next-observer --help` stays instant.
 type AgentsModule = typeof import('./agents/index.js')
 
 export const HELP = `Usage:
+  next-observer init [--root <dir>] [--proxy]
+      Connect a Next.js app to next-observe: install it, wrap next.config in withObserve(), add instrumentation.ts and
+      instrumentation-client.ts, and an "observe" script. Safe to run again. --proxy also adds the runtime proxy route.
+
   next-observer dev [--root <dir>] [--port <n>] [-- <next dev args>]
       Start the collector and \`next dev\` for the app in <dir> (default: current directory).
       Example: next-observer dev --root apps/web -- -p 3100
@@ -29,12 +34,13 @@ export class CliError extends Error {}
 export type Env = Record<string, string | undefined>
 
 export interface CliArgs {
-  command: 'dev' | 'collector' | 'help'
+  command: 'init' | 'dev' | 'collector' | 'help'
   root: string
   port: number
   host: string
   apiKey?: string
   demo: boolean
+  proxy: boolean
   nextArgs: string[]
 }
 
@@ -54,6 +60,7 @@ export function parseCliArgs(argv: string[], env: Env, cwd: string): CliArgs {
         host: { type: 'string' },
         'api-key': { type: 'string' },
         demo: { type: 'boolean' },
+        proxy: { type: 'boolean' },
         help: { type: 'boolean', short: 'h' },
       },
     })
@@ -63,7 +70,7 @@ export function parseCliArgs(argv: string[], env: Env, cwd: string): CliArgs {
   const { values, positionals } = parsed
 
   const command = values.help || positionals.length === 0 ? 'help' : positionals[0]
-  if (command !== 'dev' && command !== 'collector' && command !== 'help') throw new CliError(`unknown command "${command}"`)
+  if (command !== 'init' && command !== 'dev' && command !== 'collector' && command !== 'help') throw new CliError(`unknown command "${command}"`)
 
   const rawPort = values.port ?? env.OBSERVE_PORT ?? '4318'
   const port = Number(rawPort)
@@ -76,6 +83,7 @@ export function parseCliArgs(argv: string[], env: Env, cwd: string): CliArgs {
     host: values.host ?? env.OBSERVE_HOST ?? '127.0.0.1',
     apiKey: values['api-key'] ?? env.OBSERVE_API_KEY,
     demo: values.demo ?? false,
+    proxy: values.proxy ?? false,
     nextArgs,
   }
 }
@@ -87,6 +95,8 @@ export interface CliDeps {
   spawn: (command: string, args: string[], options: SpawnOptions) => ChildProcess
   /** Resolves when the CLI should stop (SIGINT/SIGTERM in real use). */
   shutdownSignal: Promise<string>
+  /** Replaces init() in tests. */
+  init?: typeof init
   /** Loads the agents module; injectable for tests. */
   loadAgents?: () => Promise<AgentsModule>
 }
@@ -246,6 +256,38 @@ async function runDev(args: CliArgs, deps: CliDeps): Promise<number> {
   return code
 }
 
+/** "^0.2" for 0.2.x — the range the app's "observe" script asks npx for. */
+function ownRange(): string {
+  const { version } = createRequire(import.meta.url)('../package.json') as { version: string }
+  const [major, minor] = version.split('.')
+  return major === '0' ? `^0.${minor}` : `^${major}`
+}
+
+async function runInit(args: CliArgs, deps: CliDeps): Promise<number> {
+  const install = (root: string, pm: PackageManager) =>
+    new Promise<boolean>((resolveInstall) => {
+      const child = deps.spawn(pm, [pm === 'npm' ? 'install' : 'add', 'next-observe'], { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' })
+      child.once('exit', (code) => resolveInstall(code === 0))
+      child.once('error', () => resolveInstall(false))
+    })
+  let changes: InitChange[]
+  try {
+    changes = await (deps.init ?? init)({ root: args.root, proxy: args.proxy, observerRange: ownRange(), install })
+  } catch (error) {
+    throw new CliError((error as Error).message)
+  }
+  const width = Math.max(...changes.map((c) => c.file.length))
+  deps.log(['next-observer init', ...changes.map((c) => `  ${c.action.padEnd(9)} ${c.file.padEnd(width)}  ${c.note}`)].join('\n'))
+  const manual = changes.filter((c) => c.action === 'manual').length
+  const start = `${detectPackageManager(args.root)} run observe`
+  deps.log(
+    manual
+      ? `\n${manual} step(s) to do by hand (above). Then: ${start}`
+      : `\nDone. Start the app with the observer:  ${start}   — traces and the agents' chat at http://127.0.0.1:4318`,
+  )
+  return 0
+}
+
 export async function run(argv: string[], deps: CliDeps): Promise<number> {
   try {
     const args = parseCliArgs(argv, deps.env, deps.cwd)
@@ -253,6 +295,7 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
       deps.log(HELP)
       return 0
     }
+    if (args.command === 'init') return await runInit(args, deps)
     return await (args.command === 'dev' ? runDev(args, deps) : runCollector(args, deps))
   } catch (error) {
     if (!(error instanceof CliError)) throw error

@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ChildProcess, SpawnOptions } from 'node:child_process'
@@ -72,6 +72,7 @@ describe('parseCliArgs', () => {
       host: '127.0.0.1',
       apiKey: undefined,
       demo: false,
+      proxy: false,
       nextArgs: ['-p', '3100'],
     })
     expect(parseCliArgs(['dev', '--root=apps/web'], {}, '/work').root).toBe('/work/apps/web')
@@ -252,6 +253,33 @@ describe('project agents (observe.agents.*)', () => {
     const h = harness({})
     expect(await run(['collector', '--port', '0', '--root', project(files)], h.deps)).toBe(1)
     expect(h.logs[0]).toContain(message)
+  })
+})
+
+describe('init', () => {
+  it('installs next-observe with the project\'s package manager and prints what changed', async () => {
+    const root = fixtureApp(false)
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'app', dependencies: { next: '16.3.8' } }))
+    writeFileSync(join(root, 'pnpm-lock.yaml'), '')
+    const h = harness({})
+    const exit = run(['init', '--root', root], h.deps)
+    await until(() => h.spawned.length === 1)
+    expect(h.spawned[0]).toMatchObject({ command: 'pnpm', args: ['add', 'next-observe'], options: { cwd: root } })
+    h.spawned[0].child.exit(0)
+    expect(await exit).toBe(0)
+    const out = h.logs.join('\n')
+    // No tsconfig.json: a JavaScript app gets JavaScript files only.
+    expect(out).toMatch(/created\s+next\.config\.mjs/)
+    expect(out).toMatch(/created\s+instrumentation\.js\s+server traces/)
+    expect(out).toMatch(/created\s+instrumentation-client\.js\s+browser traces/)
+    expect(out).toContain('pnpm run observe')
+    expect(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).scripts.observe).toMatch(/^npx --yes next-observer@\^0\.\d+ dev$/)
+  })
+
+  it('fails clearly outside a Next.js app', async () => {
+    const h = harness({})
+    expect(await run(['init', '--root', mkdtempSync(join(tmpdir(), 'not-next-'))], h.deps)).toBe(1)
+    expect(h.logs[0]).toContain('no package.json')
   })
 })
 
