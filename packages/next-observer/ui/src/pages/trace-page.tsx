@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { spanLabel } from '../../../src/collector/span-label'
 import { getRouteApi, Link } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import { api, type NormalizedSpan } from '@/api'
@@ -32,7 +33,7 @@ export function TracePage() {
         <Link to="/traces" className="text-sm text-muted-foreground hover:underline">
           ← Traces
         </Link>
-        <h1 className="text-lg font-semibold">{layout.rows[0]?.span.name}</h1>
+        <h1 className="text-lg font-semibold">{layout.rows[0] ? spanLabel(layout.rows[0].span) : ''}</h1>
         <span className="text-sm text-muted-foreground tabular-nums">
           {formatDuration(layout.durationMs)} · {layout.rows.length} spans
         </span>
@@ -53,7 +54,7 @@ export function TracePage() {
               className="grid w-full grid-cols-[minmax(0,2fr)_minmax(0,3fr)_4.5rem] items-center gap-3 border-b px-3 py-1.5 text-left text-sm last:border-b-0 hover:bg-muted/50 aria-selected:bg-muted"
             >
               <span className="truncate" style={{ paddingLeft: depth * 14 }}>
-                <span className={span.status === 'error' ? 'font-medium text-destructive' : ''}>{span.name}</span>
+                <span className={span.status === 'error' ? 'font-medium text-destructive' : ''}>{spanLabel(span)}</span>
                 <span className="ml-2 text-xs text-muted-foreground">{span.service}</span>
               </span>
               <span className="relative h-4">
@@ -85,7 +86,7 @@ function SpanDetails({ span }: { span: NormalizedSpan }) {
     <Card className="self-start" data-testid="span-details">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          {span.name}
+          {spanLabel(span)}
           {span.status === 'error' && <Badge variant="destructive">error</Badge>}
         </CardTitle>
       </CardHeader>

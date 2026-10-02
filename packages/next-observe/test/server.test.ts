@@ -21,7 +21,7 @@ const { parseOtlpHeaders, register, resolveServerOptions } = await import('../sr
 const ENV = [
   'OBSERVE_SERVICE_NAME', 'OBSERVE_SERVICE_VERSION', 'OBSERVE_ENDPOINT', 'OBSERVE_API_KEY', 'VERCEL_GIT_COMMIT_SHA',
   'OTEL_EXPORTER_OTLP_ENDPOINT', 'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'OTEL_EXPORTER_OTLP_HEADERS',
-  'OTEL_EXPORTER_OTLP_TRACES_HEADERS', 'OTEL_EXPORTER_OTLP_PROTOCOL', 'OTEL_EXPORTER_OTLP_TRACES_PROTOCOL', 'VERCEL_OTEL_ENDPOINTS',
+  'OTEL_EXPORTER_OTLP_TRACES_HEADERS', 'OTEL_EXPORTER_OTLP_PROTOCOL', 'OTEL_EXPORTER_OTLP_TRACES_PROTOCOL', 'VERCEL_OTEL_ENDPOINTS', 'NODE_ENV',
 ]
 
 beforeEach(() => {
@@ -180,5 +180,16 @@ describe('several destinations', () => {
       { url: 'https://a.example/v1/traces', headers: {}, protocol: 'http/json' },
       { url: 'https://b.example/t', headers: { k: 'v' }, protocol: 'http/protobuf' },
     ])
+  })
+})
+
+describe('dev noise', () => {
+  it('does not trace next dev checking npm for updates — in development only', () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    register()
+    expect(calls.registerOTel[0].instrumentationConfig.fetch.ignoreUrls).toContain('https://registry.npmjs.org/')
+    vi.stubEnv('NODE_ENV', 'production')
+    register()
+    expect(calls.registerOTel[1].instrumentationConfig.fetch.ignoreUrls).not.toContain('https://registry.npmjs.org/')
   })
 })

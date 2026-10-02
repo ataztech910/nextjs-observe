@@ -24,14 +24,32 @@ export function resolveClientOptions(options: ObserveClientOptions = {}) {
   }
 }
 
+/**
+ * Sends what is batched when the page goes away (navigation, closing, switching tabs). Without it the last ~2 s of
+ * spans are lost — a click to the next page dropped the fetch spans of the current one (seen in the workshop rehearsal).
+ * The OTLP exporter sends with fetch keepalive, which survives the page unloading.
+ */
+export function flushWhenHidden(
+  provider: { forceFlush(): Promise<void> },
+  win: Pick<EventTarget, 'addEventListener'>,
+  doc: Pick<EventTarget, 'addEventListener'> & { visibilityState: string },
+): void {
+  const flush = () => void provider.forceFlush().catch(() => {})
+  win.addEventListener('pagehide', flush)
+  doc.addEventListener('visibilitychange', () => {
+    if (doc.visibilityState === 'hidden') flush()
+  })
+}
+
 export function registerClient(options?: ObserveClientOptions): WebTracerProvider {
   const { serviceName, exportUrl } = resolveClientOptions(options)
   const provider = new WebTracerProvider({
     resource: resourceFromAttributes({ [ATTR_SERVICE_NAME]: serviceName }),
-    // Batched export; the browser BatchSpanProcessor also flushes when the page is hidden.
+    // Batched export, flushed when the page is hidden (flushWhenHidden below).
     spanProcessors: [new BatchSpanProcessor(new OTLPTraceExporter({ url: exportUrl }), { scheduledDelayMillis: 2000 })],
   })
   provider.register()
+  flushWhenHidden(provider, window, document)
   registerInstrumentations({
     instrumentations: [
       new DocumentLoadInstrumentation(),
