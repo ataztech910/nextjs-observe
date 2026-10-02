@@ -1247,6 +1247,31 @@ E2E в этот раз — `next build` без адресов + `next start` с 
 
 ---
 
+## Шаг 34. `npx next-observer init` — подключение одной командой
+
+**Чтобы** любое Next-приложение (и Porto Shop на старте воркшопа) подключалось к телеметрии одной командой,
+**делаем** `init` в обзервере.
+
+Вопрос пользователя: «в магазине на старте только серверная инструментация — а `npx next-observer init` её добавит?» Команды не было (бэклог). Сделали — и она меняет начало воркшопа: старт может быть **голым** Next-приложением.
+
+- `init` в папке приложения: ставит `next-observe` пакетным менеджером проекта (по lock-файлу: npm/pnpm/yarn/bun); оборачивает экспорт `next.config` в `withObserve()`; создаёт `instrumentation.ts` и `instrumentation-client.ts` (в `src/`, если приложение там; `.js`, если нет TypeScript; `next.config.mjs` вместо `.ts` для JS-приложения); добавляет скрипт `observe` = `npx --yes next-observer@^X dev`; `--proxy` — маршрут-прокси из шага 27.
+- **Ничего не ломать:** уже подключённое не трогается (повторный запуск — всё `unchanged`); свой `register()` не переписывается — `manual` с подсказкой; в существующий `instrumentation-client` добавляется только импорт сверху; конфиг, который нельзя переписать наверняка (`export { a as default }`, два экспорта), — `manual`, файл не тронут.
+- `next.config` не разбирается парсером: `export default nextConfig` → `export default withObserve(nextConfig)` (так выглядит у create-next-app); любое другое выражение → `const nextObserveConfig = <выражение>` + экспорт в конце; CommonJS (`module.exports`, `.cjs`, `.js` без `"type": "module"`) — через `require`.
+
+### Как тестировали
+
+- 14 тестов `init` + 2 теста CLI: синтаксис переписанных конфигов проверяет **сам Node** (`node --check`, для `.ts` — с удалением типов; TypeScript 7 нативный, JS-API `transpileModule` у него нет), и проверено, что проверка ловит битый файл. Свежее приложение, повторный запуск, `src/app`, `--proxy`, свой `register()`, свой `instrumentation-client`, CommonJS и `.cjs` в `"type": "module"`, неудачная установка, не-Next папка, JS-приложение без конфига. 197 тестов всего.
+- Нашлось по ходу: в JS-приложении `init` создавал `next.config.ts` рядом с `.js`-файлами; подсказка «npm run observe» в pnpm-проекте. Исправлено.
+- Мутации (10): повторное оборачивание; переписывание при двух экспортах; повторная установка; чужой `register()` считается подключённым; код `instrumentation-client` теряется; `src/` игнорируется; `.cjs` как ESM (сначала выжила — добавили тест); не-Next принимается; `.ts`-конфиг в JS-приложении; без «простого» пути для переменной — каждая роняет тесты.
+- E2E: `npx create-next-app@latest --yes` → `npx --package=<tarball> next-observer init` → конфиг `export default withObserve(nextConfig)`, второй запуск — всё `unchanged`, `next build` проходит; `next-observer dev` + настоящий браузер → `fresh-app` (сервер, 17 спанов) и `fresh-app-browser` (браузер, 22 спана), без ошибок в консоли.
+
+### Дальше
+
+- Опубликовать `next-observer` 0.3.0 — до этого скрипт `observe` (`npx next-observer@^0.3`) не найдёт пакет.
+- Porto Shop: старт = голое приложение (без `next-observe`), блок 2 начинается с `npx next-observer init`.
+
+---
+
 ## Дальше
 
 - [ ] DevTools-хук (bippy) в `instrumentation-client.ts`: `actualDuration` всех компонентов в profiling-сборке.
@@ -1300,7 +1325,8 @@ E2E в этот раз — `next build` без адресов + `next start` с 
 - [ ] UI: страница операций (p50/p95/p99, error rate) из `/api/operations`.
 - [ ] Разобраться с зависанием `nxo` при остановке, если повторится (см. шаг 9).
 - [ ] Хранилище `node:sqlite` (данные переживают перезапуск).
-- [ ] `npx next-observe init`: подключение одной командой.
+- [x] `npx next-observer init`: подключение одной командой, шаг 34
+- [ ] Опубликовать `next-observer` 0.3.0; Porto Shop: старт без `next-observe`, блок 2 — `init`.
 - [x] Свои специалисты проекта: `observe.agents.ts`, `defineSpecialist`, шаг 21
 - [x] Фолбэк по имени сервиса в инструментах, шаг 21
 - [ ] Porto Shop: пример `observe.agents.ts` для блока воркшопа «свой агент» (в ветке-решении, не в стартовой).

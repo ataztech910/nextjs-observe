@@ -13,7 +13,16 @@ observer for a trace UI and AI agents that investigate problems on their own.
 
 ## Quick start
 
-Requires Node.js 22.18+ and Next.js 16.
+Requires Node.js 22.18+ and Next.js 16. In the app folder:
+
+```bash
+npx next-observer init     # installs next-observe, wraps next.config, adds the instrumentation files and a script
+npm run observe            # next dev + the observer: traces and the agents' chat at http://127.0.0.1:4318
+```
+
+`init` is safe to run again and never overwrites code it cannot merge — it tells you what to do by hand instead.
+
+### By hand
 
 ```bash
 npm install next-observe

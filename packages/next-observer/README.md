@@ -20,12 +20,18 @@ Requires Node.js 22.18+. The app is instrumented with `next-observe` (see its RE
 ## Commands
 
 ```bash
+next-observer init [--root <dir>] [--proxy]                          # connect a Next.js app (see below)
 next-observer dev [--root <dir>] [--port <n>] [-- <next dev args>]   # observer + next dev
 next-observer collector [--host <h>] [--port <n>] [--api-key <k>] [--demo]
 ```
 
 Run them with `npx next-observer <command>`; installed globally (`npm i -g next-observer`) the command is also
 available as `nxo`.
+
+`next-observer init` installs `next-observe` with the project's package manager, wraps the exported `next.config` in
+`withObserve()`, creates `instrumentation.ts` and `instrumentation-client.ts` (in `src/` when the app lives there; `.js`
+without TypeScript) and adds an `observe` script. Already connected files stay untouched; an existing `register()` is
+never rewritten — init says what to add. `--proxy` also creates the runtime proxy route for browser spans.
 
 `next-observer collector` runs the observer alone — next to `next dev` in another terminal, or on a server for production.
 `--demo` preloads a sample "shop" scenario (a regression between versions, a failing endpoint, an N+1) and keeps sending live v2 traffic, so the detector and the agents have something to find without an app.
