@@ -96,7 +96,7 @@ export function TracesPage() {
           {traces.data?.length === 0 && (
             <TableRow>
               <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
-                No traces yet — open your app while <code>nxo dev</code> is running.
+                No traces yet — open your app while <code>next-observer dev</code> is running.
               </TableCell>
             </TableRow>
           )}

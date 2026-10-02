@@ -82,7 +82,7 @@ describe('investigator with project specialists', () => {
 })
 
 describe('next-observe/agents (the types participants import)', () => {
-  it('lists the same tools as nxo', () => {
+  it('lists the same tools as next-observer', () => {
     const source = readFileSync(new URL('../../next-observe/src/agents.ts', import.meta.url), 'utf8')
     const list = source.match(/TOOL_NAMES = \[([^\]]*)\]/)?.[1]
     expect(list?.match(/'([a-z_]+)'/g)?.map((t) => t.slice(1, -1))).toEqual([...TOOL_NAMES])

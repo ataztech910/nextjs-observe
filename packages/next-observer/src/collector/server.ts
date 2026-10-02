@@ -254,7 +254,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     route(req, res).catch((error: unknown) => {
       if (res.headersSent) return
       if (error instanceof HttpError) return send(res, error.status, { error: error.message })
-      console.error('[nxo collector]', error)
+      console.error('[next-observer collector]', error)
       send(res, 500, { error: 'internal error' })
     })
   })

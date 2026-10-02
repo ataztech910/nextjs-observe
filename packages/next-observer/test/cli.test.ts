@@ -101,7 +101,7 @@ describe('run: help and errors', () => {
   it('prints the error plus help and exits 1', async () => {
     const h = harness()
     expect(await run(['deploy'], h.deps)).toBe(1)
-    expect(h.logs[0]).toMatch(/^nxo: unknown command "deploy"/)
+    expect(h.logs[0]).toMatch(/^next-observer: unknown command "deploy"/)
   })
 
   it('explains a busy port', async () => {

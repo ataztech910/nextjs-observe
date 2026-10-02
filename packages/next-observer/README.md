@@ -1,11 +1,11 @@
-# nxo
+# next-observer
 
 The observer for **[next-observe](https://www.npmjs.com/package/next-observe)**: an OTLP collector, a trace UI, an anomaly
 detector and AI agents (Google ADK) that investigate your Next.js app on their own. Run it with `npx` — it never goes
 into your app's dependencies.
 
 ```bash
-npx nxo dev          # observer + UI on http://127.0.0.1:4318, then `next dev` in the current directory
+npx next-observer dev          # observer + UI on http://127.0.0.1:4318, then `next dev` in the current directory
 ```
 
 - **Trace UI** — list + waterfall, no Docker, no external backend
@@ -18,11 +18,14 @@ Requires Node.js 22.18+. The app is instrumented with `next-observe` (see its RE
 ## Commands
 
 ```bash
-nxo dev [--root <dir>] [--port <n>] [-- <next dev args>]   # observer + next dev
-nxo collector [--host <h>] [--port <n>] [--api-key <k>] [--demo]
+next-observer dev [--root <dir>] [--port <n>] [-- <next dev args>]   # observer + next dev
+next-observer collector [--host <h>] [--port <n>] [--api-key <k>] [--demo]
 ```
 
-`nxo collector` runs the observer alone — next to `next dev` in another terminal, or on a server for production.
+Run them with `npx next-observer <command>`; installed globally (`npm i -g next-observer`) the command is also
+available as `nxo`.
+
+`next-observer collector` runs the observer alone — next to `next dev` in another terminal, or on a server for production.
 `--demo` preloads a sample "shop" scenario (a regression between versions, a failing endpoint, an N+1).
 
 ## Models
@@ -52,7 +55,7 @@ export default [
 ```
 
 Tools: `get_services`, `get_operation_stats`, `compare_versions`, `get_errors`, `search_traces`, `get_trace`.
-`nxo` validates the file and lists the loaded specialists on start.
+`next-observer` validates the file and lists the loaded specialists on start.
 
 ## Configuration
 
@@ -69,9 +72,9 @@ Accepts OTLP/HTTP **JSON** (what `next-observe` sends); protobuf is planned.
 
 | Import | For |
 |---|---|
-| `nxo/collector` | `startCollector()`, storage, OTLP/JSON decoding |
-| `nxo/debug` | agent tools as plain functions, `AnomalyDetector`, demo data |
-| `nxo/agents` | ADK agents, chat handler, built-in specialists |
+| `next-observer/collector` | `startCollector()`, storage, OTLP/JSON decoding |
+| `next-observer/debug` | agent tools as plain functions, `AnomalyDetector`, demo data |
+| `next-observer/agents` | ADK agents, chat handler, built-in specialists |
 
 ## License
 

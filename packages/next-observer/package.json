@@ -1,7 +1,7 @@
 {
-  "name": "nxo",
+  "name": "next-observer",
   "version": "0.1.0",
-  "description": "The observer for next-observe: OTLP collector, trace UI, anomaly detector and AI agents that investigate your Next.js app. Run with npx nxo dev.",
+  "description": "The observer for next-observe: OTLP collector, trace UI, anomaly detector and AI agents that investigate your Next.js app. Run with npx next-observer dev.",
   "keywords": [
     "nextjs",
     "opentelemetry",
@@ -16,9 +16,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ataztech910/nextjs-observe.git",
-    "directory": "packages/nxo"
+    "directory": "packages/next-observer"
   },
-  "homepage": "https://github.com/ataztech910/nextjs-observe/tree/master/packages/nxo#readme",
+  "homepage": "https://github.com/ataztech910/nextjs-observe/tree/master/packages/next-observer#readme",
   "bugs": {
     "url": "https://github.com/ataztech910/nextjs-observe/issues"
   },
@@ -27,7 +27,8 @@
     "node": ">=22.18"
   },
   "bin": {
-    "nxo": "./dist/bin.js"
+    "next-observer": "dist/bin.js",
+    "nxo": "dist/bin.js"
   },
   "exports": {
     "./collector": {
