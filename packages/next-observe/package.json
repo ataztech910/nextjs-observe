@@ -1,6 +1,6 @@
 {
   "name": "next-observe",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "OpenTelemetry for Next.js — server, browser and your own code via 'use observe'. Pair it with the next-observer observer (npx next-observer dev) for a trace UI and AI agents.",
   "license": "MIT",
   "author": "Andrei Tazetdinov",
