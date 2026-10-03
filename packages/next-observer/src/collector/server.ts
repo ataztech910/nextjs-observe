@@ -9,6 +9,7 @@
 //   POST /api/chat                  { question, sessionId? } → NDJSON stream of ChatEvent (status, step…, card…, report | error)
 //   GET  /api/chat/events           SSE: proactive turns (detector anomaly → investigation), recent ones replayed on connect
 //   GET  /*                         the UI (dist/ui) with SPA fallback
+import { createHash, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { fileURLToPath } from 'node:url'
@@ -28,6 +29,11 @@ export interface CollectorOptions {
   storage?: StorageAdapter
   /** When set, ingest requires a matching `x-api-key` header. */
   apiKey?: string
+  /**
+   * Password for the UI, the query API and the chat (HTTP Basic Auth, any user name) — what people open in a browser.
+   * Ingest keeps its x-api-key, /health stays open for uptime checks.
+   */
+  uiPassword?: string
   /** Default 10 MB. */
   maxBodyBytes?: number
   /** Built UI to serve at /. Default: the package's dist/ui. `false` disables it. */
@@ -61,6 +67,16 @@ class HttpError extends Error {
   ) {
     super(message)
   }
+}
+
+// Constant-time comparison of the given password with the configured one (hashing first makes the lengths equal).
+function passwordMatches(header: string | undefined, password: string): boolean {
+  const match = /^Basic\s+(.+)$/i.exec(header ?? '')
+  if (!match) return false
+  const decoded = Buffer.from(match[1], 'base64').toString('utf8')
+  const given = decoded.slice(decoded.indexOf(':') + 1)
+  const digest = (s: string) => createHash('sha256').update(s).digest()
+  return decoded.includes(':') && timingSafeEqual(digest(given), digest(password))
 }
 
 const CORS = {
@@ -218,6 +234,12 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     const q = url.searchParams
     if (req.method === 'OPTIONS') return void res.writeHead(204, CORS).end()
     if (req.method === 'POST' && url.pathname === '/v1/traces') return ingest(req, res)
+    if (options.uiPassword && url.pathname !== '/health' && !passwordMatches(req.headers.authorization, options.uiPassword)) {
+      // The browser shows its own login dialog and then sends the password with every request of the page.
+      return void res
+        .writeHead(401, { 'www-authenticate': 'Basic realm="next-observer", charset="UTF-8"', 'content-type': 'text/plain; charset=utf-8' })
+        .end('next-observer: password required')
+    }
     if (req.method === 'POST' && url.pathname === '/api/chat') return chat(req, res)
     if (req.method !== 'GET') throw new HttpError(404, 'not found')
 
