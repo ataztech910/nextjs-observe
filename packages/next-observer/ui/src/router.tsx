@@ -1,26 +1,38 @@
 import { createRootRoute, createRoute, createRouter, Link, Outlet, redirect } from '@tanstack/react-router'
 import type { TraceSearch } from '@/api'
+import type { ReactNode } from 'react'
+import { LiveIndicator } from '@/components/live-indicator'
 import { ObserverOffline } from '@/components/observer-offline'
 import { ChatPage } from '@/pages/chat-page'
 import { TracePage } from '@/pages/trace-page'
 import { TracesPage } from '@/pages/traces-page'
 
+function NavLink({ to, children }: { to: '/traces' | '/chat'; children: ReactNode }) {
+  return (
+    <Link to={to} className="rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground">
+      {children}
+    </Link>
+  )
+}
+
 const rootRoute = createRootRoute({
   component: () => (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="flex h-12 items-center gap-6 border-b px-6">
-        <Link to="/traces" className="font-semibold">
-          next-observer
-        </Link>
-        <Link to="/traces" className="text-sm text-muted-foreground [&.active]:text-foreground">
-          Traces
-        </Link>
-        <Link to="/chat" className="text-sm text-muted-foreground [&.active]:text-foreground">
-          Chat
-        </Link>
+    <div className="min-h-screen text-foreground">
+      <header className="sticky top-0 z-20 border-b bg-background/70 backdrop-blur-md">
+        <div className="mx-auto flex h-14 max-w-7xl items-center gap-2 px-6">
+          <Link to="/traces" className="mr-4 flex items-center gap-2 font-semibold tracking-tight">
+            <span aria-hidden className="size-2.5 rounded-sm bg-signal shadow-[0_0_12px_var(--signal)]" />
+            next-observer
+          </Link>
+          <NavLink to="/traces">Traces</NavLink>
+          <NavLink to="/chat">Chat</NavLink>
+          <span className="ml-auto">
+            <LiveIndicator />
+          </span>
+        </div>
       </header>
       <ObserverOffline />
-      <main className="p-6">
+      <main className="mx-auto max-w-7xl px-6 py-8">
         <Outlet />
       </main>
     </div>

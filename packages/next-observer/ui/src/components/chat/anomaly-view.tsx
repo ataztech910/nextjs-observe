@@ -16,11 +16,18 @@ export function anomalyHeadline(a: Anomaly): string {
   }
 }
 
+// Red is for critical only; a warning is amber, like slow spans elsewhere.
+const TONE = {
+  critical: { frame: 'border-destructive/40 bg-destructive/5', badge: 'bg-destructive/15 text-destructive' },
+  warning: { frame: 'border-warning/40 bg-warning/5', badge: 'bg-warning/15 text-warning' },
+}
+
 export function AnomalyView({ anomaly }: { anomaly: Anomaly }) {
+  const tone = TONE[anomaly.severity]
   return (
-    <div className="space-y-1 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm" data-testid="anomaly" data-type={anomaly.type}>
+    <div className={`space-y-1 rounded-xl border px-3 py-2 text-sm ${tone.frame}`} data-testid="anomaly" data-type={anomaly.type} data-severity={anomaly.severity}>
       <div className="flex items-center gap-2 font-medium">
-        <Badge variant="destructive">{anomaly.severity}</Badge>
+        <Badge className={`font-mono ${tone.badge}`}>{anomaly.severity}</Badge>
         {anomalyHeadline(anomaly)}
         <span className="ml-auto text-xs font-normal text-muted-foreground">{new Date(anomaly.detectedAtMs).toLocaleTimeString()}</span>
       </div>
