@@ -13,6 +13,8 @@ type ConfigFunction = (phase: string, context: { defaultConfig: NextConfig }) =>
 export interface ObserveOptions {
   /** OTel `service.name`. Default: OBSERVE_SERVICE_NAME, else `name` from the project's package.json. */
   serviceName?: string
+  /** OTel `service.version` for browser spans. Default: OBSERVE_SERVICE_VERSION, else the Vercel commit SHA. */
+  serviceVersion?: string
   /** Collector base URL the browser proxy points to. Default: OBSERVE_ENDPOINT or http://127.0.0.1:4318. */
   endpoint?: string
 }
@@ -56,6 +58,7 @@ export function findProxyRoute(root: string = process.cwd()): string | undefined
 export function resolveObserveOptions(options: ObserveOptions = {}) {
   return {
     serviceName: options.serviceName ?? process.env.OBSERVE_SERVICE_NAME ?? packageName() ?? DEFAULT_SERVICE_NAME,
+    serviceVersion: options.serviceVersion ?? process.env.OBSERVE_SERVICE_VERSION ?? process.env.VERCEL_GIT_COMMIT_SHA,
     endpoint: (options.endpoint ?? process.env.OBSERVE_ENDPOINT ?? DEFAULT_ENDPOINT).replace(/\/+$/, ''),
   }
 }
@@ -75,13 +78,14 @@ function withProxy(userRewrites: NextConfig['rewrites'], endpoint: string, route
 }
 
 function apply(config: NextConfig, options: ObserveOptions): NextConfig {
-  const { serviceName, endpoint } = resolveObserveOptions(options)
+  const { serviceName, serviceVersion, endpoint } = resolveObserveOptions(options)
   const rules: TurbopackRules = { ...config.turbopack?.rules }
   rules[RULE_GLOB] = addRule(rules[RULE_GLOB])
   return {
     ...config,
     // Inlined at build time into server and browser bundles.
-    env: { ...config.env, OBSERVE_SERVICE_NAME: serviceName },
+    // The version too: browser spans need it for "which deployment?" (the server reads it at runtime as well).
+    env: { ...config.env, OBSERVE_SERVICE_NAME: serviceName, ...(serviceVersion ? { OBSERVE_SERVICE_VERSION: serviceVersion } : {}) },
     rewrites: withProxy(config.rewrites, endpoint, findProxyRoute() !== undefined),
     turbopack: { ...config.turbopack, rules },
   }

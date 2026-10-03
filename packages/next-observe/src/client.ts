@@ -6,11 +6,13 @@ import { DocumentLoadInstrumentation } from '@opentelemetry/instrumentation-docu
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch'
 import { resourceFromAttributes } from '@opentelemetry/resources'
 import { BatchSpanProcessor, WebTracerProvider } from '@opentelemetry/sdk-trace-web'
-import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions'
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions'
 import { BROWSER_PROXY_PATH, DEFAULT_SERVICE_NAME } from './constants.js'
 
 export interface ObserveClientOptions {
   serviceName?: string
+  /** Default: OBSERVE_SERVICE_VERSION, inlined at build time by withObserve(). */
+  serviceVersion?: string
   /** Where spans are POSTed. Default: same-origin proxy that withObserve() rewrites to the collector. */
   exportUrl?: string
 }
@@ -18,8 +20,10 @@ export interface ObserveClientOptions {
 export function resolveClientOptions(options: ObserveClientOptions = {}) {
   // process.env.OBSERVE_SERVICE_NAME is inlined at build time by withObserve() via next.config `env`.
   const serviceName = options.serviceName ?? process.env.OBSERVE_SERVICE_NAME ?? DEFAULT_SERVICE_NAME
+  const serviceVersion = options.serviceVersion ?? process.env.OBSERVE_SERVICE_VERSION
   return {
     serviceName: `${serviceName}-browser`,
+    ...(serviceVersion ? { serviceVersion } : {}),
     exportUrl: options.exportUrl ?? `${BROWSER_PROXY_PATH}/v1/traces`,
   }
 }
@@ -42,9 +46,9 @@ export function flushWhenHidden(
 }
 
 export function registerClient(options?: ObserveClientOptions): WebTracerProvider {
-  const { serviceName, exportUrl } = resolveClientOptions(options)
+  const { serviceName, serviceVersion, exportUrl } = resolveClientOptions(options)
   const provider = new WebTracerProvider({
-    resource: resourceFromAttributes({ [ATTR_SERVICE_NAME]: serviceName }),
+    resource: resourceFromAttributes({ [ATTR_SERVICE_NAME]: serviceName, ...(serviceVersion ? { [ATTR_SERVICE_VERSION]: serviceVersion } : {}) }),
     // Batched export, flushed when the page is hidden (flushWhenHidden below).
     spanProcessors: [new BatchSpanProcessor(new OTLPTraceExporter({ url: exportUrl }), { scheduledDelayMillis: 2000 })],
   })

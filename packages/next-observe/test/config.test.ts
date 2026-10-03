@@ -129,3 +129,18 @@ describe('withObserve: opt-in runtime proxy route', () => {
     expect(beforeFiles[0]).toEqual({ source: '/__observe/:path*', destination: 'http://127.0.0.1:4318/:path*' })
   })
 })
+
+describe('withObserve: service version for browser spans', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
+  it('inlines OBSERVE_SERVICE_VERSION, else the Vercel commit SHA; the option wins; absent — not set', () => {
+    vi.stubEnv('OBSERVE_SERVICE_VERSION', undefined as unknown as string)
+    vi.stubEnv('VERCEL_GIT_COMMIT_SHA', undefined as unknown as string)
+    expect(withObserve({}).env).not.toHaveProperty('OBSERVE_SERVICE_VERSION')
+    vi.stubEnv('VERCEL_GIT_COMMIT_SHA', 'abc123')
+    expect(withObserve({}).env?.OBSERVE_SERVICE_VERSION).toBe('abc123')
+    vi.stubEnv('OBSERVE_SERVICE_VERSION', 'v2')
+    expect(withObserve({}).env?.OBSERVE_SERVICE_VERSION).toBe('v2')
+    expect(withObserve({}, { serviceVersion: 'v3' }).env?.OBSERVE_SERVICE_VERSION).toBe('v3')
+  })
+})

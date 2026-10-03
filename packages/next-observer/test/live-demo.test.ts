@@ -58,3 +58,14 @@ describe('startLiveDemo', () => {
     expect(kinds).not.toContainEqual(['high_error_rate', 'all'])
   })
 })
+
+describe('demo ids', () => {
+  it('look like real ids (no zero padding), are unique, and the same on every run', async () => {
+    const { demoSpans } = await import('../src/debug/demo.js')
+    const spans = demoSpans(NOW)
+    expect(spans.every((s) => /^[0-9a-f]{32}$/.test(s.traceId) && /^[0-9a-f]{16}$/.test(s.spanId))).toBe(true)
+    expect(spans.filter((s) => s.traceId.startsWith('00000000')).length).toBeLessThan(2)
+    expect(new Set(spans.map((s) => s.spanId)).size).toBe(spans.length)
+    expect(demoSpans(NOW).map((s) => s.traceId)).toEqual(spans.map((s) => s.traceId))
+  })
+})
