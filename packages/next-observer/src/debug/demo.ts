@@ -1,11 +1,13 @@
 // Deterministic "shop" telemetry mirroring the workshop scenario — for tests and for `next-observer collector --demo`:
 //   v1 deployed, then v2 where chargePayment got ~8x slower; inventory.check fails 30% of the time; the catalog has an N+1.
+import { createHash } from 'node:crypto'
 import type { NormalizedSpan, StorageAdapter } from '../collector/types.js'
 
 const MIN = 60_000
 
 let seq = 0
-const id = (length: number) => (++seq).toString(16).padStart(length, '0')
+// Deterministic but random-looking: a counter padded with zeros showed every trace as 0000000000000000 in the list.
+const id = (length: number) => createHash('sha256').update(`demo-${++seq}`).digest('hex').slice(0, length)
 
 function span(traceId: string, parent: NormalizedSpan | null, name: string, startTimeMs: number, durationMs: number, extra: Partial<NormalizedSpan> = {}): NormalizedSpan {
   return {

@@ -24,6 +24,17 @@ describe('resolveClientOptions', () => {
   })
 })
 
+describe('resolveClientOptions: version', () => {
+  it('takes the version inlined by withObserve, the option wins, absent — none', async () => {
+    vi.stubEnv('OBSERVE_SERVICE_VERSION', undefined as unknown as string)
+    const { resolveClientOptions } = await import('../src/client.js')
+    expect(resolveClientOptions()).not.toHaveProperty('serviceVersion')
+    vi.stubEnv('OBSERVE_SERVICE_VERSION', 'v2')
+    expect(resolveClientOptions().serviceVersion).toBe('v2')
+    expect(resolveClientOptions({ serviceVersion: 'v9' }).serviceVersion).toBe('v9')
+  })
+})
+
 describe('module side effect', () => {
   it('does not register a provider outside the browser (SSR import is safe)', async () => {
     const before = trace.getTracerProvider()
