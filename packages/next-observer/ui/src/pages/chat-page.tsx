@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { PageHeader } from '@/components/page-header'
 import { renderInline } from '@/lib/inline-markdown'
 
 // The three workshop scenarios, one click away.
@@ -120,25 +121,24 @@ export function ChatPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
-      <div className="flex items-center gap-2">
-        <h1 className="text-lg font-semibold">Ask the agents</h1>
+    <div className="mx-auto max-w-3xl space-y-6">
+      <PageHeader title="Ask the agents" subtitle="They read your traces with tools — every fact comes from the data.">
         {info.data?.enabled && (
-          <Badge variant={info.data.mode === 'mock' ? 'outline' : 'secondary'} data-testid="chat-mode">
+          <Badge variant={info.data.mode === 'mock' ? 'outline' : 'secondary'} className="font-mono" data-testid="chat-mode">
             {info.data.mode === 'mock' ? 'MOCK — no real model' : 'REAL model'}
           </Badge>
         )}
         {turns.length > 0 && (
-          <Button type="button" variant="ghost" size="sm" className="ml-auto" onClick={newChat} disabled={running}>
+          <Button type="button" variant="ghost" size="sm" onClick={newChat} disabled={running}>
             New chat
           </Button>
         )}
-      </div>
+      </PageHeader>
 
       {turns.length === 0 && (
         <div className="flex flex-col items-start gap-2">
           {SUGGESTIONS.map((s) => (
-            <Button key={s} type="button" variant="outline" size="sm" className="h-auto whitespace-normal text-left" onClick={() => void ask(s)} disabled={running}>
+            <Button key={s} type="button" variant="outline" size="sm" className="h-auto whitespace-normal py-2 text-left font-normal" onClick={() => void ask(s)} disabled={running}>
               {s}
             </Button>
           ))}
@@ -169,7 +169,7 @@ function TurnView({ turn }: { turn: Turn }) {
       {anomaly ? (
         <AnomalyView anomaly={anomaly.anomaly} />
       ) : (
-        <div className="ml-auto w-fit max-w-[80%] rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground">{turn.question}</div>
+        <div className="ml-auto w-fit max-w-[80%] rounded-2xl rounded-br-sm bg-primary px-3.5 py-2 text-sm text-primary-foreground">{turn.question}</div>
       )}
       {hasBody && (
         <Card>
@@ -193,7 +193,7 @@ function TurnView({ turn }: { turn: Turn }) {
               </div>
             )}
             {report && (
-              <p className="whitespace-pre-wrap leading-relaxed" data-testid="chat-report">
+              <p className="whitespace-pre-wrap leading-relaxed [overflow-wrap:anywhere]" data-testid="chat-report">
                 {renderInline(report.text)}
               </p>
             )}

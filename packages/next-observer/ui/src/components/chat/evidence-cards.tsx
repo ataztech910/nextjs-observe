@@ -8,7 +8,7 @@ const pct = (n: number | null) => (n === null ? '—' : `${Math.round(n * 100)}%
 
 function TraceLink({ traceId, children }: { traceId: string; children?: React.ReactNode }) {
   return (
-    <Link to="/traces/$traceId" params={{ traceId }} className="font-mono text-xs text-sky-700 underline-offset-2 hover:underline dark:text-sky-400">
+    <Link to="/traces/$traceId" params={{ traceId }} className="font-mono text-xs text-signal underline-offset-2 hover:underline">
       {children ?? `${traceId.slice(0, 6)}…${traceId.slice(-4)}`}
     </Link>
   )
@@ -21,7 +21,7 @@ function Bar({ label, ms, max, tone }: { label: string; ms: number; max: number;
       <span className="h-2.5 rounded-sm bg-muted">
         <span className={`block h-2.5 rounded-sm ${tone}`} style={{ width: `${Math.max((ms / max) * 100, 1)}%` }} />
       </span>
-      <span className="text-right tabular-nums">{formatDuration(ms)}</span>
+      <span className="text-right font-mono tabular-nums">{formatDuration(ms)}</span>
     </div>
   )
 }
@@ -58,7 +58,7 @@ export function EvidenceCardView({ card }: { card: EvidenceCard }) {
       const max = Math.max(card.from.p95Ms, card.to.p95Ms, 1)
       return (
         <Frame testKind={card.kind} title={<>Regression · {card.operation}</>} badge={card.p95Ratio !== null && <Badge variant="destructive">p95 ×{card.p95Ratio}</Badge>}>
-          <VersionBars v={card.from} max={max} tone="bg-sky-500" />
+          <VersionBars v={card.from} max={max} tone="bg-chart-1" />
           <VersionBars v={card.to} max={max} tone="bg-destructive" />
           <p className="text-xs text-muted-foreground">
             {card.service} · deployed {card.from.version} → {card.to.version}
