@@ -20,6 +20,7 @@ Next.js app + next-observe ── 'use observe', @vercel/otel, browser OTel ─�
 | [`packages/next-observer`](packages/next-observer) | the observer: collector, UI, detector, agents — see its [README](packages/next-observer/README.md) |
 | [`docs/WORKSHOP_LOG.md`](docs/WORKSHOP_LOG.md) | every step: what was built, how it was tested, what we learned (Russian) |
 | [`docs/WORKSHOP_PLAN.md`](docs/WORKSHOP_PLAN.md) | the 3.5-hour workshop plan |
+| [`docs/PROD_DEMO.md`](docs/PROD_DEMO.md) | block 5: observer on a server + the shop on Vercel (instructor runbook, Russian) |
 | [`docs/SPRINTS.md`](docs/SPRINTS.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | the original long-term plan (partly superseded by the log) |
 | [`spikes/adk-kitana`](spikes/adk-kitana) | ADK + Kitana experiments behind the workshop's agent cases |
 | [`CLAUDE.md`](CLAUDE.md) | working rules for AI-assisted development in this repo |
