@@ -133,6 +133,34 @@ describe('getErrors', () => {
   })
 })
 
+describe('getErrors: is this new?', () => {
+  it('the demo inventory failures are old: first seen in v1, also in v2 — even with a window that holds only v2', async () => {
+    const { errors } = await q.getErrors({ sinceMinutes: 5 })
+    const message = errors.find((e) => e.operation === 'inventory.check')!.topMessages[0]
+    expect(message).toMatchObject({ message: 'Inventory service timeout: upstream not responding', firstSeenVersion: 'v1', seenInVersions: ['v1', 'v2'] })
+    expect(message.firstSeenMinutesAgo).toBeGreaterThan(10)
+  })
+
+  it('a message that appeared with the latest deployment is reported as such', async () => {
+    const storage = new MemoryStorage()
+    const span = (id: number, name: string, version: string, minutesAgo: number, error?: string) => ({
+      traceId: id.toString(16).padStart(32, '0'), spanId: id.toString(16).padStart(16, '0'), parentSpanId: null, name, kind: 'server' as const,
+      service: 'shop', serviceVersion: version, scope: null, startTimeMs: NOW - minutesAgo * 60_000, durationMs: 10,
+      status: error ? ('error' as const) : ('unset' as const), statusMessage: error ?? null, attributes: {}, resource: {}, events: [],
+    })
+    await storage.insertSpans([
+      ...Array.from({ length: 10 }, (_, i) => span(i + 1, 'POST /pay', 'v1', 20 - i)),
+      ...Array.from({ length: 10 }, (_, i) => span(i + 100, 'POST /pay', 'v2', 4 - i * 0.2, i % 2 ? 'card network down' : undefined)),
+      // Same message on an operation whose name contains this one: must not leak into its history.
+      span(500, 'POST /pay/refund', 'v1', 30, 'card network down'),
+    ])
+    const { errors } = await createAgentQueries(storage, { now: () => NOW }).getErrors({ operation: 'POST /pay' })
+    const pay = errors.find((e) => e.operation === 'POST /pay')!
+    expect(pay.topMessages[0]).toMatchObject({ message: 'card network down', firstSeenVersion: 'v2', seenInVersions: ['v2'] })
+    expect(pay.topMessages[0].firstSeenMinutesAgo).toBeLessThan(4)
+  })
+})
+
 describe('searchTraces', () => {
   it('finds slow traces and error traces', async () => {
     const slow = await q.searchTraces({ minDurationMs: 1000, limit: 50 })

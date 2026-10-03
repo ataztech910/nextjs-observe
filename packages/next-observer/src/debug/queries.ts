@@ -183,13 +183,30 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
           : `nothing matches "${args.operation}", showing all operations instead`
         errorSpans = await errorSpansFor(undefined)
       }
+      // "Is this new?" needs history beyond the window: when each message first appeared, and in which versions.
+      // Over everything stored (memory keeps the most recent spans), not just sinceMinutes.
+      const deployOrder = new Map((await storage.getServices()).map((s) => [s.name, s.versions]))
+      const history = async (service: string, operation: string, message: string) => {
+        const all = (await storage.querySpans({ service, operation, status: 'error', limit: 100_000 })).filter(
+          (s) => s.name === operation && (exceptionMessage(s) ?? '(no message)') === message,
+        )
+        const first = all.reduce((a, b) => (b.startTimeMs < a.startTimeMs ? b : a))
+        const order = deployOrder.get(service) ?? []
+        const versions = [...new Set(all.map((s) => s.serviceVersion).filter((v): v is string => !!v))].sort((a, b) => order.indexOf(a) - order.indexOf(b))
+        return {
+          firstSeenMinutesAgo: Math.round((now() - first.startTimeMs) / 6_000) / 10,
+          ...(first.serviceVersion ? { firstSeenVersion: first.serviceVersion } : {}),
+          ...(versions.length ? { seenInVersions: versions } : {}),
+        }
+      }
+
       const groups = new Map<string, NormalizedSpan[]>()
       for (const s of errorSpans) {
         const key = `${s.service}\u0000${s.name}`
         groups.set(key, [...(groups.get(key) ?? []), s])
       }
-      const errors = [...groups.values()]
-        .map((spans) => {
+      const errors = (await Promise.all([...groups.values()]
+        .map(async (spans) => {
           const { service, name } = spans[0]
           const total = stats.find((s) => s.service === service && s.operation === name)
           const messages = new Map<string, number>()
@@ -202,10 +219,12 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
             operation: name,
             errors: spans.length,
             errorRate: total?.errorRate ?? null,
-            topMessages: [...messages].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([message, count]) => ({ message, count })),
+            topMessages: await Promise.all(
+              [...messages].sort((a, b) => b[1] - a[1]).slice(0, 3).map(async ([message, count]) => ({ message, count, ...(await history(service, name, message)) })),
+            ),
             exampleTraceIds: [...new Set(spans.map((s) => s.traceId))].slice(0, 3),
           }
-        })
+        })))
         .sort((a, b) => b.errors - a.errors)
         .slice(0, args.limit ?? 10)
       const empty = errors.length === 0 ? 'no errors in this window' : undefined

@@ -43,10 +43,12 @@ Distinguish external dependencies from internal code. Max 3 sentences.`,
   },
   {
     name: 'error_agent',
-    description: 'Error specialist: failing operations, error rates, exact exception messages, source vs downstream victims.',
+    description: 'Error specialist: failing operations, error rates, exact exception messages, source vs downstream victims, whether an error is new.',
     instruction: `You are an error specialist. Report the failing operation, its error rate and the exact exception message.
-Use get_trace on an example trace to separate the source span from its downstream victims and to find the code file. Max 3 sentences.`,
-    tools: ['get_errors', 'search_traces', 'get_trace'],
+Use get_trace on an example trace to separate the source span from its downstream victims and to find the code file.
+Say whether the error is new: get_errors tells when each message was first seen and in which versions; compare_versions
+tells whether the error rate changed with the latest deployment (errorRateChangeSignificant). Max 4 sentences.`,
+    tools: ['get_errors', 'compare_versions', 'search_traces', 'get_trace'],
   },
   {
     name: 'traffic_agent',

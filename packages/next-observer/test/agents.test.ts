@@ -82,6 +82,8 @@ describe('investigator (mock model over the shop scenario)', () => {
         'latency_agent:compare_versions',
         'latency_agent:search_traces',
         'error_agent:get_errors',
+        // "Is this error new?" — the error agent compares versions too.
+        'error_agent:compare_versions',
         'error_agent:search_traces',
         'traffic_agent:get_services',
         'traffic_agent:get_operation_stats',
