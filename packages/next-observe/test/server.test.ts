@@ -134,7 +134,8 @@ describe('production build details', () => {
     register()
     const processors = calls.registerOTel[0].spanProcessors
     expect(processors).toHaveLength(1)
-    expect(processors[0].constructor.name).toBe('BatchSpanProcessor')
+    expect(processors[0].constructor.name).toBe('DropSpans')
+    expect(processors[0].inner.constructor.name).toBe('BatchSpanProcessor')
     expect(calls.registerOTel[0].traceExporter).toBeUndefined()
     vi.stubEnv('VERCEL_OTEL_ENDPOINTS', '{"port":4319}')
     register()
@@ -184,13 +185,37 @@ describe('several destinations', () => {
 })
 
 describe('dev noise', () => {
-  it('does not trace next dev checking npm for updates — in development only', () => {
+  it('drops the npm update check span of next dev (http.url or url.full) — in development only', async () => {
+    const { isDevNoise } = await import('../src/server.js')
+    const npm = { attributes: { 'http.url': 'https://registry.npmjs.org/-/package/next/dist-tags' } }
+    expect(isDevNoise(npm, 'development')).toBe(true)
+    expect(isDevNoise({ attributes: { 'url.full': 'https://registry.npmjs.org/x' } }, 'development')).toBe(true)
+    expect(isDevNoise(npm, 'production')).toBe(false)
+    expect(isDevNoise({ attributes: { 'http.url': 'https://api.example.com/x' } }, 'development')).toBe(false)
+  })
+
+  it('DropSpans passes everything else through, and flush/shutdown', async () => {
+    const { DropSpans } = await import('../src/server.js')
+    const seen: string[] = []
+    const inner = { onStart: () => seen.push('start'), onEnd: (s: { name: string }) => seen.push(s.name), forceFlush: async () => void seen.push('flush'), shutdown: async () => void seen.push('shutdown') }
+    const p = new DropSpans(inner as never, (s) => s.name === 'noise')
+    p.onStart({} as never, {} as never)
+    p.onEnd({ name: 'noise' } as never)
+    p.onEnd({ name: 'GET /' } as never)
+    await p.forceFlush()
+    await p.shutdown()
+    expect(seen).toEqual(['start', 'GET /', 'flush', 'shutdown'])
+  })
+
+  it('register() wraps every destination processor', () => {
+    vi.stubEnv('OBSERVE_ENDPOINT', 'http://127.0.0.1:4318')
+    vi.stubEnv('OTEL_EXPORTER_OTLP_ENDPOINT', 'https://otlp.vendor.io')
+    register()
+    const processors = calls.registerOTel[0].spanProcessors as { constructor: { name: string }; drop: (s: object) => boolean }[]
+    expect(processors.map((p) => p.constructor.name)).toEqual(['DropSpans', 'DropSpans'])
     vi.stubEnv('NODE_ENV', 'development')
-    register()
-    expect(calls.registerOTel[0].instrumentationConfig.fetch.ignoreUrls).toContain('https://registry.npmjs.org/')
-    vi.stubEnv('NODE_ENV', 'production')
-    register()
-    expect(calls.registerOTel[1].instrumentationConfig.fetch.ignoreUrls).not.toContain('https://registry.npmjs.org/')
+    expect(processors.every((p) => p.drop({ attributes: { 'http.url': 'https://registry.npmjs.org/-/package/next/dist-tags' } }))).toBe(true)
+    expect(processors.some((p) => p.drop({ attributes: { 'http.url': 'https://api.example.com/x' } }))).toBe(false)
   })
 })
 
@@ -207,7 +232,7 @@ describe('server batch delay', () => {
     vi.stubEnv('OTEL_EXPORTER_OTLP_ENDPOINT', 'https://otlp.vendor.io')
     register()
     // BatchSpanProcessor keeps the option privately; reading it is the only way to see what register() passed.
-    const delays = calls.registerOTel[0].spanProcessors.map((p: { _scheduledDelayMillis: number }) => p._scheduledDelayMillis)
+    const delays = calls.registerOTel[0].spanProcessors.map((p: { inner: { _scheduledDelayMillis: number } }) => p.inner._scheduledDelayMillis)
     expect(delays).toEqual([1000, 1000])
   })
 })
