@@ -22,7 +22,7 @@ Requires Node.js 22.18+. The app is instrumented with `next-observe` (see its RE
 ```bash
 next-observer init [--root <dir>] [--proxy]                          # connect a Next.js app (see below)
 next-observer dev [--root <dir>] [--port <n>] [-- <next dev args>]   # observer + next dev
-next-observer collector [--host <h>] [--port <n>] [--api-key <k>] [--demo]
+next-observer collector [--host <h>] [--port <n>] [--api-key <k>] [--ui-password <p>] [--demo]
 ```
 
 Run them with `npx next-observer <command>`; installed globally (`npm i -g next-observer`) the command is also
@@ -35,6 +35,17 @@ never rewritten — init says what to add. `--proxy` also creates the runtime pr
 
 `next-observer collector` runs the observer alone — next to `next dev` in another terminal, or on a server for production.
 `--demo` preloads a sample "shop" scenario (a regression between versions, a failing endpoint, an N+1) and keeps sending live v2 traffic, so the detector and the agents have something to find without an app.
+
+## On a server
+
+The observer started with `--host 0.0.0.0` is reachable from outside — protect both doors:
+
+```bash
+next-observer collector --host 0.0.0.0 --api-key <ingest key> --ui-password <password>
+```
+
+`--api-key` is for the apps sending traces (`OBSERVE_API_KEY` in the app), `--ui-password` for the people opening the
+UI and the chat (the browser asks for it). `/health` stays open for uptime checks. Without them the banner warns.
 
 ## Models
 
@@ -71,7 +82,8 @@ Tools: `get_services`, `get_operation_stats`, `compare_versions`, `get_errors`, 
 |---|---|---|
 | `OBSERVE_AI` | `mock` | `mock` \| `real` |
 | `OBSERVE_DETECTOR` | on | `off` disables the anomaly detector |
-| `OBSERVE_API_KEY` | — | require `x-api-key` on ingest and API |
+| `OBSERVE_API_KEY` | — | require `x-api-key` on ingest (`/v1/traces`) |
+| `OBSERVE_UI_PASSWORD` | — | require a password for the UI, the query API and the chat (browser login, any user name) |
 | `OBSERVE_PORT`, `OBSERVE_HOST`, `OBSERVE_ROOT` | `4318`, `127.0.0.1`, `.` | same as `--port`, `--host`, `--root` |
 
 Accepts OTLP/HTTP traces from any OpenTelemetry SDK or Collector: `application/json` and `application/x-protobuf`,

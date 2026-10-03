@@ -22,8 +22,9 @@ export const HELP = `Usage:
       Start the collector and \`next dev\` for the app in <dir> (default: current directory).
       Example: next-observer dev --root apps/web -- -p 3100
 
-  next-observer collector [--host <host>] [--port <n>] [--api-key <key>] [--demo]
-      Start only the collector (e.g. on a server). Reads OBSERVE_HOST, OBSERVE_PORT, OBSERVE_API_KEY.
+  next-observer collector [--host <host>] [--port <n>] [--api-key <key>] [--ui-password <password>] [--demo]
+      Start only the collector (e.g. on a server). Reads OBSERVE_HOST, OBSERVE_PORT, OBSERVE_API_KEY, OBSERVE_UI_PASSWORD.
+      --api-key protects ingest (x-api-key); --ui-password protects the UI, API and chat (browser login).
       --demo preloads the workshop "shop" scenario (a regression in v2, 30% inventory errors, an N+1).
 
 Environment: OBSERVE_ROOT, OBSERVE_PORT (default 4318), OBSERVE_HOST (default 127.0.0.1), OBSERVE_API_KEY,
@@ -39,6 +40,7 @@ export interface CliArgs {
   port: number
   host: string
   apiKey?: string
+  uiPassword?: string
   demo: boolean
   proxy: boolean
   nextArgs: string[]
@@ -59,6 +61,7 @@ export function parseCliArgs(argv: string[], env: Env, cwd: string): CliArgs {
         port: { type: 'string' },
         host: { type: 'string' },
         'api-key': { type: 'string' },
+        'ui-password': { type: 'string' },
         demo: { type: 'boolean' },
         proxy: { type: 'boolean' },
         help: { type: 'boolean', short: 'h' },
@@ -82,6 +85,7 @@ export function parseCliArgs(argv: string[], env: Env, cwd: string): CliArgs {
     port,
     host: values.host ?? env.OBSERVE_HOST ?? '127.0.0.1',
     apiKey: values['api-key'] ?? env.OBSERVE_API_KEY,
+    uiPassword: values['ui-password'] ?? env.OBSERVE_UI_PASSWORD,
     demo: values.demo ?? false,
     proxy: values.proxy ?? false,
     nextArgs,
@@ -191,7 +195,7 @@ async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collect
   if (args.demo) lines.push('  demo       "shop" scenario: v1 → v2 regression, inventory errors, catalog N+1 — live v2 traffic every 2 s')
   const line = lines.join('\n')
   try {
-    const collector = await startCollector({ port: args.port, host: args.host, apiKey: args.apiKey, storage, chat, detector })
+    const collector = await startCollector({ port: args.port, host: args.host, apiKey: args.apiKey, uiPassword: args.uiPassword, storage, chat, detector })
     const stopDemo = args.demo ? startLiveDemo({ storage, detector }) : undefined
     return {
       collector,
@@ -209,6 +213,20 @@ async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collect
   }
 }
 
+const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '::1'])
+
+/** What protects the collector — and a warning when it listens beyond this machine with an open UI. */
+export function authLines(args: Pick<CliArgs, 'host' | 'apiKey' | 'uiPassword'>): string[] {
+  const lines: string[] = []
+  if (args.apiKey) lines.push('  auth       ingest: x-api-key required')
+  if (args.uiPassword) lines.push('  auth       UI, API and chat: password required')
+  if (!LOCAL_HOSTS.has(args.host)) {
+    if (!args.uiPassword) lines.push(`  WARNING    listening on ${args.host}: the UI, traces and chat are open to anyone who can reach it — set --ui-password`)
+    if (!args.apiKey) lines.push(`  WARNING    listening on ${args.host}: anyone can send traces — set --api-key`)
+  }
+  return lines
+}
+
 function banner(collector: Collector, extra: string[] = []): string {
   return [
     'next-observer',
@@ -220,7 +238,7 @@ function banner(collector: Collector, extra: string[] = []): string {
 
 async function runCollector(args: CliArgs, deps: CliDeps): Promise<number> {
   const { collector, chatLine, stop } = await start(args, deps)
-  deps.log(banner(collector, [chatLine, ...(args.apiKey ? ['  auth       x-api-key required'] : [])]))
+  deps.log(banner(collector, [chatLine, ...authLines(args)]))
   await deps.shutdownSignal
   await stop()
   return 0
