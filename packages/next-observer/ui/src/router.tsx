@@ -1,15 +1,16 @@
-import { createRootRoute, createRoute, createRouter, Link, Outlet, redirect } from '@tanstack/react-router'
+import { createRootRoute, createRoute, createRouter, Link, Outlet } from '@tanstack/react-router'
 import type { TraceSearch } from '@/api'
 import type { ReactNode } from 'react'
 import { LiveIndicator } from '@/components/live-indicator'
 import { ObserverOffline } from '@/components/observer-offline'
 import { ChatPage } from '@/pages/chat-page'
+import { DashboardPage, WINDOWS, type WindowKey } from '@/pages/dashboard-page'
 import { TracePage } from '@/pages/trace-page'
 import { TracesPage } from '@/pages/traces-page'
 
-function NavLink({ to, children }: { to: '/traces' | '/chat'; children: ReactNode }) {
+function NavLink({ to, children }: { to: '/' | '/traces' | '/chat'; children: ReactNode }) {
   return (
-    <Link to={to} className="rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground">
+    <Link to={to} activeOptions={{ exact: to === '/', includeSearch: false }} className="rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground">
       {children}
     </Link>
   )
@@ -20,10 +21,11 @@ const rootRoute = createRootRoute({
     <div className="min-h-screen text-foreground">
       <header className="sticky top-0 z-20 border-b bg-background/70 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-2 px-6">
-          <Link to="/traces" className="mr-4 flex items-center gap-2 font-semibold tracking-tight">
+          <Link to="/" className="mr-4 flex items-center gap-2 font-semibold tracking-tight">
             <span aria-hidden className="size-2.5 rounded-sm bg-signal shadow-[0_0_12px_var(--signal)]" />
             next-observer
           </Link>
+          <NavLink to="/">Overview</NavLink>
           <NavLink to="/traces">Traces</NavLink>
           <NavLink to="/chat">Chat</NavLink>
           <span className="ml-auto">
@@ -42,9 +44,11 @@ const rootRoute = createRootRoute({
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  beforeLoad: () => {
-    throw redirect({ to: '/traces' })
-  },
+  validateSearch: (search: Record<string, unknown>): { window?: WindowKey; service?: string } => ({
+    window: typeof search.window === 'string' && search.window in WINDOWS ? (search.window as WindowKey) : undefined,
+    service: typeof search.service === 'string' && search.service.trim() ? search.service.trim() : undefined,
+  }),
+  component: DashboardPage,
 })
 
 // Filters live in the URL: shareable, back-button friendly, and agents can link to a ready-made search.

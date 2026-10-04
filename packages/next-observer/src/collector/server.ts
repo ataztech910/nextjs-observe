@@ -5,6 +5,7 @@
 //   GET  /api/traces?service&operation&minDurationMs&hasError&fromMs&toMs&limit
 //   GET  /api/traces/:traceId
 //   GET  /api/operations?service&operation&fromMs&toMs
+//   GET  /api/overview?windowMs&service&toMs   dashboard: requests by status class, latency, errors, top routes
 //   GET  /api/chat                  { enabled, mode }
 //   POST /api/chat                  { question, sessionId? } → NDJSON stream of ChatEvent (status, step…, card…, report | error)
 //   GET  /api/chat/events           SSE: proactive turns (detector anomaly → investigation), recent ones replayed on connect
@@ -19,8 +20,12 @@ import { gunzipSync } from 'node:zlib'
 import { decodeOtlpJson, type OtlpTraceRequest } from './decode.js'
 import { protobufToOtlpJson } from './protobuf.js'
 import { MemoryStorage } from './memory-storage.js'
+import { computeOverview } from './overview.js'
 import { serveUi } from './static.js'
 import type { StorageAdapter } from './types.js'
+
+const OVERVIEW_DEFAULT_WINDOW_MS = 15 * 60_000
+const OVERVIEW_BUCKETS = 30
 
 export interface CollectorOptions {
   /** Default 4318 (standard OTLP/HTTP port). 0 = random free port. */
@@ -282,6 +287,18 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
           fromMs: numberParam(q, 'fromMs'),
           toMs: numberParam(q, 'toMs'),
         }),
+      )
+    }
+    if (url.pathname === '/api/overview') {
+      const windowMs = numberParam(q, 'windowMs') ?? OVERVIEW_DEFAULT_WINDOW_MS
+      if (windowMs < 60_000 || windowMs > 86_400_000) throw new HttpError(400, 'windowMs must be between 60000 (1 min) and 86400000 (24 h)')
+      const nowMs = numberParam(q, 'toMs') ?? Date.now()
+      // Two windows: the current one and the one before it, for "since last period".
+      const spans = await storage.querySpans({ fromMs: nowMs - 2 * windowMs, toMs: nowMs, limit: Number.MAX_SAFE_INTEGER })
+      return send(
+        res,
+        200,
+        computeOverview(spans, { nowMs, windowMs, buckets: OVERVIEW_BUCKETS, service: stringParam(q, 'service'), isColdStart: (s) => storage.isColdStart(s) }),
       )
     }
     if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/v1/')) throw new HttpError(404, 'not found')
