@@ -58,6 +58,7 @@ export class MemoryStorage implements StorageAdapter {
   // Earliest server span per (service, instance, route). Kept after eviction so a later request never becomes "cold".
   private readonly firstRequests = new Map<string, NormalizedSpan>()
   private readonly maxSpans: number
+  private evicted = false
 
   constructor(options: MemoryStorageOptions = {}) {
     this.maxSpans = options.maxSpans ?? 100_000
@@ -77,6 +78,7 @@ export class MemoryStorage implements StorageAdapter {
       else this.byTrace.set(span.traceId, [span])
     }
     while (this.spans.length > this.maxSpans) {
+      this.evicted = true
       const evicted = this.spans.shift()!
       const trace = this.byTrace.get(evicted.traceId)!
       trace.splice(trace.indexOf(evicted), 1)
@@ -164,6 +166,10 @@ export class MemoryStorage implements StorageAdapter {
       result.push(s)
     }
     return result
+  }
+
+  isHistoryComplete(): boolean {
+    return !this.evicted
   }
 
   isColdStart(span: NormalizedSpan): boolean {

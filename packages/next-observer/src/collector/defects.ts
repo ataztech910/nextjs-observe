@@ -12,6 +12,13 @@ export interface DefectsOptions {
   service?: string
   /** Versions per service in deploy order (ServiceInfo.versions). */
   deployOrder: Map<string, string[]>
+  /**
+   * False when the storage has dropped old spans. Then "not seen before the latest version" may only mean "its older
+   * occurrences are gone", and a defect is called new only with evidence: `ranIn` for the previous version.
+   */
+  historyComplete: boolean
+  /** Did this operation run (failed or not) in this version, among the spans still stored? */
+  ranIn?: (service: string, operation: string, version: string) => boolean
 }
 
 export interface Defect {
@@ -34,10 +41,13 @@ export interface Defect {
   firstSeenVersion: string | null
   /** In deploy order. */
   versions: string[]
-  /** First seen in the service's latest version, and that version is not the only one: the last deploy brought it. */
+  /**
+   * The last deploy brought it: first seen in the service's latest version, which is not the only one — and the older
+   * history is trustworthy (nothing dropped, or the operation is still on record running in the previous version).
+   */
   isNew: boolean
   /** Requests that failed because of it (the topmost failed span), most frequent first. Empty when it is the origin itself. */
-  affected: { operation: string; count: number }[]
+  affected: { service: string; operation: string; count: number }[]
   /** Most recent first. */
   exampleTraceIds: string[]
 }
@@ -58,10 +68,14 @@ export function errorMessage(span: NormalizedSpan): string {
 
 /**
  * The shape of a message: ids and numbers replaced, so "Order 4127 not found" and "Order 9 not found" are one defect.
- * Long hex runs first (trace ids, hashes, UUID parts), then any remaining digits.
+ * UUIDs first (their short groups would otherwise keep letters: "e29b" → "e<n>b"), then long hex runs (trace ids,
+ * hashes), then any remaining digits.
  */
 export function messageShape(message: string): string {
-  return message.replace(/\b[0-9a-f]{8,}\b/gi, '<id>').replace(/\d+/g, '<n>')
+  return message
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '<id>')
+    .replace(/\b[0-9a-f]{8,}\b/gi, '<id>')
+    .replace(/\d+/g, '<n>')
 }
 
 export function computeDefects(spans: NormalizedSpan[], options: DefectsOptions): Defect[] {
@@ -72,9 +86,10 @@ export function computeDefects(spans: NormalizedSpan[], options: DefectsOptions)
   const byId = new Map(failed.map((s) => [`${s.traceId}:${s.spanId}`, s]))
   const parentOf = (s: NormalizedSpan) => (s.parentSpanId ? byId.get(`${s.traceId}:${s.parentSpanId}`) : undefined)
   // Next's own steps ("executing api route (app) …") fail whenever the code inside them does — they are never a defect
-  // themselves, unless the whole failed chain is framework spans.
-  const candidates = failed.filter((s) => !isFrameworkSpan(s))
-  const visible = candidates.length > 0 ? candidates : failed
+  // themselves, unless everything that failed in that trace is framework spans. Decided per trace: one unrelated
+  // failure elsewhere must not hide it.
+  const tracesWithOwnFailure = new Set(failed.filter((s) => !isFrameworkSpan(s)).map((s) => s.traceId))
+  const visible = failed.filter((s) => !isFrameworkSpan(s) || !tracesWithOwnFailure.has(s.traceId))
 
   // Walk up from every failed span through its failed ancestors: whoever is passed has a failed descendant (so is not
   // an origin), and the last visible one reached is the request that failed because of this span.
@@ -112,11 +127,19 @@ export function computeDefects(spans: NormalizedSpan[], options: DefectsOptions)
     const versions = [...new Set(all.map((s) => s.serviceVersion).filter((v): v is string => !!v))].sort((a, b) => rank(a) - rank(b))
     const series = Array.from({ length: buckets }, () => 0)
     for (const s of recent) series[Math.min(Math.floor((s.startTimeMs - fromMs) / bucketMs), buckets - 1)]++
-    const affected = new Map<string, number>()
+    // The failed request may belong to another service than the origin (browser → server): keep its own service.
+    const affected = new Map<string, { service: string; operation: string; count: number }>()
     for (const s of recent) {
       const top = topOf.get(s)!
-      if (top !== s) affected.set(top.name, (affected.get(top.name) ?? 0) + 1)
+      if (top === s) continue
+      const key = `${top.service}\u0000${top.name}`
+      const row = affected.get(key) ?? { service: top.service, operation: top.name, count: 0 }
+      row.count++
+      affected.set(key, row)
     }
+    const latest = order[order.length - 1]
+    const previous = order[order.length - 2]
+    const firstInLatest = order.length > 1 && first.serviceVersion === latest
     defects.push({
       id,
       service: first.service,
@@ -129,8 +152,8 @@ export function computeDefects(spans: NormalizedSpan[], options: DefectsOptions)
       lastSeenMs: last.startTimeMs,
       firstSeenVersion: first.serviceVersion,
       versions,
-      isNew: order.length > 1 && first.serviceVersion === order[order.length - 1],
-      affected: [...affected].map(([operation, count]) => ({ operation, count })).sort((a, b) => b.count - a.count).slice(0, AFFECTED),
+      isNew: firstInLatest && (options.historyComplete || (options.ranIn?.(first.service, first.name, previous) ?? false)),
+      affected: [...affected.values()].sort((a, b) => b.count - a.count).slice(0, AFFECTED),
       exampleTraceIds: [...new Set([...recent].sort((a, b) => b.startTimeMs - a.startTimeMs).map((s) => s.traceId))].slice(0, EXAMPLES),
     })
   }

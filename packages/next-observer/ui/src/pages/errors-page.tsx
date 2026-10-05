@@ -75,9 +75,9 @@ function DefectCard({ defect: d }: { defect: Defect }) {
                 {' '}
                 · fails{' '}
                 {d.affected.map((a, i) => (
-                  <span key={a.operation}>
+                  <span key={`${a.service}:${a.operation}`}>
                     {i > 0 && ', '}
-                    <Link to="/operation" search={{ name: a.operation, service: d.service }} className="font-mono text-foreground hover:text-signal">
+                    <Link to="/operation" search={{ name: a.operation, service: a.service }} className="font-mono text-foreground hover:text-signal">
                       {a.operation}
                     </Link>
                   </span>

@@ -316,7 +316,18 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
       // Every failed span stored, not just the window: "first seen" and "new in v2" need the history.
       const failed = await storage.querySpans({ status: 'error', toMs: nowMs, limit: Number.MAX_SAFE_INTEGER })
       const deployOrder = new Map((await storage.getServices()).map((s) => [s.name, s.versions]))
-      return send(res, 200, computeDefects(failed, { nowMs, windowMs, buckets: OVERVIEW_BUCKETS, service: stringParam(q, 'service'), deployOrder }))
+      // Only asked when old spans were dropped: is the operation still on record in the version before the latest?
+      const ran = new Set((await storage.getOperationStats({ toMs: nowMs, byVersion: true })).map((s) => `${s.service}\u0000${s.operation}\u0000${s.serviceVersion}`))
+      const defects = computeDefects(failed, {
+        nowMs,
+        windowMs,
+        buckets: OVERVIEW_BUCKETS,
+        service: stringParam(q, 'service'),
+        deployOrder,
+        historyComplete: storage.isHistoryComplete(),
+        ranIn: (service, operation, version) => ran.has(`${service}\u0000${operation}\u0000${version}`),
+      })
+      return send(res, 200, defects)
     }
     if (url.pathname === '/api/regression') {
       const { changes } = await createAgentQueries(storage).compareVersions({ service: stringParam(q, 'service'), sinceMinutes: numberParam(q, 'sinceMinutes') })
