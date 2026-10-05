@@ -1,5 +1,6 @@
 // Deterministic "shop" telemetry mirroring the workshop scenario — for tests and for `next-observer collector --demo`:
-//   v1 deployed, then v2 where chargePayment got ~8x slower; inventory.check fails 30% of the time; the catalog has an N+1.
+//   v1 deployed, then v2 where chargePayment got ~8x slower; inventory.check fails 30% of the time; the catalog has an N+1;
+//   and v2 brought a new bug: the receipt email it added crashes for guest checkouts (a defect that is "new in v2").
 import { createHash } from 'node:crypto'
 import type { NormalizedSpan, StorageAdapter } from '../collector/types.js'
 
@@ -37,11 +38,30 @@ function nextRoute(t: string, root: NormalizedSpan, at: number, durationMs: numb
   return span(t, root, `executing api route (app) ${route}`, at, durationMs, { ...extra, attributes: { 'next.span_type': 'AppRouteRouteHandlers.runHandler', 'next.route': route } })
 }
 
-function checkout(version: string, at: number, paymentMs: number): NormalizedSpan[] {
+const RECEIPT_ERROR = "Cannot read properties of undefined (reading 'email')"
+
+/**
+ * `guest`: a checkout without an account. Since v2 a receipt email is sent after the payment, fire-and-forget — it
+ * starts before the response and ends after it, and for a guest it throws. The request itself still answers 200, so
+ * neither the detector nor the request error rate sees it: it shows up only as a defect, first seen in v2.
+ */
+function checkout(version: string, at: number, paymentMs: number, guest = false): NormalizedSpan[] {
   const t = id(32)
   const root = span(t, null, 'POST /api/checkout', at, paymentMs + 20, { serviceVersion: version, attributes: { ...nextRequest, 'http.route': '/api/checkout', 'http.status_code': 200 } })
   const route = nextRoute(t, root, at + 5, paymentMs + 10)
-  return [root, route, span(t, route, 'chargePayment', at + 10, paymentMs, { attributes: { 'code.filepath': 'lib/payment.ts', 'code.function': 'chargePayment' } })]
+  const spans = [root, route, span(t, route, 'chargePayment', at + 10, paymentMs, { attributes: { 'code.filepath': 'lib/payment.ts', 'code.function': 'chargePayment' } })]
+  if (version === 'v2') {
+    const sentAt = at + 12 + paymentMs
+    spans.push(
+      span(t, route, 'sendReceiptEmail', sentAt, 35, {
+        status: guest ? 'error' : 'unset',
+        statusMessage: guest ? RECEIPT_ERROR : null,
+        attributes: { 'code.filepath': 'lib/email.ts', 'code.function': 'sendReceiptEmail' },
+        events: guest ? [{ name: 'exception', timeMs: sentAt + 3, attributes: { 'exception.type': 'TypeError', 'exception.message': RECEIPT_ERROR } }] : [],
+      }),
+    )
+  }
+  return spans
 }
 
 function inventory(version: string, at: number, fails: boolean): NormalizedSpan[] {
@@ -86,7 +106,7 @@ export function demoSpans(now: number = Date.now()): NormalizedSpan[] {
   // v2: 5–1 minutes ago (fresh enough not to look like a silent service)
   for (let i = 0; i < 30; i++) {
     const at = now - 5 * MIN + i * 8_000
-    spans.push(...checkout('v2', at, PAYMENT_V2[i % PAYMENT_V2.length]))
+    spans.push(...checkout('v2', at, PAYMENT_V2[i % PAYMENT_V2.length], i % 6 === 4))
     spans.push(...inventory('v2', at + 1000, i % 10 < 3))
     if (i % 5 === 0) spans.push(...catalog('v2', at + 2000))
   }
@@ -110,10 +130,10 @@ export interface LiveDemoOptions {
   now?: () => number
 }
 
-/** One tick of v2 traffic, with the same three bugs: slow payment, 30% inventory failures, the catalog N+1. */
+/** One tick of v2 traffic, with the same bugs: slow payment, 30% inventory failures, the catalog N+1, the receipt email for guests. */
 export function liveDemoSpans(now: number, tick: number): NormalizedSpan[] {
   return [
-    ...checkout('v2', now, PAYMENT_V2[tick % PAYMENT_V2.length]),
+    ...checkout('v2', now, PAYMENT_V2[tick % PAYMENT_V2.length], tick % 6 === 4),
     // 3 in 10, spread out like random failures (ticks 2, 5, 8): three in a row — or one in the first ticks, while the
     // detector's window still holds few requests — would look like an app-wide error spike instead of a broken endpoint.
     ...inventory('v2', now + 100, [2, 5, 8].includes(tick % 10)),

@@ -25,7 +25,7 @@ export const HELP = `Usage:
   next-observer collector [--host <host>] [--port <n>] [--api-key <key>] [--ui-password <password>] [--demo]
       Start only the collector (e.g. on a server). Reads OBSERVE_HOST, OBSERVE_PORT, OBSERVE_API_KEY, OBSERVE_UI_PASSWORD.
       --api-key protects ingest (x-api-key); --ui-password protects the UI, API and chat (browser login).
-      --demo preloads the workshop "shop" scenario (a regression in v2, 30% inventory errors, an N+1).
+      --demo preloads the workshop "shop" scenario (a regression in v2, 30% inventory errors, an N+1, an error new in v2).
 
 Environment: OBSERVE_ROOT, OBSERVE_PORT (default 4318), OBSERVE_HOST (default 127.0.0.1), OBSERVE_API_KEY,
              OBSERVE_AI (mock | real), OBSERVE_DETECTOR (off to disable the anomaly detector),
@@ -193,7 +193,7 @@ async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collect
     const o = detector.options
     lines.push(`  detector   errors > ${o.errorRate * 100}%, slow (>${o.slowMs}ms) > ${o.slowRate * 100}%, silence > ${o.noTrafficMs / 1000}s → agents investigate on their own`)
   } else lines.push('  detector   off (OBSERVE_DETECTOR=off)')
-  if (args.demo) lines.push('  demo       "shop" scenario: v1 → v2 regression, inventory errors, catalog N+1 — live v2 traffic every 2 s')
+  if (args.demo) lines.push('  demo       "shop" scenario: v1 → v2 regression, inventory errors, catalog N+1, an error new in v2 — live v2 traffic every 2 s')
   const line = lines.join('\n')
   try {
     const collector = await startCollector({ port: args.port, host: args.host, apiKey: args.apiKey, uiPassword: args.uiPassword, storage, chat, detector })

@@ -330,7 +330,7 @@ describe('--demo', () => {
     const h = harness({})
     const exit = run(['collector', '--port', '0', '--demo'], h.deps)
     await until(h.collectorUrl)
-    expect(h.logs[0]).toContain('demo       "shop" scenario: v1 → v2 regression, inventory errors, catalog N+1 — live v2 traffic every 2 s')
+    expect(h.logs[0]).toContain('demo       "shop" scenario: v1 → v2 regression, inventory errors, catalog N+1, an error new in v2 — live v2 traffic every 2 s')
     const services = await (await fetch(`${h.collectorUrl()}/api/services`)).json()
     expect(services[0]).toMatchObject({ name: 'shop', versions: ['v0', 'v1', 'v2'] })
     h.stop()
