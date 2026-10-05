@@ -28,7 +28,9 @@ export interface InvestigatorOptions {
   specialists?: SpecialistSpec[]
 }
 
-const since = z.number().positive().optional().describe('look back this many minutes (default 15)')
+// No .positive() here: it becomes `exclusiveMinimum` in the tool's schema, a field the Gemini API rejects (400 on every
+// call of every specialist — and ADK swallows that error inside the specialist). A bad value is handled in the query.
+const since = z.number().optional().describe('look back this many minutes, a positive number (default 15)')
 const service = z.string().optional().describe('exact service name')
 const operation = z.string().optional().describe('substring of the operation name, case-insensitive')
 
@@ -37,6 +39,16 @@ const operation = z.string().optional().describe('substring of the operation nam
  * the model dropped a closing brace, the provider could not parse the call, and the raw JSON came back as text —
  * so this checks the shape of the start, not whether the JSON is valid.
  */
+/** A specialist's result as ADK's AgentTool reports a failed or silent run: `{"result":""}`. */
+function isEmptyResult(content: string): boolean {
+  try {
+    const parsed = JSON.parse(content) as { result?: unknown }
+    return typeof parsed.result === 'string' ? parsed.result.trim() === '' : parsed.result === undefined || parsed.result === null
+  } catch {
+    return false
+  }
+}
+
 export function isLeakedToolCall(text: string): boolean {
   return /^\s*(?:```(?:json)?\s*)?\{\s*"tool_call"\s*:/.test(text)
 }
@@ -151,6 +163,14 @@ export function createInvestigator(options: InvestigatorOptions) {
             transcript.push({ kind: 'text', agent: 'orchestrator', content: part.text })
           }
         }
+      }
+      // ADK swallows a model error inside a specialist: the orchestrator just gets an empty result and would write a
+      // confident "no data found". When every specialist came back empty, say what really happened instead.
+      const results = transcript.filter((t) => t.kind === 'result')
+      const empty = results.filter((t) => isEmptyResult(t.content))
+      if (results.length > 0 && empty.length === results.length) {
+        const names = [...new Set(empty.map((t) => t.agent))].join(', ')
+        return { text: '', sessionId, steps, transcript, error: failure ?? `the specialists (${names}) returned nothing — the model call inside them failed; the cause is in the observer's terminal` }
       }
       if (isLeakedToolCall(text)) {
         return { text: '', sessionId, steps, transcript, error: 'the agents did not finish the report (a tool call leaked instead) — the evidence cards above are still valid; ask again to continue' }
