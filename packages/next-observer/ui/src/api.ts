@@ -36,7 +36,7 @@ export const api = {
   traces: (search: TraceSearch & { exactOperation?: boolean; fromMs?: number; limit?: number }) => get<TraceSummary[]>(`/api/traces${query({ limit: 200, ...search })}`),
   trace: (traceId: string) => get<{ traceId: string; spans: TraceSpan[] }>(`/api/traces/${traceId}`),
   overview: (windowMs: number, service?: string) => get<Overview>(`/api/overview${query({ windowMs, service })}`),
-  operation: (operation: string, windowMs: number, service?: string) => get<OperationDetails>(`/api/operation${query({ operation, windowMs, service })}`),
+  operation: (operation: string, windowMs: number, service?: string, toMs?: number) => get<OperationDetails>(`/api/operation${query({ operation, windowMs, service, toMs })}`),
   regression: () => get<{ regression: Regression | null }>('/api/regression'),
   chatInfo: () => get<ChatInfo>('/api/chat'),
 

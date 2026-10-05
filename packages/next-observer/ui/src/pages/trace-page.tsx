@@ -9,7 +9,7 @@ import { PageHeader } from '@/components/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Panel } from '@/components/dashboard/panel'
-import { criticalPath, selfTimes, standing, timeByOperation } from '@/lib/trace-analysis'
+import { criticalPath, rootSpan, selfTimes, standing, timeByOperation } from '@/lib/trace-analysis'
 import { layoutWaterfall, formatDuration } from '@/lib/waterfall'
 
 const traceRoute = getRouteApi('/traces/$traceId')
@@ -32,12 +32,13 @@ export function TracePage() {
   const spans = trace.data?.spans
   const critical = useMemo(() => criticalPath(spans ?? []), [spans])
   const self = useMemo(() => selfTimes(spans ?? []), [spans])
-  const byOperation = useMemo(() => timeByOperation(spans ?? [], layout.durationMs), [spans, layout.durationMs])
-  // How the same request usually behaves — over the last hour, so one trace opened later still has company.
-  const root = layout.rows[0]?.span
+  const byOperation = useMemo(() => timeByOperation(spans ?? []), [spans])
+  // The same root the critical path starts from. How that request usually behaves: the hour around this call (by the
+  // collector's clock — the trace's own timestamps), so a trace opened a day later is judged against its own time.
+  const root = useMemo(() => rootSpan(spans ?? []), [spans])
   const others = useQuery({
-    queryKey: ['trace-operation', root?.service, root?.name],
-    queryFn: () => api.operation(root!.name, 60 * 60_000, root!.service),
+    queryKey: ['trace-operation', root?.service, root?.name, root?.startTimeMs],
+    queryFn: () => api.operation(root!.name, COMPARE_WINDOW_MS, root!.service, root!.startTimeMs + COMPARE_WINDOW_MS / 2),
     enabled: root !== undefined,
   })
 
@@ -66,7 +67,7 @@ export function TracePage() {
       </div>
 
       {root && others.data?.histogram && others.data.histogram.total >= MIN_CALLS_TO_COMPARE && (
-        <ComparedToOthers durationMs={root.durationMs} histogram={others.data.histogram} operation={root.name} service={root.service} />
+        <ComparedToOthers durationMs={root.durationMs} histogram={others.data.histogram} operation={root.name} service={root.service} coldStart={root.coldStart === true} />
       )}
 
       <div className="grid grid-cols-[1fr_380px] gap-4">
@@ -120,7 +121,7 @@ export function TracePage() {
         {selected && <SpanDetails span={selected} selfMs={self.get(selected.spanId)} />}
       </div>
 
-      <Panel title="Where the time went" testId="panel-self-time" aside="own time, without calls to others">
+      <Panel title="Where the time went" testId="panel-self-time" aside="own time, without calls to others · % of all own time">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left font-mono text-[11px] tracking-wider text-muted-foreground uppercase">
@@ -143,7 +144,7 @@ export function TracePage() {
                 <td className="py-2 pr-3">
                   <span className="flex items-center gap-2">
                     <span className="h-1.5 flex-1 rounded-full bg-muted">
-                      <span className="block h-1.5 rounded-full bg-warning/80" style={{ width: `${Math.min(r.selfShare * 100, 100)}%` }} />
+                      <span className="block h-1.5 rounded-full bg-warning/80" style={{ width: `${r.selfShare * 100}%` }} />
                     </span>
                     <span className="w-10 text-right font-mono text-xs text-muted-foreground tabular-nums">{Math.round(r.selfShare * 100)}%</span>
                   </span>
@@ -161,16 +162,19 @@ export function TracePage() {
 }
 
 const MIN_CALLS_TO_COMPARE = 5
+const COMPARE_WINDOW_MS = 60 * 60_000
 
 const STANDING = {
   slow: { text: 'slower than 95% of the calls', tone: 'text-warning', dot: 'bg-warning' },
   typical: { text: 'a typical call', tone: 'text-signal', dot: 'bg-signal' },
   fast: { text: 'faster than half of the calls', tone: 'text-signal', dot: 'bg-signal' },
 }
+const COLD = { text: 'a cold start', tone: 'text-muted-foreground', dot: 'bg-muted-foreground' }
 
 /** This call on the scale of the others: median and p95 as ticks, the call as a dot, the verdict in words. */
-function ComparedToOthers({ durationMs, histogram, operation, service }: { durationMs: number; histogram: Histogram; operation: string; service: string }) {
-  const verdict = STANDING[standing(durationMs, histogram)]
+function ComparedToOthers({ durationMs, histogram, operation, service, coldStart }: { durationMs: number; histogram: Histogram; operation: string; service: string; coldStart: boolean }) {
+  // The others are warm calls only (cold starts are left out of the distribution), so a cold start gets no verdict.
+  const verdict = coldStart ? COLD : STANDING[standing(durationMs, histogram)]
   const max = Math.max(histogram.p99Ms, durationMs) * 1.05 || 1
   const at = (ms: number) => `${Math.min((ms / max) * 100, 100)}%`
   return (
@@ -179,7 +183,7 @@ function ComparedToOthers({ durationMs, histogram, operation, service }: { durat
       testId="panel-compared"
       aside={
         <Link to="/operation" search={{ name: operation, service }} className="hover:text-signal">
-          {histogram.total} calls · the last hour →
+          {histogram.total} calls · the hour around this one →
         </Link>
       }
     >
@@ -203,7 +207,7 @@ function ComparedToOthers({ durationMs, histogram, operation, service }: { durat
         <span className={verdict.tone}>{verdict.text[0].toUpperCase() + verdict.text.slice(1)}</span>
         <span className="text-muted-foreground">
           {' '}
-          — {(durationMs / (histogram.p50Ms || 1)).toFixed(1)}× the median.
+          — {coldStart ? 'it includes compiling the route, so it is not judged against the warm calls.' : `${(durationMs / (histogram.p50Ms || 1)).toFixed(1)}× the median.`}
         </span>
       </p>
     </Panel>

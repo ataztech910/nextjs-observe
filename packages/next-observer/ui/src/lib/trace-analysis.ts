@@ -42,25 +42,36 @@ export function selfTimes(spans: WaterfallSpan[]): Map<string, number> {
 }
 
 /**
+ * The span the trace is "about": the root that ends last — it decides the duration. Several roots appear while a
+ * parent has not arrived yet. Undefined for no spans, or when every span has a parent in the trace (a broken cycle).
+ */
+export function rootSpan<S extends WaterfallSpan>(spans: S[]): S | undefined {
+  const ids = new Set(spans.map((s) => s.spanId))
+  let root: S | undefined
+  for (const s of spans) if ((!s.parentSpanId || !ids.has(s.parentSpanId)) && (!root || end(s) > end(root))) root = s
+  return root
+}
+
+/**
  * The spans that decided how long the trace took: from the end of a span walk backwards, each time taking the child
  * that finished last before the current point. Making any other span faster would not make the trace faster.
  */
 export function criticalPath(spans: WaterfallSpan[]): Set<string> {
   const path = new Set<string>()
-  if (spans.length === 0) return path
-  const ids = new Set(spans.map((s) => s.spanId))
+  const root = rootSpan(spans)
+  if (!root) return path
   const children = childrenOf(spans)
-  const roots = spans.filter((s) => !s.parentSpanId || !ids.has(s.parentSpanId))
-  // Several roots (the parent has not arrived yet): the one that ends last decides the duration.
-  const root = roots.reduce((a, b) => (end(b) > end(a) ? b : a))
 
   const visit = (span: WaterfallSpan) => {
     path.add(span.spanId)
+    // A child from another service is timed by another clock (browser → server): a few ms of skew must not make it
+    // "end after its parent" and drop the whole server side from the path. Within one service the clock is shared.
+    const endOf = (kid: WaterfallSpan) => (kid.service === span.service ? end(kid) : Math.min(end(kid), end(span)))
     let cursor = end(span)
-    const kids = [...(children.get(span.spanId) ?? [])].sort((a, b) => end(b) - end(a))
+    const kids = [...(children.get(span.spanId) ?? [])].sort((a, b) => endOf(b) - endOf(a))
     for (const kid of kids) {
       // A child still running after the point we wait for did not hold that point back.
-      if (end(kid) > cursor) continue
+      if (endOf(kid) > cursor) continue
       visit(kid)
       cursor = kid.startTimeMs
     }
@@ -75,12 +86,15 @@ export interface OperationTime {
   calls: number
   selfMs: number
   totalMs: number
-  /** Share of the trace's duration spent in this operation's own code, 0…1. */
+  /**
+   * Share of all own time in the trace, 0…1 — the shares add up to 1. Not a share of the trace's duration: five
+   * parallel 80 ms calls in a 100 ms trace are 400 ms of work.
+   */
   selfShare: number
 }
 
 /** Self and total time per operation (same name and service), biggest self time first. */
-export function timeByOperation(spans: WaterfallSpan[], traceDurationMs: number): OperationTime[] {
+export function timeByOperation(spans: WaterfallSpan[]): OperationTime[] {
   const self = selfTimes(spans)
   const groups = new Map<string, OperationTime>()
   for (const s of spans) {
@@ -92,7 +106,8 @@ export function timeByOperation(spans: WaterfallSpan[], traceDurationMs: number)
     groups.set(key, row)
   }
   const rows = [...groups.values()]
-  for (const r of rows) r.selfShare = traceDurationMs > 0 ? r.selfMs / traceDurationMs : 0
+  const allSelfMs = rows.reduce((sum, r) => sum + r.selfMs, 0)
+  for (const r of rows) r.selfShare = allSelfMs > 0 ? r.selfMs / allSelfMs : 0
   return rows.sort((a, b) => b.selfMs - a.selfMs)
 }
 
