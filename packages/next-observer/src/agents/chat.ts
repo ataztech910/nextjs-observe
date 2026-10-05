@@ -1,5 +1,5 @@
 // Adapts the investigator to the collector's chat protocol.
-import type { BaseLlm } from '@google/adk'
+import { LLMRegistry, type BaseLlm } from '@google/adk'
 import type { ChatEvent, ChatHandler } from '../collector/chat.js'
 import type { StorageAdapter } from '../collector/types.js'
 import type { QueryOptions } from '../debug/queries.js'
@@ -7,6 +7,7 @@ import { cardKey, cardsFromResult } from './cards.js'
 import { createInvestigator } from './investigator.js'
 import type { SpecialistSpec } from './specialists.js'
 import { getModel, resolveAiMode, type Env } from './model.js'
+import { ResilientLlm } from './resilient-llm.js'
 
 export interface ChatHandlerOptions {
   storage: StorageAdapter
@@ -18,14 +19,36 @@ export interface ChatHandlerOptions {
   model?: BaseLlm | string
   /** Default: the built-in specialists; the CLI merges in the project's observe.agents file. */
   specialists?: SpecialistSpec[]
+  /**
+   * How long one model call may take before it is started again (once). Default: OBSERVE_MODEL_TIMEOUT_MS, else 60 s.
+   * Separate from `timeoutMs`, which limits the whole investigation.
+   */
+  modelCallTimeoutMs?: number
+  /** Where "the model did not answer, trying again" goes. Default: the observer's terminal. */
+  log?: (line: string) => void
+}
+
+function modelCallTimeout(options: ChatHandlerOptions, env: Env): number | undefined {
+  if (options.modelCallTimeoutMs !== undefined) return options.modelCallTimeoutMs
+  if (!env.OBSERVE_MODEL_TIMEOUT_MS) return undefined
+  const ms = Number(env.OBSERVE_MODEL_TIMEOUT_MS)
+  if (!Number.isFinite(ms) || ms <= 0) throw new Error(`OBSERVE_MODEL_TIMEOUT_MS must be a positive number of milliseconds, got "${env.OBSERVE_MODEL_TIMEOUT_MS}"`)
+  return ms
 }
 
 export async function createChatHandler(options: ChatHandlerOptions): Promise<{ mode: 'mock' | 'real'; handle: ChatHandler }> {
   const env = options.env ?? process.env
   const mode = resolveAiMode(env)
+  const chosen = options.model ?? (await getModel(env))
+  const log = options.log ?? ((line: string) => console.warn(line))
+  // A model given by name (Gemini) becomes an instance here, so every provider gets the same per-call deadline.
+  const model = new ResilientLlm(typeof chosen === 'string' ? LLMRegistry.newLlm(chosen) : chosen, {
+    callTimeoutMs: modelCallTimeout(options, env),
+    onRetry: ({ attempt, attempts, reason }) => log(`[next-observer] model call: ${reason} — trying again (${attempt}/${attempts})`),
+  })
   const investigator = createInvestigator({
     storage: options.storage,
-    model: options.model ?? (await getModel(env)),
+    model,
     queryOptions: options.queryOptions,
     specialists: options.specialists,
   })

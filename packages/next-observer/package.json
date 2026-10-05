@@ -1,6 +1,6 @@
 {
   "name": "next-observer",
-  "version": "0.3.14",
+  "version": "0.3.15",
   "description": "The observer for next-observe: OTLP collector, trace UI, anomaly detector and AI agents that investigate your Next.js app. Run with npx next-observer dev.",
   "keywords": [
     "nextjs",
