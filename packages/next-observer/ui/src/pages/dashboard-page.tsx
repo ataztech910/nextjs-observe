@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { getRouteApi, useNavigate } from '@tanstack/react-router'
+import { getRouteApi, Link, useNavigate } from '@tanstack/react-router'
 import { api } from '@/api'
 import { DurationChart, RequestsChart, RouteList } from '@/components/dashboard/charts'
 import { Change, Legend, Panel, Stat, TimeAxis } from '@/components/dashboard/panel'
@@ -78,7 +78,17 @@ export function DashboardPage() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-3">
-            <Panel title="Errors" testId="panel-errors" count={o.errors.count} change={<Change value={o.errors.change} upIsBad />}>
+            <Panel
+              title="Errors"
+              testId="panel-errors"
+              count={o.errors.count}
+              change={<Change value={o.errors.change} upIsBad />}
+              aside={
+                <Link to="/errors" search={{ window: window === DEFAULT_WINDOW ? undefined : window, service }} className="hover:text-signal">
+                  view all →
+                </Link>
+              }
+            >
               <div className="space-y-1">
                 <div className={`font-mono text-4xl font-medium tabular-nums ${o.errors.count > 0 ? 'text-destructive' : ''}`} data-testid="error-rate">
                   {pct(o.errors.rate)}

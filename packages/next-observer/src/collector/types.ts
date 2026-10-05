@@ -130,4 +130,6 @@ export interface StorageAdapter {
    * `next dev` that request includes compiling the route, so it is not representative latency. False without an id.
    */
   isColdStart(span: NormalizedSpan): boolean
+  /** False once old spans have been dropped to make room: "never seen before" can then only mean "not seen in what is left". */
+  isHistoryComplete(): boolean
 }

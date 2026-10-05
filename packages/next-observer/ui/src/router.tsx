@@ -7,11 +7,12 @@ import { RegressionBanner } from '@/components/regression-banner'
 import { ChatPage } from '@/pages/chat-page'
 import { parseWindow, type WindowKey } from '@/components/window-picker'
 import { DashboardPage } from '@/pages/dashboard-page'
+import { ErrorsPage } from '@/pages/errors-page'
 import { OperationPage } from '@/pages/operation-page'
 import { TracePage } from '@/pages/trace-page'
 import { TracesPage } from '@/pages/traces-page'
 
-function NavLink({ to, children }: { to: '/' | '/traces' | '/chat'; children: ReactNode }) {
+function NavLink({ to, children }: { to: '/' | '/errors' | '/traces' | '/chat'; children: ReactNode }) {
   return (
     <Link to={to} activeOptions={{ exact: to === '/', includeSearch: false }} className="rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground">
       {children}
@@ -29,6 +30,7 @@ const rootRoute = createRootRoute({
             next-observer
           </Link>
           <NavLink to="/">Overview</NavLink>
+          <NavLink to="/errors">Errors</NavLink>
           <NavLink to="/traces">Traces</NavLink>
           <NavLink to="/chat">Chat</NavLink>
           <span className="ml-auto">
@@ -80,6 +82,16 @@ const traceRoute = createRoute({
   component: TracePage,
 })
 
+const errorsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/errors',
+  validateSearch: (search: Record<string, unknown>): { window?: WindowKey; service?: string } => ({
+    window: parseWindow(search.window),
+    service: typeof search.service === 'string' && search.service.trim() ? search.service.trim() : undefined,
+  }),
+  component: ErrorsPage,
+})
+
 // The operation is a search parameter, not a path segment: names like "GET /api/inventory/[id]" contain slashes.
 const operationRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -100,7 +112,7 @@ const chatRoute = createRoute({
   component: ChatPage,
 })
 
-export const router = createRouter({ routeTree: rootRoute.addChildren([indexRoute, tracesRoute, traceRoute, operationRoute, chatRoute]) })
+export const router = createRouter({ routeTree: rootRoute.addChildren([indexRoute, errorsRoute, tracesRoute, traceRoute, operationRoute, chatRoute]) })
 
 declare module '@tanstack/react-router' {
   interface Register {
