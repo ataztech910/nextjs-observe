@@ -101,6 +101,9 @@ function SpanDetails({ span }: { span: NormalizedSpan }) {
           {spanLabel(span)}
           {span.status === 'error' && <Badge variant="destructive">error</Badge>}
         </CardTitle>
+        <Link to="/operation" search={{ name: span.name, service: span.service }} className="font-mono text-xs text-signal underline-offset-2 hover:underline" data-testid="operation-link">
+          all calls of this operation →
+        </Link>
       </CardHeader>
       <CardContent className="space-y-3">
         <dl>

@@ -9,6 +9,8 @@ export interface OverviewOptions {
   /** Number of time buckets in the series. */
   buckets: number
   service?: string
+  /** Exact span name: the numbers of this one operation (any span kind) instead of all server requests. */
+  operation?: string
   /** Cold requests count as traffic but stay out of latency — in next dev they include compiling the route. */
   isColdStart?: (span: NormalizedSpan) => boolean
 }
@@ -90,7 +92,8 @@ export function computeOverview(spans: NormalizedSpan[], options: OverviewOption
   const fromMs = nowMs - windowMs
   const bucketMs = windowMs / buckets
   const cold = options.isColdStart ?? (() => false)
-  const requests = spans.filter((s) => isRequest(s) && (!options.service || s.service === options.service))
+  const selected = options.operation === undefined ? isRequest : (s: NormalizedSpan) => s.name === options.operation
+  const requests = spans.filter((s) => selected(s) && (!options.service || s.service === options.service))
   const current = requests.filter((s) => s.startTimeMs >= fromMs && s.startTimeMs <= nowMs)
   const previous = requests.filter((s) => s.startTimeMs >= fromMs - windowMs && s.startTimeMs < fromMs)
   const warm = (list: NormalizedSpan[]) => list.filter((s) => !cold(s))

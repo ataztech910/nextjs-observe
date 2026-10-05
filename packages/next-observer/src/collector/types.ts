@@ -34,6 +34,8 @@ export interface TraceFilter {
   service?: string
   /** Case-insensitive substring match on any span name in the trace. */
   operation?: string
+  /** Match `operation` as the exact span name instead — "GET /api/products" must not bring "GET /api/products/[id]". */
+  exactOperation?: boolean
   /** Minimum duration of the whole trace. */
   minDurationMs?: number
   hasError?: boolean

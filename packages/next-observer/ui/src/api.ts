@@ -1,11 +1,12 @@
 // Types come straight from the collector, so the UI can't drift from the API.
 import type { ChatEvent, EvidenceCard, ProactiveEvent, VersionStats } from '../../src/collector/chat'
 import type { Anomaly } from '../../src/debug/detector'
+import type { Histogram, OperationDetails, Speed } from '../../src/collector/operation'
 import type { Overview, RouteRow } from '../../src/collector/overview'
 import type { Regression } from '../../src/debug/regression'
 import type { NormalizedSpan, OperationStats, ServiceInfo, TraceSpan, TraceSummary } from '../../src/collector/types'
 
-export type { Anomaly, Overview, Regression, RouteRow, ChatEvent, EvidenceCard, ProactiveEvent, VersionStats, NormalizedSpan, OperationStats, ServiceInfo, TraceSpan, TraceSummary }
+export type { Anomaly, Histogram, OperationDetails, Speed, Overview, Regression, RouteRow, ChatEvent, EvidenceCard, ProactiveEvent, VersionStats, NormalizedSpan, OperationStats, ServiceInfo, TraceSpan, TraceSummary }
 
 export type ChatInfo = { enabled: true; mode: 'mock' | 'real' } | { enabled: false; reason: string }
 
@@ -32,9 +33,10 @@ function query(params: Record<string, string | number | boolean | undefined>): s
 export const api = {
   health: () => get<{ status: string; spans: number }>('/health'),
   services: () => get<ServiceInfo[]>('/api/services'),
-  traces: (search: TraceSearch) => get<TraceSummary[]>(`/api/traces${query({ ...search, limit: 200 })}`),
+  traces: (search: TraceSearch & { exactOperation?: boolean; fromMs?: number; limit?: number }) => get<TraceSummary[]>(`/api/traces${query({ limit: 200, ...search })}`),
   trace: (traceId: string) => get<{ traceId: string; spans: TraceSpan[] }>(`/api/traces/${traceId}`),
   overview: (windowMs: number, service?: string) => get<Overview>(`/api/overview${query({ windowMs, service })}`),
+  operation: (operation: string, windowMs: number, service?: string) => get<OperationDetails>(`/api/operation${query({ operation, windowMs, service })}`),
   regression: () => get<{ regression: Regression | null }>('/api/regression'),
   chatInfo: () => get<ChatInfo>('/api/chat'),
 
