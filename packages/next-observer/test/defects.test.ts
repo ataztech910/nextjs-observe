@@ -169,13 +169,15 @@ describe('computeDefects', () => {
     expect(defects[0].exampleTraceIds).toEqual([many[4].traceId, many[3].traceId, many[2].traceId])
   })
 
-  it('on the workshop shop: one defect — the inventory timeout, seen in both versions', async () => {
+  it('on the workshop shop: the receipt email that v2 broke comes first, then the old inventory timeout', async () => {
     const storage = await shopStorage()
     const failed = await storage.querySpans({ status: 'error', limit: Number.MAX_SAFE_INTEGER })
     const deployOrder = new Map((await storage.getServices()).map((s) => [s.name, s.versions]))
     const defects = computeDefects(failed, { nowMs: NOW, windowMs: 15 * MIN, buckets: 30, deployOrder, historyComplete: storage.isHistoryComplete() })
-    expect(defects).toHaveLength(1)
-    expect(defects[0]).toMatchObject({ operation: 'inventory.check', message: 'Inventory service timeout: upstream not responding', isNew: false, versions: ['v1', 'v2'], affected: [{ operation: 'GET /api/inventory/[id]' }] })
+    expect(defects).toHaveLength(2)
+    // Guest checkouts: 5 of the 30 in v2. The request itself answers 200, so nothing is "affected".
+    expect(defects[0]).toMatchObject({ operation: 'sendReceiptEmail', type: 'TypeError', message: "Cannot read properties of undefined (reading 'email')", count: 5, isNew: true, firstSeenVersion: 'v2', versions: ['v2'], affected: [] })
+    expect(defects[1]).toMatchObject({ operation: 'inventory.check', message: 'Inventory service timeout: upstream not responding', isNew: false, versions: ['v1', 'v2'], affected: [{ operation: 'GET /api/inventory/[id]' }] })
   })
 })
 

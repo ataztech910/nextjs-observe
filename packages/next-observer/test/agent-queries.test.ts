@@ -166,7 +166,8 @@ describe('searchTraces', () => {
     const slow = await q.searchTraces({ minDurationMs: 1000, limit: 50 })
     expect(slow.traces.length).toBeGreaterThan(0)
     expect(slow.traces.every((t) => t.root === 'POST /api/checkout' && t.durationMs >= 1000)).toBe(true)
-    const failing = await q.searchTraces({ hasError: true, limit: 3 })
+    // Inventory's own failures (v2 checkouts can carry a failed receipt email too — that is a different trace shape).
+    const failing = await q.searchTraces({ operation: 'inventory', hasError: true, limit: 3 })
     expect(failing.traces).toHaveLength(3)
     // Error spans of the whole trace, Next's wrapper included (get_trace hides it) — the summary is shared with the UI.
     expect(failing.traces[0]).toMatchObject({ root: 'GET /api/inventory/[id]', errors: 3 })
@@ -211,8 +212,23 @@ describe('getTrace', () => {
     expect(trace.spans.filter((s) => s.name === 'db.query')).toHaveLength(5)
   })
 
+  it('self time: parallel children are not subtracted twice, a child outliving its parent is clipped to it', async () => {
+    const storage = new MemoryStorage()
+    const base = { traceId: 'a'.repeat(32), kind: 'internal' as const, service: 'shop', serviceVersion: 'v1', scope: null, status: 'unset' as const, statusMessage: null, attributes: {}, resource: {}, events: [] }
+    await storage.insertSpans([
+      { ...base, spanId: 'root', parentSpanId: null, name: 'loadPage', startTimeMs: NOW, durationMs: 100 },
+      // Two fetches in parallel, 10…40 and 20…60: together they cover 50 ms of the parent, not 30 + 40.
+      { ...base, spanId: 'a', parentSpanId: 'root', name: 'fetchUser', startTimeMs: NOW + 10, durationMs: 30 },
+      { ...base, spanId: 'b', parentSpanId: 'root', name: 'fetchCart', startTimeMs: NOW + 20, durationMs: 40 },
+      // Fire-and-forget: starts at 90 and runs long after the parent ended at 100 — covers 10 ms of it.
+      { ...base, spanId: 'c', parentSpanId: 'root', name: 'sendAnalytics', startTimeMs: NOW + 90, durationMs: 500 },
+    ])
+    const trace = await createAgentQueries(storage, { now: () => NOW }).getTrace({ traceId: 'a'.repeat(32) })
+    expect(trace.spans[0]).toMatchObject({ name: 'loadPage', durationMs: 100, selfMs: 40 })
+  })
+
   it('shows the error message and code location for root cause', async () => {
-    const [failing] = (await q.searchTraces({ hasError: true, limit: 1 })).traces
+    const [failing] = (await q.searchTraces({ operation: 'inventory', hasError: true, limit: 1 })).traces
     const trace = await q.getTrace({ traceId: failing.traceId })
     expect(trace.spans[1]).toMatchObject({
       depth: 1,
@@ -238,16 +254,18 @@ describe('Next.js internal spans', () => {
     const changes = (await q.compareVersions()).changes.map((c) => c.operation)
     expect(changes.slice(0, 2)).toEqual(['chargePayment', 'POST /api/checkout'])
     expect(changes.some(internal)).toBe(false)
-    expect((await q.getErrors()).errors.map((e) => e.operation).sort()).toEqual(['GET /api/inventory/[id]', 'inventory.check'])
+    expect((await q.getErrors()).errors.map((e) => e.operation).sort()).toEqual(['GET /api/inventory/[id]', 'inventory.check', 'sendReceiptEmail'])
   })
 
   it('get_trace attaches their children to the nearest visible ancestor and says how many were hidden', async () => {
     const [checkoutTrace] = (await q.searchTraces({ operation: 'POST /api/checkout', minDurationMs: 1000, limit: 1 })).traces
     const trace = await q.getTrace({ traceId: checkoutTrace.traceId })
     expect((trace as { nextInternalSpansHidden?: number }).nextInternalSpansHidden).toBe(1)
-    expect(trace.spans.map((s) => [s.depth, s.name])).toEqual([[0, 'POST /api/checkout'], [1, 'chargePayment']])
-    // The hidden route span's own 10 ms is Next's, not the handler's: it must not inflate selfMs.
-    expect(trace.spans[0]).toMatchObject({ selfMs: 10, nextInternalMs: 10 })
+    // v2 also sends a receipt email, fire-and-forget: it starts before the response and ends after it.
+    expect(trace.spans.map((s) => [s.depth, s.name])).toEqual([[0, 'POST /api/checkout'], [1, 'chargePayment'], [1, 'sendReceiptEmail']])
+    // The hidden route span's own time is Next's, not the handler's: it must not inflate selfMs. Of the route's 10 ms
+    // outside chargePayment, 3 are covered by the email that outlives it — clipped to the route, not subtracted whole.
+    expect(trace.spans[0]).toMatchObject({ selfMs: 10, nextInternalMs: 7 })
     expect(trace.spans[1]).not.toHaveProperty('nextInternalMs')
   })
 

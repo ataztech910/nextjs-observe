@@ -272,9 +272,30 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
       }
       // Self time is always measured against the real children, so time inside a hidden span stays out of its parent's
       // selfMs and is reported as nextInternalMs of the nearest visible ancestor instead.
-      const realChildMs = new Map<string, number>()
-      for (const s of spans) if (s.parentSpanId) realChildMs.set(s.parentSpanId, (realChildMs.get(s.parentSpanId) ?? 0) + s.durationMs)
-      const selfOf = (s: NormalizedSpan) => Math.max(0, s.durationMs - (realChildMs.get(s.spanId) ?? 0))
+      // Children are merged as intervals and clipped to the parent (the same rule as the UI's trace page): two parallel
+      // calls are not subtracted twice, and a fire-and-forget child that ends after its parent does not zero it out.
+      const realChildren = new Map<string, NormalizedSpan[]>()
+      for (const s of spans) {
+        if (!s.parentSpanId) continue
+        const list = realChildren.get(s.parentSpanId)
+        if (list) list.push(s)
+        else realChildren.set(s.parentSpanId, [s])
+      }
+      const selfOf = (s: NormalizedSpan) => {
+        const end = s.startTimeMs + s.durationMs
+        const intervals = (realChildren.get(s.spanId) ?? [])
+          .map((c) => [Math.max(c.startTimeMs, s.startTimeMs), Math.min(c.startTimeMs + c.durationMs, end)] as const)
+          .filter(([from, to]) => to > from)
+          .sort((a, b) => a[0] - b[0])
+        let covered = 0
+        let cursor = -Infinity
+        for (const [from, to] of intervals) {
+          if (to <= cursor) continue
+          covered += to - Math.max(from, cursor)
+          cursor = to
+        }
+        return Math.max(0, s.durationMs - covered)
+      }
       const children = new Map<string | null, NormalizedSpan[]>()
       const nextInternalMs = new Map<string, number>()
       for (const s of spans) {
