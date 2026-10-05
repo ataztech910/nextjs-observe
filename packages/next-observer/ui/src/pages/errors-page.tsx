@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { getRouteApi, Link, useNavigate } from '@tanstack/react-router'
 import { api, type Defect } from '@/api'
+import { CopyPrompt } from '@/components/copy-prompt'
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { DEFAULT_WINDOW, WINDOWS, WindowPicker } from '@/components/window-picker'
+import { defectPrompt } from '@/lib/agent-prompt'
 import { questionFor } from '@/lib/defects'
 
 const REFRESH_MS = 2000
@@ -113,7 +115,8 @@ function DefectCard({ defect: d }: { defect: Defect }) {
             </Link>
           ))}
         </span>
-        <Button type="button" size="sm" variant="outline" className="ml-auto font-sans" data-testid="defect-investigate" onClick={() => void navigate({ to: '/chat', search: { ask: questionFor(d) } })}>
+        <CopyPrompt build={() => defectPrompt(d)} className="ml-auto font-sans" />
+        <Button type="button" size="sm" variant="outline" className="font-sans" data-testid="defect-investigate" onClick={() => void navigate({ to: '/chat', search: { ask: questionFor(d) } })}>
           Investigate
         </Button>
       </div>
