@@ -3,12 +3,14 @@ import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, type ChatEvent, type ProactiveEvent } from '@/api'
 import { AnomalyView, anomalyHeadline } from '@/components/chat/anomaly-view'
+import { CopyPrompt } from '@/components/copy-prompt'
 import { EvidenceCardView } from '@/components/chat/evidence-cards'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/page-header'
+import { reportPrompt } from '@/lib/agent-prompt'
 import { renderInline } from '@/lib/inline-markdown'
 
 // The three workshop scenarios, one click away.
@@ -211,6 +213,11 @@ function TurnView({ turn }: { turn: Turn }) {
               <p className="whitespace-pre-wrap leading-relaxed [overflow-wrap:anywhere]" data-testid="chat-report">
                 {renderInline(report.text)}
               </p>
+            )}
+            {report && (
+              <div className="flex justify-end">
+                <CopyPrompt build={() => reportPrompt(turn.question, report.text, cards)} />
+              </div>
             )}
             {error && (
               <p className="text-destructive" data-testid="chat-error">

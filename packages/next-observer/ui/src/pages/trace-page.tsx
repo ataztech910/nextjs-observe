@@ -4,11 +4,13 @@ import { getRouteApi, Link } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import { api, type Histogram, type NormalizedSpan, type TraceSpan } from '@/api'
 import { ColdStartBadge } from '@/components/cold-start-badge'
+import { CopyPrompt } from '@/components/copy-prompt'
 import { DetailRow } from '@/components/detail-row'
 import { PageHeader } from '@/components/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Panel } from '@/components/dashboard/panel'
+import { tracePrompt } from '@/lib/agent-prompt'
 import { criticalPath, rootSpan, selfTimes, standing, timeByOperation } from '@/lib/trace-analysis'
 import { layoutWaterfall, formatDuration } from '@/lib/waterfall'
 
@@ -63,7 +65,14 @@ export function TracePage() {
               <span className="text-foreground tabular-nums">{formatDuration(layout.durationMs)}</span> · {layout.rows.length} spans · {traceId}
             </>
           }
-        />
+        >
+          <CopyPrompt
+            build={() => {
+              const h = others.data?.histogram
+              return tracePrompt({ traceId, spans: trace.data.spans, usual: h && h.total >= MIN_CALLS_TO_COMPARE ? { p50Ms: h.p50Ms, p95Ms: h.p95Ms, calls: h.total } : undefined })
+            }}
+          />
+        </PageHeader>
       </div>
 
       {root && others.data?.histogram && others.data.histogram.total >= MIN_CALLS_TO_COMPARE && (
