@@ -2,9 +2,10 @@
 import type { ChatEvent, EvidenceCard, ProactiveEvent, VersionStats } from '../../src/collector/chat'
 import type { Anomaly } from '../../src/debug/detector'
 import type { Overview, RouteRow } from '../../src/collector/overview'
+import type { Regression } from '../../src/debug/regression'
 import type { NormalizedSpan, OperationStats, ServiceInfo, TraceSpan, TraceSummary } from '../../src/collector/types'
 
-export type { Anomaly, Overview, RouteRow, ChatEvent, EvidenceCard, ProactiveEvent, VersionStats, NormalizedSpan, OperationStats, ServiceInfo, TraceSpan, TraceSummary }
+export type { Anomaly, Overview, Regression, RouteRow, ChatEvent, EvidenceCard, ProactiveEvent, VersionStats, NormalizedSpan, OperationStats, ServiceInfo, TraceSpan, TraceSummary }
 
 export type ChatInfo = { enabled: true; mode: 'mock' | 'real' } | { enabled: false; reason: string }
 
@@ -34,6 +35,7 @@ export const api = {
   traces: (search: TraceSearch) => get<TraceSummary[]>(`/api/traces${query({ ...search, limit: 200 })}`),
   trace: (traceId: string) => get<{ traceId: string; spans: TraceSpan[] }>(`/api/traces/${traceId}`),
   overview: (windowMs: number, service?: string) => get<Overview>(`/api/overview${query({ windowMs, service })}`),
+  regression: () => get<{ regression: Regression | null }>('/api/regression'),
   chatInfo: () => get<ChatInfo>('/api/chat'),
 
   /** Streams one chat turn: calls onEvent for every NDJSON line as the agents work. */

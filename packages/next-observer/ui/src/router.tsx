@@ -3,6 +3,7 @@ import type { TraceSearch } from '@/api'
 import type { ReactNode } from 'react'
 import { LiveIndicator } from '@/components/live-indicator'
 import { ObserverOffline } from '@/components/observer-offline'
+import { RegressionBanner } from '@/components/regression-banner'
 import { ChatPage } from '@/pages/chat-page'
 import { DashboardPage, WINDOWS, type WindowKey } from '@/pages/dashboard-page'
 import { TracePage } from '@/pages/trace-page'
@@ -37,6 +38,7 @@ const rootRoute = createRootRoute({
       <main className="mx-auto max-w-7xl px-6 py-8">
         <Outlet />
       </main>
+      <RegressionBanner />
     </div>
   ),
 })
@@ -79,6 +81,8 @@ const traceRoute = createRoute({
 const chatRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/chat',
+  // `ask`: a question to send right away — how the regression banner hands over to the agents.
+  validateSearch: (search: Record<string, unknown>): { ask?: string } => ({ ask: typeof search.ask === 'string' && search.ask.trim() ? search.ask.trim() : undefined }),
   component: ChatPage,
 })
 
