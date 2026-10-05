@@ -4,17 +4,15 @@ import { api } from '@/api'
 import { DurationChart, RequestsChart, RouteList } from '@/components/dashboard/charts'
 import { Change, Legend, Panel, Stat, TimeAxis } from '@/components/dashboard/panel'
 import { PageHeader } from '@/components/page-header'
+import { DEFAULT_WINDOW, WINDOWS, WindowPicker } from '@/components/window-picker'
 import { formatDuration } from '@/lib/waterfall'
-
-export const WINDOWS = { '5m': 5 * 60_000, '15m': 15 * 60_000, '1h': 60 * 60_000, '24h': 24 * 60 * 60_000 } as const
-export type WindowKey = keyof typeof WINDOWS
 
 const REFRESH_MS = 2000
 const dashboardRoute = getRouteApi('/')
 const pct = (n: number) => `${Math.round(n * 100)}%`
 
 export function DashboardPage() {
-  const { window = '15m', service } = dashboardRoute.useSearch()
+  const { window = DEFAULT_WINDOW, service } = dashboardRoute.useSearch()
   const navigate = useNavigate({ from: '/' })
   const overview = useQuery({ queryKey: ['overview', window, service], queryFn: () => api.overview(WINDOWS[window], service), refetchInterval: REFRESH_MS })
   const services = useQuery({ queryKey: ['services'], queryFn: api.services, refetchInterval: REFRESH_MS })
@@ -38,19 +36,7 @@ export function DashboardPage() {
               </option>
             ))}
         </select>
-        <div className="flex overflow-hidden rounded-md border" role="group" aria-label="Time window">
-          {(Object.keys(WINDOWS) as WindowKey[]).map((key) => (
-            <button
-              key={key}
-              type="button"
-              aria-pressed={key === window}
-              onClick={() => navigate({ search: (prev) => ({ ...prev, window: key === '15m' ? undefined : key }), replace: true })}
-              className="border-l px-3 py-1 font-mono text-xs text-muted-foreground uppercase first:border-l-0 hover:text-foreground aria-pressed:bg-muted aria-pressed:text-foreground"
-            >
-              {key}
-            </button>
-          ))}
-        </div>
+        <WindowPicker value={window} onChange={(key) => navigate({ search: (prev) => ({ ...prev, window: key }), replace: true })} />
       </PageHeader>
 
       {!o ? (

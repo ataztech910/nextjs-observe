@@ -83,7 +83,7 @@ export function DurationChart({ series }: { series: Overview['duration']['series
   )
 }
 
-/** A route list: the operation in mono, its number on the right, context underneath. Click → its traces. */
+/** A route list: the operation in mono, its number on the right, context underneath. Click → the operation page. */
 export function RouteList({ rows, value, meta, empty }: { rows: RouteRow[]; value: (r: RouteRow) => string; meta: (r: RouteRow) => string; empty: string }) {
   if (rows.length === 0) return <p className="py-6 text-center text-sm text-muted-foreground">{empty}</p>
   return (
@@ -93,7 +93,7 @@ export function RouteList({ rows, value, meta, empty }: { rows: RouteRow[]; valu
         const hasMethod = rest.length > 0 && /^[A-Z]+$/.test(method)
         return (
           <li key={`${r.service}:${r.operation}`}>
-            <Link to="/traces" search={{ operation: r.operation }} className="group flex items-center gap-3 py-2.5" data-testid="route-row">
+            <Link to="/operation" search={{ name: r.operation, service: r.service }} className="group flex items-center gap-3 py-2.5" data-testid="route-row">
               {hasMethod && <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] tracking-wider text-muted-foreground">{method}</span>}
               <span className="min-w-0 flex-1 truncate font-mono text-sm group-hover:text-signal">{hasMethod ? rest.join(' ') : r.operation}</span>
               <span className="text-right">

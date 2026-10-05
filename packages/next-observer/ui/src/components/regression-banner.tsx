@@ -42,7 +42,7 @@ export function RegressionBanner() {
     setDismissed(idOf(r))
   }
   const operation = (
-    <Link to="/traces" search={{ operation: r.operation }} className="font-mono text-[0.9em] underline decoration-dotted underline-offset-4 hover:text-signal">
+    <Link to="/operation" search={{ name: r.operation, service: r.service }} className="font-mono text-[0.9em] underline decoration-dotted underline-offset-4 hover:text-signal">
       {r.operation}
     </Link>
   )
