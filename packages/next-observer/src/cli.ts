@@ -29,7 +29,7 @@ export const HELP = `Usage:
 
 Environment: OBSERVE_ROOT, OBSERVE_PORT (default 4318), OBSERVE_HOST (default 127.0.0.1), OBSERVE_API_KEY,
              OBSERVE_AI (mock | real), OBSERVE_DETECTOR (off to disable the anomaly detector),
-             OBSERVE_MODEL_TIMEOUT_MS (one model call; default 60000, a call that hangs is started again once)`
+             OBSERVE_MODEL_TIMEOUT_MS (one model call; default 90000, a call that hangs is started again once)`
 
 export class CliError extends Error {}
 

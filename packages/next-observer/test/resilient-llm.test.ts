@@ -1,7 +1,7 @@
 import { BaseLlm, type BaseLlmConnection, type LlmRequest, type LlmResponse } from '@google/adk'
 import { describe, expect, it } from 'vitest'
 import { createChatHandler, MockLlm } from '../src/agents/index.js'
-import { ResilientLlm } from '../src/agents/resilient-llm.js'
+import { DEFAULT_CALL_TIMEOUT_MS, ResilientLlm } from '../src/agents/resilient-llm.js'
 import type { ChatEvent } from '../src/collector/index.js'
 import { NOW, shopStorage } from './fixtures/shop.js'
 
@@ -114,7 +114,13 @@ describe('ResilientLlm', () => {
     await new Promise((r) => setTimeout(r, 10))
     outer.abort()
     expect(inner.signals[0]!.aborted).toBe(true)
-    await run
+    // …and a cancelled call is not started again: nobody is waiting for the answer.
+    expect(await run).toBe('rejected')
+    expect(inner.calls).toBe(1)
+  })
+
+  it('defaults: 90 s per call — longer than a slow but healthy CLI call', () => {
+    expect(DEFAULT_CALL_TIMEOUT_MS).toBe(90_000)
   })
 })
 
@@ -150,7 +156,10 @@ describe('createChatHandler with a model that hangs', () => {
     const { events, lines } = await run(new HangsOnce(2), { modelCallTimeoutMs: undefined, env: { OBSERVE_MODEL_TIMEOUT_MS: '30' } })
     expect(events.at(-1)).toMatchObject({ type: 'report' })
     expect(lines).toHaveLength(1)
-    await expect(createChatHandler({ storage: await shopStorage(), env: { OBSERVE_MODEL_TIMEOUT_MS: 'soon' } })).rejects.toThrow('OBSERVE_MODEL_TIMEOUT_MS must be a positive number')
+    await expect(createChatHandler({ storage: await shopStorage(), env: { OBSERVE_MODEL_TIMEOUT_MS: 'soon' } })).rejects.toThrow('OBSERVE_MODEL_TIMEOUT_MS must be a number of milliseconds')
     await expect(createChatHandler({ storage: await shopStorage(), env: { OBSERVE_MODEL_TIMEOUT_MS: '0' } })).rejects.toThrow('OBSERVE_MODEL_TIMEOUT_MS')
+    // Above setTimeout's limit the delay would silently become 1 ms — "no deadline" must be refused, not turned into "always late".
+    await expect(createChatHandler({ storage: await shopStorage(), env: { OBSERVE_MODEL_TIMEOUT_MS: '9999999999' } })).rejects.toThrow('between 1 and 2147483647')
+    await expect(createChatHandler({ storage: await shopStorage(), env: { OBSERVE_MODEL_TIMEOUT_MS: '2147483647' } })).resolves.toBeDefined()
   })
 })

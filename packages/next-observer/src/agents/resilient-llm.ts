@@ -5,7 +5,11 @@
 import { BaseLlm, type BaseLlmConnection, type LlmRequest, type LlmResponse } from '@google/adk'
 
 export interface ResilientLlmOptions {
-  /** How long to wait for a call (for each chunk, when streaming). Default 60 s — several times a normal call. */
+  /**
+   * How long to wait for a call (for each chunk, when streaming). Default 90 s: normal calls take 5–20 s, but a CLI
+   * model answers in one piece and may legitimately take longer (Kitana itself gives its CLI 120 s, and may fall back
+   * from one CLI to another inside a call) — abandoning a healthy call only starts a duplicate next to it.
+   */
   callTimeoutMs?: number
   /** Calls in total, the first one included. Default 2. */
   attempts?: number
@@ -14,6 +18,9 @@ export interface ResilientLlmOptions {
 }
 
 const TIMED_OUT = Symbol('timed out')
+export const DEFAULT_CALL_TIMEOUT_MS = 90_000
+/** setTimeout's limit: a longer delay silently becomes 1 ms. */
+export const MAX_CALL_TIMEOUT_MS = 2_147_483_647
 
 export class ResilientLlm extends BaseLlm {
   private readonly callTimeoutMs: number
@@ -24,7 +31,7 @@ export class ResilientLlm extends BaseLlm {
     private readonly options: ResilientLlmOptions = {},
   ) {
     super({ model: inner.model })
-    this.callTimeoutMs = options.callTimeoutMs ?? 60_000
+    this.callTimeoutMs = options.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS
     this.attempts = Math.max(1, options.attempts ?? 2)
   }
 
@@ -47,8 +54,9 @@ export class ResilientLlm extends BaseLlm {
             // Not awaited: return() on a generator that is stuck in an await settles only when that await does.
             void responses.return(undefined).catch(() => {})
             const seconds = Math.round(this.callTimeoutMs / 1000)
-            // Once part of an answer went out, a second call would repeat it — give up instead.
-            if (answered || attempt >= this.attempts) {
+            // Once part of an answer went out, a second call would repeat it — give up instead. Nor is there anyone
+            // to answer once the caller has cancelled.
+            if (answered || attempt >= this.attempts || abortSignal?.aborted) {
               throw new Error(`the model did not answer within ${seconds}s${attempt > 1 ? ` (tried ${attempt} times)` : ''} — try again`)
             }
             this.options.onRetry?.({ attempt: attempt + 1, attempts: this.attempts, reason: `no answer within ${seconds}s` })

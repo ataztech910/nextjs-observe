@@ -7,20 +7,20 @@ import { cardKey, cardsFromResult } from './cards.js'
 import { createInvestigator } from './investigator.js'
 import type { SpecialistSpec } from './specialists.js'
 import { getModel, resolveAiMode, type Env } from './model.js'
-import { ResilientLlm } from './resilient-llm.js'
+import { MAX_CALL_TIMEOUT_MS, ResilientLlm } from './resilient-llm.js'
 
 export interface ChatHandlerOptions {
   storage: StorageAdapter
   env?: Env
   queryOptions?: QueryOptions
-  /** An investigation that takes longer ends with an error event. Default 180 s — a CLI model can hang. */
+  /** An investigation that takes longer ends with an error event. Default 240 s: room for one model call to hang (90 s) and be repeated. */
   timeoutMs?: number
   /** Overrides the model chosen from env (tests, custom providers). */
   model?: BaseLlm | string
   /** Default: the built-in specialists; the CLI merges in the project's observe.agents file. */
   specialists?: SpecialistSpec[]
   /**
-   * How long one model call may take before it is started again (once). Default: OBSERVE_MODEL_TIMEOUT_MS, else 60 s.
+   * How long one model call may take before it is started again (once). Default: OBSERVE_MODEL_TIMEOUT_MS, else 90 s.
    * Separate from `timeoutMs`, which limits the whole investigation.
    */
   modelCallTimeoutMs?: number
@@ -32,7 +32,10 @@ function modelCallTimeout(options: ChatHandlerOptions, env: Env): number | undef
   if (options.modelCallTimeoutMs !== undefined) return options.modelCallTimeoutMs
   if (!env.OBSERVE_MODEL_TIMEOUT_MS) return undefined
   const ms = Number(env.OBSERVE_MODEL_TIMEOUT_MS)
-  if (!Number.isFinite(ms) || ms <= 0) throw new Error(`OBSERVE_MODEL_TIMEOUT_MS must be a positive number of milliseconds, got "${env.OBSERVE_MODEL_TIMEOUT_MS}"`)
+  // The upper bound matters: a delay above setTimeout's limit silently becomes 1 ms, and every call would "time out".
+  if (!Number.isFinite(ms) || ms <= 0 || ms > MAX_CALL_TIMEOUT_MS) {
+    throw new Error(`OBSERVE_MODEL_TIMEOUT_MS must be a number of milliseconds between 1 and ${MAX_CALL_TIMEOUT_MS}, got "${env.OBSERVE_MODEL_TIMEOUT_MS}"`)
+  }
   return ms
 }
 
@@ -52,7 +55,7 @@ export async function createChatHandler(options: ChatHandlerOptions): Promise<{ 
     queryOptions: options.queryOptions,
     specialists: options.specialists,
   })
-  const timeoutMs = options.timeoutMs ?? 180_000
+  const timeoutMs = options.timeoutMs ?? 240_000
 
   // One question at a time per conversation: a second one would interleave with the first in the session history.
   const busy = new Set<string>()
