@@ -48,6 +48,7 @@ export async function createChatHandler(options: ChatHandlerOptions): Promise<{ 
   const model = new ResilientLlm(typeof chosen === 'string' ? LLMRegistry.newLlm(chosen) : chosen, {
     callTimeoutMs: modelCallTimeout(options, env),
     onRetry: ({ attempt, attempts, reason }) => log(`[next-observer] model call: ${reason} — trying again (${attempt}/${attempts})`),
+    onError: (message) => log(`[next-observer] model error: ${message}`),
   })
   const investigator = createInvestigator({
     storage: options.storage,

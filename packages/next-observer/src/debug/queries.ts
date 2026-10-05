@@ -45,7 +45,8 @@ export interface TraceRow {
 
 export function createAgentQueries(storage: StorageAdapter, options: QueryOptions = {}) {
   const now = options.now ?? Date.now
-  const since = (w: Window) => now() - (w.sinceMinutes ?? 15) * 60_000
+  // The tool schema cannot say "positive" (see investigator.ts), so a model may send 0 or -5: treat it as not given.
+  const since = (w: Window) => now() - (w.sinceMinutes !== undefined && w.sinceMinutes > 0 ? w.sinceMinutes : 15) * 60_000
 
   // Runs `query` with the name filter; if nothing matches, runs it without and says so.
   async function withFallback<T>(operation: string | undefined, query: (operation?: string) => Promise<T[]>) {
