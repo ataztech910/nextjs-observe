@@ -7,6 +7,7 @@
 //   GET  /api/operations?service&operation&fromMs&toMs
 //   GET  /api/overview?windowMs&service&toMs   dashboard: requests by status class, latency, errors, top routes
 //   GET  /api/operation?operation&service&windowMs&toMs   one operation: overview, latency histogram, two speeds, versions
+//   GET  /api/defects?windowMs&service&toMs   errors grouped by where they originated and their message
 //   GET  /api/regression?service&sinceMinutes   { regression }: the latest version vs the previous one, or null
 //   GET  /api/chat                  { enabled, mode }
 //   POST /api/chat                  { question, sessionId? } → NDJSON stream of ChatEvent (status, step…, card…, report | error)
@@ -23,6 +24,7 @@ import type { ChatEvent, ChatHandler, ProactiveEvent } from './chat.js'
 import { gunzipSync } from 'node:zlib'
 import { decodeOtlpJson, type OtlpTraceRequest } from './decode.js'
 import { protobufToOtlpJson } from './protobuf.js'
+import { computeDefects } from './defects.js'
 import { MemoryStorage } from './memory-storage.js'
 import { computeOperation } from './operation.js'
 import { computeOverview } from './overview.js'
@@ -306,6 +308,15 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
       const operation = stringParam(q, 'operation')
       if (!operation) throw new HttpError(400, 'operation is required')
       return send(res, 200, computeOperation(spans, { ...options, operation }))
+    }
+    if (url.pathname === '/api/defects') {
+      const windowMs = numberParam(q, 'windowMs') ?? OVERVIEW_DEFAULT_WINDOW_MS
+      if (windowMs < 60_000 || windowMs > 86_400_000) throw new HttpError(400, 'windowMs must be between 60000 (1 min) and 86400000 (24 h)')
+      const nowMs = numberParam(q, 'toMs') ?? Date.now()
+      // Every failed span stored, not just the window: "first seen" and "new in v2" need the history.
+      const failed = await storage.querySpans({ status: 'error', toMs: nowMs, limit: Number.MAX_SAFE_INTEGER })
+      const deployOrder = new Map((await storage.getServices()).map((s) => [s.name, s.versions]))
+      return send(res, 200, computeDefects(failed, { nowMs, windowMs, buckets: OVERVIEW_BUCKETS, service: stringParam(q, 'service'), deployOrder }))
     }
     if (url.pathname === '/api/regression') {
       const { changes } = await createAgentQueries(storage).compareVersions({ service: stringParam(q, 'service'), sinceMinutes: numberParam(q, 'sinceMinutes') })
