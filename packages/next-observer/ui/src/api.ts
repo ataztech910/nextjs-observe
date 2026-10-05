@@ -33,7 +33,7 @@ function query(params: Record<string, string | number | boolean | undefined>): s
 export const api = {
   health: () => get<{ status: string; spans: number }>('/health'),
   services: () => get<ServiceInfo[]>('/api/services'),
-  traces: (search: TraceSearch & { fromMs?: number; limit?: number }) => get<TraceSummary[]>(`/api/traces${query({ limit: 200, ...search })}`),
+  traces: (search: TraceSearch & { exactOperation?: boolean; fromMs?: number; limit?: number }) => get<TraceSummary[]>(`/api/traces${query({ limit: 200, ...search })}`),
   trace: (traceId: string) => get<{ traceId: string; spans: TraceSpan[] }>(`/api/traces/${traceId}`),
   overview: (windowMs: number, service?: string) => get<Overview>(`/api/overview${query({ windowMs, service })}`),
   operation: (operation: string, windowMs: number, service?: string) => get<OperationDetails>(`/api/operation${query({ operation, windowMs, service })}`),

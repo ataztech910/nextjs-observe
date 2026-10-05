@@ -1,4 +1,5 @@
 import type { Histogram, Speed } from '@/api'
+import { histogramMarkers } from '@/lib/histogram'
 import { formatDuration } from '@/lib/waterfall'
 
 const pct = (n: number) => `${Math.round(n * 100)}%`
@@ -8,14 +9,10 @@ const pct = (n: number) => `${Math.round(n * 100)}%`
  * fall into two separate groups, the caption says so in words — "two speeds" is the finding, the bars are the proof.
  */
 export function LatencyHistogram({ histogram, speeds }: { histogram: Histogram; speeds: [Speed, Speed] | null }) {
-  const max = histogram.bins[histogram.bins.length - 1].toMs
+  // Never 0: positions below divide by it.
+  const max = histogram.bins[histogram.bins.length - 1].toMs || 1
   const tallest = Math.max(1, ...histogram.bins.map((b) => b.count))
-  const markers = [
-    { label: 'median', ms: histogram.p50Ms },
-    { label: 'p95', ms: histogram.p95Ms },
-    { label: 'p99', ms: histogram.p99Ms },
-    // Markers closer than 6% of the axis would print on top of each other: keep the first of each cluster.
-  ].filter((m, i, all) => i === 0 || (m.ms - all[i - 1].ms) / max > 0.06)
+  const markers = histogramMarkers(histogram, max)
 
   return (
     <div data-testid="latency-histogram">
@@ -31,7 +28,7 @@ export function LatencyHistogram({ histogram, speeds }: { histogram: Histogram; 
         <div className="flex h-full items-end gap-0.5" role="img" aria-label="Latency distribution">
           {histogram.bins.map((b, i) => (
             <span
-              key={b.fromMs}
+              key={i}
               data-testid="histogram-bin"
               title={`${formatDuration(b.fromMs)} – ${i === histogram.bins.length - 1 && histogram.overflow ? 'and slower' : formatDuration(b.toMs)} · ${b.count} calls (${pct(b.count / histogram.total)})`}
               className={`flex-1 rounded-t-[2px] ${b.count ? 'bg-chart-1/70' : 'bg-foreground/10'}`}

@@ -2,7 +2,7 @@
 //   POST /v1/traces                 OTLP ingest: application/json or application/x-protobuf, optionally gzip
 //   GET  /health
 //   GET  /api/services
-//   GET  /api/traces?service&operation&minDurationMs&hasError&fromMs&toMs&limit
+//   GET  /api/traces?service&operation&exactOperation&minDurationMs&hasError&fromMs&toMs&limit
 //   GET  /api/traces/:traceId
 //   GET  /api/operations?service&operation&fromMs&toMs
 //   GET  /api/overview?windowMs&service&toMs   dashboard: requests by status class, latency, errors, top routes
@@ -267,6 +267,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
         await storage.queryTraces({
           service: stringParam(q, 'service'),
           operation: stringParam(q, 'operation'),
+          exactOperation: booleanParam(q, 'exactOperation'),
           minDurationMs: numberParam(q, 'minDurationMs'),
           hasError: booleanParam(q, 'hasError'),
           fromMs: numberParam(q, 'fromMs'),

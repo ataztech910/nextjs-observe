@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { MemoryStorage, startCollector, type Collector, type NormalizedSpan } from '../src/collector/index.js'
 import { computeOperation, findSpeeds, latencyHistogram } from '../src/collector/operation.js'
+import { histogramMarkers } from '../ui/src/lib/histogram.js'
 import { NOW, shopStorage } from './fixtures/shop.js'
 
 const MIN = 60_000
@@ -42,6 +43,27 @@ describe('latencyHistogram', () => {
     expect(h.bins[0]).toEqual({ fromMs: 0, toMs: 9, count: 8 }) // 1…8 (9 ms starts the next bin)
     expect(h.bins[10]).toMatchObject({ fromMs: 90, toMs: 99, count: 11 }) // 90…99 and the outlier
     expect(h.bins.reduce((sum, b) => sum + b.count, 0)).toBe(100)
+  })
+
+  it('microsecond spans still get distinct bin edges', () => {
+    // p99 = 0.012 ms: edges rounded to 0.01 ms would all be 0 or 0.01.
+    const h = latencyHistogram(Array.from({ length: 12 }, (_, i) => (i + 1) / 1000), 12)!
+    expect(new Set(h.bins.map((b) => b.fromMs)).size).toBe(12)
+    expect(h.bins[11].toMs).toBeGreaterThan(0)
+  })
+})
+
+describe('histogramMarkers', () => {
+  const labels = (p50Ms: number, p95Ms: number, p99Ms: number, max = p99Ms) => histogramMarkers({ p50Ms, p95Ms, p99Ms }, max).map((m) => m.label)
+
+  it('keeps markers that are far enough apart', () => {
+    expect(labels(200, 1500, 2500)).toEqual(['median', 'p95', 'p99'])
+  })
+
+  it('drops a marker too close to the last one kept — not to its dropped neighbour', () => {
+    // p95 is 5% from the median (dropped); p99 is 10% from the median (kept), though only 5% from p95.
+    expect(labels(90, 95, 100)).toEqual(['median', 'p99'])
+    expect(labels(100, 100, 100)).toEqual(['median'])
   })
 })
 
@@ -118,6 +140,18 @@ describe('computeOperation', () => {
     expect(d.overview.requests.total).toBe(8)
   })
 
+  it('names the service only when all calls come from one', () => {
+    const spans = [...Array.from({ length: 3 }, () => span('query', MIN, 10)), span('query', MIN, 500, { service: 'other' })]
+    expect(computeOperation(spans, { ...opts, operation: 'query' }).service).toBeNull()
+    expect(computeOperation(spans, { ...opts, operation: 'query', service: 'other' }).service).toBe('other')
+    expect(computeOperation(spans.slice(0, 3), { ...opts, operation: 'query' }).service).toBe('shop')
+  })
+
+  it('handles more calls than fit into one function call (no spread of the whole list)', () => {
+    const many = Array.from({ length: 130_000 }, (_, i) => ({ ...span('hot', 0, 5), startTimeMs: NOW - 9 * MIN + i }))
+    expect(computeOperation(many, { ...opts, operation: 'hot' }).lastSeenMs).toBe(NOW - 9 * MIN + 129_999)
+  })
+
   it('an unknown operation is empty, not an error', () => {
     const d = computeOperation([span('a', MIN, 10)], { ...opts, operation: 'nope' })
     expect(d).toMatchObject({ histogram: null, speeds: null, versions: [], coldStarts: 0, lastSeenMs: null, service: null })
@@ -139,6 +173,16 @@ describe('GET /api/operation', () => {
   afterEach(async () => {
     await collector?.close()
     collector = undefined
+  })
+
+  it('/api/traces?exactOperation lists only traces with exactly that span name', async () => {
+    const storage = new MemoryStorage()
+    await storage.insertSpans([span('GET /api/products', MIN, 10, { kind: 'server' }), span('GET /api/products/[id]', MIN, 10, { kind: 'server' })])
+    collector = await startCollector({ port: 0, storage, uiDir: false })
+    const names = async (query: string) => ((await (await fetch(`${collector!.url}/api/traces?${query}`)).json()) as { rootName: string }[]).map((t) => t.rootName).sort()
+    expect(await names('operation=GET%20/api/products')).toEqual(['GET /api/products', 'GET /api/products/[id]'])
+    expect(await names('operation=GET%20/api/products&exactOperation=true')).toEqual(['GET /api/products'])
+    expect(await names('operation=get%20/api/products&exactOperation=true')).toEqual([])
   })
 
   it('serves one operation; the name is required', async () => {

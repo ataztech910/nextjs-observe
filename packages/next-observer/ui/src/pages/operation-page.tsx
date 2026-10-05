@@ -26,12 +26,14 @@ export function OperationPage() {
   const navigate = useNavigate({ from: '/operation' })
   const details = useQuery({ queryKey: ['operation', name, service, window], queryFn: () => api.operation(name, WINDOWS[window], service), refetchInterval: REFRESH_MS, enabled: name !== '' })
   const d = details.data
-  // The list below shows the same window as the numbers above.
+  // The list below shows the same calls as the numbers above: the exact span name, and the window as the collector
+  // computed it (its clock, not the browser's).
+  const fromMs = d?.overview.fromMs
   const traces = useQuery({
-    queryKey: ['operation-traces', name, service, window],
-    queryFn: () => api.traces({ operation: name, service, fromMs: Date.now() - WINDOWS[window], limit: 50 }),
-    refetchInterval: REFRESH_MS,
-    enabled: name !== '',
+    queryKey: ['operation-traces', name, service, fromMs],
+    queryFn: () => api.traces({ operation: name, exactOperation: true, service, fromMs, limit: 50 }),
+    enabled: name !== '' && fromMs !== undefined,
+    placeholderData: (previous) => previous,
   })
 
   if (name === '') return <p className="text-muted-foreground">No operation selected — pick one on the Overview.</p>

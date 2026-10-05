@@ -36,6 +36,7 @@ export interface VersionRow {
 }
 
 export interface OperationDetails {
+  /** null when the calls come from several services (no `service` filter) or there are none. */
   service: string | null
   operation: string
   overview: Overview
@@ -58,7 +59,9 @@ export function latencyHistogram(durations: number[], bins = 24): Histogram | nu
   // The p99 as the upper edge: one 30 s outlier must not squeeze everything else into the first bin.
   const max = p99Ms > 0 ? p99Ms : 1
   const width = max / bins
-  const result: HistogramBin[] = Array.from({ length: bins }, (_, i) => ({ fromMs: round(i * width), toMs: round((i + 1) * width), count: 0 }))
+  // Edges are not rounded to 0.01 ms like the other numbers: for spans of a few microseconds every bin would become 0…0.
+  const edge = (n: number) => Math.round(n * 1e6) / 1e6
+  const result: HistogramBin[] = Array.from({ length: bins }, (_, i) => ({ fromMs: edge(i * width), toMs: edge((i + 1) * width), count: 0 }))
   let overflow = 0
   for (const d of sorted) {
     if (d > max) overflow++
@@ -107,7 +110,10 @@ export function computeOperation(spans: NormalizedSpan[], options: OverviewOptio
   const byVersion = new Map<string, NormalizedSpan[]>()
   for (const s of [...warm].sort((a, b) => a.startTimeMs - b.startTimeMs)) {
     const version = s.serviceVersion ?? 'unknown'
-    byVersion.set(version, [...(byVersion.get(version) ?? []), s])
+    // push, not a copy per call: this runs on every poll, over up to the whole storage.
+    const list = byVersion.get(version)
+    if (list) list.push(s)
+    else byVersion.set(version, [s])
   }
   const versions: VersionRow[] = [...byVersion].map(([version, list]) => {
     const sorted = list.map((s) => s.durationMs).sort((a, b) => a - b)
@@ -121,13 +127,15 @@ export function computeOperation(spans: NormalizedSpan[], options: OverviewOptio
   })
 
   return {
-    service: options.service ?? calls[0]?.service ?? null,
+    // Without a service filter same-named spans of several services are merged — then no single service to name.
+    service: options.service ?? (new Set(calls.map((s) => s.service)).size === 1 ? calls[0].service : null),
     operation: options.operation,
     overview: computeOverview(spans, options),
     histogram: latencyHistogram(durations),
     speeds: findSpeeds(durations),
     versions,
     coldStarts: calls.length - warm.length,
-    lastSeenMs: calls.length ? Math.max(...calls.map((s) => s.startTimeMs)) : null,
+    // reduce, not Math.max(...): spreading 100k+ calls overflows the stack.
+    lastSeenMs: calls.length ? calls.reduce((latest, s) => Math.max(latest, s.startTimeMs), 0) : null,
   }
 }
