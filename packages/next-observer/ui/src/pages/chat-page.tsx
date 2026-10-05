@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, type ChatEvent, type ProactiveEvent } from '@/api'
 import { AnomalyView, anomalyHeadline } from '@/components/chat/anomaly-view'
@@ -26,6 +27,8 @@ interface Turn {
   /** Started by the detector, not by a question. */
   proactive?: boolean
 }
+
+const chatRoute = getRouteApi('/chat')
 
 const isEnd = (e: ChatEvent) => e.type === 'report' || e.type === 'error'
 
@@ -93,6 +96,18 @@ export function ChatPage() {
       update((t) => ({ ...t, running: false }))
     }
   }
+
+  // A question handed over in the URL (?ask=…, from the regression banner) is sent once, then removed from the URL so
+  // a reload or the back button does not ask it again.
+  const { ask: handedOver } = chatRoute.useSearch()
+  const navigate = useNavigate({ from: '/chat' })
+  const sentRef = useRef<string>(undefined)
+  useEffect(() => {
+    if (!handedOver || !chatEnabled || sentRef.current === handedOver) return
+    sentRef.current = handedOver
+    void navigate({ search: {}, replace: true })
+    void ask(handedOver)
+  }, [handedOver, chatEnabled])
 
   function newChat() {
     setTurns([])

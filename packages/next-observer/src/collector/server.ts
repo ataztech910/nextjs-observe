@@ -6,6 +6,7 @@
 //   GET  /api/traces/:traceId
 //   GET  /api/operations?service&operation&fromMs&toMs
 //   GET  /api/overview?windowMs&service&toMs   dashboard: requests by status class, latency, errors, top routes
+//   GET  /api/regression?service&sinceMinutes   { regression }: the latest version vs the previous one, or null
 //   GET  /api/chat                  { enabled, mode }
 //   POST /api/chat                  { question, sessionId? } → NDJSON stream of ChatEvent (status, step…, card…, report | error)
 //   GET  /api/chat/events           SSE: proactive turns (detector anomaly → investigation), recent ones replayed on connect
@@ -15,6 +16,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net'
 import { fileURLToPath } from 'node:url'
 import { questionFor, type AnomalyDetector } from '../debug/detector.js'
+import { createAgentQueries } from '../debug/queries.js'
+import { findRegression } from '../debug/regression.js'
 import type { ChatEvent, ChatHandler, ProactiveEvent } from './chat.js'
 import { gunzipSync } from 'node:zlib'
 import { decodeOtlpJson, type OtlpTraceRequest } from './decode.js'
@@ -300,6 +303,10 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
         200,
         computeOverview(spans, { nowMs, windowMs, buckets: OVERVIEW_BUCKETS, service: stringParam(q, 'service'), isColdStart: (s) => storage.isColdStart(s) }),
       )
+    }
+    if (url.pathname === '/api/regression') {
+      const { changes } = await createAgentQueries(storage).compareVersions({ service: stringParam(q, 'service'), sinceMinutes: numberParam(q, 'sinceMinutes') })
+      return send(res, 200, { regression: findRegression(changes) })
     }
     if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/v1/')) throw new HttpError(404, 'not found')
     const uiDir = options.uiDir ?? DEFAULT_UI_DIR
