@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { detectPackageManager, init, wrapNextConfig, type PackageManager } from '../src/init.js'
+import { detectPackageManager, init, installArgs, wrapNextConfig, type PackageManager } from '../src/init.js'
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'next-observer-init-'))
 
@@ -111,7 +111,7 @@ describe('init', () => {
     expect(read(root, 'instrumentation.ts')).toBe(`export { register } from 'next-observe/server'\n`)
     expect(read(root, 'instrumentation-client.ts')).toBe(`import 'next-observe/client'\n`)
     const pkg = JSON.parse(read(root, 'package.json'))
-    expect(pkg.scripts).toEqual({ dev: 'next dev', observe: 'npx --yes next-observer@^0.2 dev' })
+    expect(pkg.scripts).toEqual({ dev: 'next dev', observe: 'npx --yes --prefer-offline next-observer@^0.2 dev' })
     expect(pkg.dependencies['next-observe']).toBe('^0.3.0')
   })
 
@@ -190,5 +190,17 @@ describe('init', () => {
     await expect(init({ root: empty, observerRange: '^0.2', install: fakeInstall().install })).rejects.toThrow('no package.json')
     writeFileSync(join(empty, 'package.json'), '{"dependencies":{"express":"5"}}')
     await expect(init({ root: empty, observerRange: '^0.2', install: fakeInstall().install })).rejects.toThrow('no "next" dependency')
+  })
+})
+
+describe('installArgs', () => {
+  it('uses the cache when the package manager is known to accept the flag', () => {
+    expect(installArgs('npm')).toEqual(['install', 'next-observe', '--prefer-offline'])
+    expect(installArgs('pnpm')).toEqual(['add', 'next-observe', '--prefer-offline'])
+    expect(installArgs('bun')).toEqual(['add', 'next-observe', '--prefer-offline'])
+  })
+
+  it('yarn gets no flag: berry fails on it and cannot be told from classic by the lockfile', () => {
+    expect(installArgs('yarn')).toEqual(['add', 'next-observe'])
   })
 })

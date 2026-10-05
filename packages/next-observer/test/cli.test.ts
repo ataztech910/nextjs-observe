@@ -264,7 +264,7 @@ describe('init', () => {
     const h = harness({})
     const exit = run(['init', '--root', root], h.deps)
     await until(() => h.spawned.length === 1)
-    expect(h.spawned[0]).toMatchObject({ command: 'pnpm', args: ['add', 'next-observe'], options: { cwd: root } })
+    expect(h.spawned[0]).toMatchObject({ command: 'pnpm', args: ['add', 'next-observe', '--prefer-offline'], options: { cwd: root } })
     h.spawned[0].child.exit(0)
     expect(await exit).toBe(0)
     const out = h.logs.join('\n')
@@ -273,7 +273,49 @@ describe('init', () => {
     expect(out).toMatch(/created\s+instrumentation\.js\s+server traces/)
     expect(out).toMatch(/created\s+instrumentation-client\.js\s+browser traces/)
     expect(out).toContain('pnpm run observe')
-    expect(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).scripts.observe).toMatch(/^npx --yes next-observer@\^0\.\d+ dev$/)
+    expect(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).scripts.observe).toMatch(/^npx --yes --prefer-offline next-observer@\^0\.\d+ dev$/)
+  })
+
+  it('when installing from the cache fails, tries once more without --prefer-offline', async () => {
+    const root = fixtureApp(false)
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'app', dependencies: { next: '16.3.8' } }))
+    const h = harness({})
+    const exit = run(['init', '--root', root], h.deps)
+    await until(() => h.spawned.length === 1)
+    expect(h.spawned[0]).toMatchObject({ command: 'npm', args: ['install', 'next-observe', '--prefer-offline'] })
+    h.spawned[0].child.exit(1) // e.g. ETARGET from an inconsistent cache right after a release
+    await until(() => h.spawned.length === 2)
+    expect(h.spawned[1]).toMatchObject({ command: 'npm', args: ['install', 'next-observe'] })
+    h.spawned[1].child.exit(0)
+    expect(await exit).toBe(0)
+    expect(h.logs.join('\n')).toMatch(/updated\s+package\.json\s+npm added next-observe/)
+  })
+
+  it('both attempts failed: a manual step, and no third attempt', async () => {
+    const root = fixtureApp(false)
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'app', dependencies: { next: '16.3.8' } }))
+    const h = harness({})
+    const exit = run(['init', '--root', root], h.deps)
+    await until(() => h.spawned.length === 1)
+    h.spawned[0].child.exit(1)
+    await until(() => h.spawned.length === 2)
+    h.spawned[1].child.exit(1)
+    await exit
+    expect(h.spawned).toHaveLength(2)
+    expect(h.logs.join('\n')).toContain('installing failed — run `npm install next-observe`')
+  })
+
+  it('yarn has no cached variant, so a failure is not repeated', async () => {
+    const root = fixtureApp(false)
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'app', dependencies: { next: '16.3.8' } }))
+    writeFileSync(join(root, 'yarn.lock'), '')
+    const h = harness({})
+    const exit = run(['init', '--root', root], h.deps)
+    await until(() => h.spawned.length === 1)
+    expect(h.spawned[0]).toMatchObject({ command: 'yarn', args: ['add', 'next-observe'] })
+    h.spawned[0].child.exit(1)
+    await exit
+    expect(h.spawned).toHaveLength(1)
   })
 
   it('fails clearly outside a Next.js app', async () => {

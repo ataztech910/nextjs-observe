@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 import { MemoryStorage, startCollector, type Collector, type CollectorOptions } from './collector/index.js'
 import { seedDemo, startLiveDemo } from './debug/demo.js'
-import { detectPackageManager, init, type InitChange, type PackageManager } from './init.js'
+import { detectPackageManager, init, installArgs, type InitChange, type PackageManager } from './init.js'
 import { AnomalyDetector } from './debug/detector.js'
 
 // Type-only: the agents module (and @google/adk behind it) is loaded lazily, so `next-observer --help` stays instant.
@@ -283,12 +283,19 @@ function ownRange(): string {
 }
 
 async function runInit(args: CliArgs, deps: CliDeps): Promise<number> {
-  const install = (root: string, pm: PackageManager) =>
+  const runInstall = (root: string, pm: PackageManager, installCommand: string[]) =>
     new Promise<boolean>((resolveInstall) => {
-      const child = deps.spawn(pm, [pm === 'npm' ? 'install' : 'add', 'next-observe'], { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' })
+      const child = deps.spawn(pm, installCommand, { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' })
       child.once('exit', (code) => resolveInstall(code === 0))
       child.once('error', () => resolveInstall(false))
     })
+  // From the cache first (a workshop's Wi-Fi). The cache can be inconsistent right after a release — npm then fails
+  // with "No matching version" although the registry has it — so a failure is tried once more the plain way.
+  const install = async (root: string, pm: PackageManager) => {
+    const preferred = installArgs(pm)
+    const plain = preferred.filter((arg) => arg !== '--prefer-offline')
+    return (await runInstall(root, pm, preferred)) || (plain.length !== preferred.length && (await runInstall(root, pm, plain)))
+  }
   let changes: InitChange[]
   try {
     changes = await (deps.init ?? init)({ root: args.root, proxy: args.proxy, observerRange: ownRange(), install })

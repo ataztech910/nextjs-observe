@@ -30,6 +30,16 @@ export function detectPackageManager(root: string): PackageManager {
   return 'npm'
 }
 
+/**
+ * The command that adds next-observe to the app. `--prefer-offline`: what is already in the package manager's cache is
+ * used without asking the registry — at a workshop the Wi-Fi is the slowest part, and people prepare at home. Not for
+ * yarn: classic accepts the flag, berry (2+) fails on it, and the lockfile does not tell them apart.
+ */
+export function installArgs(pm: PackageManager): string[] {
+  const args = [pm === 'npm' ? 'install' : 'add', 'next-observe']
+  return pm === 'yarn' ? args : [...args, '--prefer-offline']
+}
+
 const CONFIG_FILES = ['next.config.ts', 'next.config.mts', 'next.config.mjs', 'next.config.js', 'next.config.cjs']
 const LOCAL = 'nextObserveConfig'
 
@@ -89,7 +99,7 @@ export async function init(options: InitOptions): Promise<InitChange[]> {
   else {
     const pm = detectPackageManager(root)
     if (await options.install(root, pm)) changes.push({ file: 'package.json', action: 'updated', note: `${pm} added next-observe` })
-    else changes.push({ file: 'package.json', action: 'manual', note: `installing failed — run \`${pm} ${pm === 'npm' ? 'install' : 'add'} next-observe\`` })
+    else changes.push({ file: 'package.json', action: 'manual', note: `installing failed — run \`${pm} ${pm === 'npm' ? 'install' : 'add'} next-observe\` (it needs the network unless the package is already in the cache)` })
   }
 
   const typescript = existsSync(join(root, 'tsconfig.json'))
@@ -165,7 +175,8 @@ export async function init(options: InitOptions): Promise<InitChange[]> {
   const fresh = readJson(packageFile)
   if (fresh.scripts?.observe) changes.push({ file: 'package.json', action: 'unchanged', note: 'script "observe" exists' })
   else {
-    fresh.scripts = { ...fresh.scripts, observe: `npx --yes next-observer@${options.observerRange} dev` }
+    // --prefer-offline: once downloaded, the observer starts without asking the registry whether a newer one exists.
+    fresh.scripts = { ...fresh.scripts, observe: `npx --yes --prefer-offline next-observer@${options.observerRange} dev` }
     const indent = /^(\s+)"/m.exec(readFileSync(packageFile, 'utf8'))?.[1] ?? '  '
     write(packageFile, `${JSON.stringify(fresh, null, indent)}\n`)
     changes.push({ file: 'package.json', action: 'updated', note: 'script "observe": next dev + the observer' })
