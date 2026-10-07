@@ -1,7 +1,7 @@
 {
   "name": "next-observer",
-  "version": "0.3.18",
-  "description": "The observer for next-observe: OTLP collector, trace UI, anomaly detector and AI agents that investigate your Next.js app. Run with npx next-observer dev.",
+  "version": "0.3.19",
+  "description": "The observer for Next.js: a server with a UI and AI agents that receives your app's OpenTelemetry traces, shows them and investigates them. Run with npx next-observer dev. The APM agent that goes into the app is next-observe.",
   "keywords": [
     "nextjs",
     "opentelemetry",
@@ -9,7 +9,8 @@
     "tracing",
     "ai-agents",
     "adk",
-    "collector"
+    "collector",
+    "apm"
   ],
   "author": "Andrei Tazetdinov",
   "license": "MIT",

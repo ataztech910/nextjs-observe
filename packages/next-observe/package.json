@@ -1,7 +1,7 @@
 {
   "name": "next-observe",
-  "version": "0.3.4",
-  "description": "OpenTelemetry for Next.js — server, browser and your own code via 'use observe'. Pair it with the next-observer observer (npx next-observer dev) for a trace UI and AI agents.",
+  "version": "0.3.5",
+  "description": "The APM agent for Next.js: OpenTelemetry for server, browser and your own code via 'use observe'. It only collects and sends; the UI and the AI agents are in the next-observer observer (npx next-observer dev).",
   "license": "MIT",
   "author": "Andrei Tazetdinov",
   "repository": {
@@ -21,7 +21,9 @@
     "observability",
     "tracing",
     "monitoring",
-    "instrumentation"
+    "instrumentation",
+    "apm",
+    "apm-agent"
   ],
   "engines": {
     "node": ">=22.18"
