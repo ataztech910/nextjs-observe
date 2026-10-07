@@ -1,15 +1,16 @@
 # nextjs-observe
 
-Monorepo of **[next-observe](packages/next-observe)** (OpenTelemetry for Next.js 16, goes into the app) and
-**[next-observer](packages/next-observer)** (the observer with a trace UI and AI agents that investigate problems on their own, run with
-`npx next-observer dev`) — the reference implementation for the workshop *AI-Native Observability:
+Monorepo of two packages, one letter apart: **[next-observe](packages/next-observe)** — the **APM agent**, a library inside
+the Next.js 16 app that collects OpenTelemetry traces and sends them — and **[next-observer](packages/next-observer)** — the
+**observer**, a server with a UI and **AI agents** that receives the traces, shows them and investigates problems on its
+own (run with `npx next-observer dev`) — the reference implementation for the workshop *AI-Native Observability:
 Building Self-Debugging Next.js Applications with OpenTelemetry* (Porto, 10 November 2026).
 
 ```
 Next.js app + next-observe ── 'use observe', @vercel/otel, browser OTel ──► next-observer (OTLP/JSON)
                                                               ├─ trace UI (list, waterfall)
                                                               ├─ anomaly detector ──┐
-                                                              └─ chat ◄─────────────┴─ ADK agents (Gemini | Kitana | mock)
+                                                              └─ chat ◄─────────────┴─ AI agents: ADK (Gemini | Kitana | mock)
                                                                                         tools over the stored telemetry,
                                                                                         evidence cards built from facts
 ```

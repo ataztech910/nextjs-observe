@@ -1,12 +1,44 @@
 # next-observe
 
-OpenTelemetry for Next.js 16: server, browser and your own code. Pair it with the **[next-observer](https://www.npmjs.com/package/next-observer)**
-observer for a trace UI and AI agents that investigate problems on their own.
+The **APM agent** for Next.js 16: a library inside your app that collects OpenTelemetry traces — server, browser and
+your own code — and sends them out. Nothing else: no server, no UI, no AI in your app's dependencies.
 
-- **Server** traces via `@vercel/otel`, **browser** traces (document load, fetch, React renders), and **your own code**
-  with a `'use observe'` directive
-- Only OpenTelemetry in your app: the collector, UI and AI agents live in `next-observer`, which you run with `npx` and never
-  install into the app
+To see the telemetry and have **AI agents** investigate it, run the observer next to the app:
+**[next-observer](https://www.npmjs.com/package/next-observer)**.
+
+![What the observer shows from the telemetry this package sends](https://raw.githubusercontent.com/ataztech910/nextjs-observe/master/docs/screenshots/overview.png)
+
+## Two packages, one letter apart
+
+| | [`next-observe`](https://www.npmjs.com/package/next-observe) | [`next-observer`](https://www.npmjs.com/package/next-observer) |
+|---|---|---|
+| **What it is** | the **APM agent** | the **observer** — a server with a UI and **AI agents** |
+| **Where it runs** | inside your Next.js app (a dependency) | next to the app, started with `npx` (never a dependency) |
+| **What it does** | collects telemetry and sends it | receives telemetry, shows it, investigates it |
+| **Contains AI?** | no — OpenTelemetry only | yes — the AI agents live here |
+
+```
+ your Next.js app                          the observer
+┌──────────────────────────┐              ┌──────────────────────────────────┐
+│ next-observe             │    traces    │ next-observer        (port 4318) │
+│ the APM agent            │ ───────────▶ │ server · UI · anomaly detector   │
+│ collects and sends       │  OTLP/HTTP   │ AI agents that investigate       │
+└──────────────────────────┘              └──────────────────────────────────┘
+```
+
+**Two kinds of "agent" — they are not the same thing:**
+
+- **APM agent** = `next-observe`. The classic meaning from application performance monitoring: a library inside the app
+  that records what happens (requests, timings, errors) and ships it out. It decides nothing.
+- **AI agents** = inside `next-observer`. Language models with tools that query the recorded telemetry and answer
+  "what is slow, since which deployment, and where in the code". They never run inside your app.
+
+## What this package collects
+
+- **Server** traces via `@vercel/otel`: every request, with route, duration and status
+- **Browser** traces: document load, fetch, React renders
+- **Your own code** with a `'use observe'` directive: each call becomes a span with its file path, duration and errors
+- Sent as OTLP/HTTP to the observer, to any other OpenTelemetry backend (Dynatrace, Tempo, …), or to both
 
 > Reference implementation for the workshop *AI-Native Observability: Building Self-Debugging Next.js Applications with
 > OpenTelemetry* (Porto, 2026).
@@ -17,7 +49,7 @@ Requires Node.js 22.18+ and Next.js 16. In the app folder:
 
 ```bash
 npx next-observer init     # installs next-observe, wraps next.config, adds the instrumentation files and a script
-npm run observe            # next dev + the observer: traces and the agents' chat at http://127.0.0.1:4318
+npm run observe            # next dev + the observer: traces and the AI agents' chat at http://127.0.0.1:4318
 ```
 
 `init` is safe to run again and never overwrites code it cannot merge — it tells you what to do by hand instead.
@@ -48,7 +80,7 @@ import 'next-observe/client'
 npx next-observer dev          # observer + UI on http://127.0.0.1:4318, then `next dev`
 ```
 
-Open http://127.0.0.1:4318 for traces and the chat with the agents.
+Open http://127.0.0.1:4318 for traces and the chat with the AI agents.
 
 ## Instrument your own code
 
@@ -64,13 +96,14 @@ export async function loadData() {
 }
 ```
 
-Spans carry `code.filepath`, so agents can point at the file where the time went. Components get a `displayName` that
+Spans carry `code.filepath`, so the AI agents can point at the file where the time went. Components get a `displayName` that
 survives minification.
 
-## Your own agents
+## Your own AI agents
 
-`next-observer` runs three built-in specialists (latency, errors, traffic). Add or replace them in `observe.agents.ts` in the app
-root — `next-observe/agents` only gives the types, `next-observer` loads and runs the file:
+The AI agents run in `next-observer`, not here: three built-in specialists (latency, errors, traffic). Add or replace
+them in `observe.agents.ts` in the app root — `next-observe/agents` only gives the types (no AI code enters your app),
+`next-observer` loads and runs the file:
 
 ```ts
 import { defineSpecialist } from 'next-observe/agents'
@@ -93,7 +126,7 @@ See the [next-observer README](https://www.npmjs.com/package/next-observer) for 
 |---|---|---|
 | `OBSERVE_ENDPOINT` | `http://127.0.0.1:4318` | observer URL (set at `next build` time for production: the browser proxy is a rewrite) |
 | `OBSERVE_SERVICE_NAME` | `name` from package.json | OTel `service.name` |
-| `OBSERVE_SERVICE_VERSION` | `VERCEL_GIT_COMMIT_SHA` | OTel `service.version` — lets agents compare deployments |
+| `OBSERVE_SERVICE_VERSION` | `VERCEL_GIT_COMMIT_SHA` | OTel `service.version` — lets the AI agents compare deployments |
 | `OBSERVE_API_KEY` | — | sent as `x-api-key`; the observer requires it when started with one |
 
 ### Sending to another OpenTelemetry backend
@@ -139,7 +172,7 @@ Production React profiling: build with `next build --profile` to get component r
 | `next-observe/config` | `withObserve()` for `next.config.ts` |
 | `next-observe/server` | `register()` for `instrumentation.ts` |
 | `next-observe/client` | browser telemetry for `instrumentation-client.ts` |
-| `next-observe/agents` | `defineSpecialist()` and types for `observe.agents.ts` |
+| `next-observe/agents` | `defineSpecialist()` and types for `observe.agents.ts` (the AI agents themselves run in `next-observer`) |
 | `next-observe/proxy` | runtime proxy route for browser spans (optional) |
 
 Traces are sent as OTLP/HTTP — JSON by default, protobuf with `protocol: 'http/protobuf'` / `OTEL_EXPORTER_OTLP_PROTOCOL`.

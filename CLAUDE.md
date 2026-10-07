@@ -44,6 +44,16 @@ End-to-end like a participant: install the packed `next-observe` tarball into a 
 run the observer with `npx --yes --package=<next-observer tarball> next-observer dev`. Test bench: `../vercel-otel-test`; workshop app:
 `../workshop-ai-observability` (Porto Shop).
 
+## Words
+
+Two different things are called "agent" — always say which:
+
+- **APM agent** = `next-observe`, the library inside the app that collects and sends telemetry. No AI in it.
+- **AI agents** = the ADK agents inside `next-observer` (orchestrator + specialists). They never run in the app.
+- **observer** = `next-observer` as a whole: the server (collector), the UI, the detector and the AI agents.
+
+In docs, READMEs and UI text never write a bare "agent(s)" where a reader could take it for the other kind.
+
 ## How we work
 
 - **Minimal steps**, one at a time; each ends with: unit tests, **mutation check** (break the fix on purpose, the test
