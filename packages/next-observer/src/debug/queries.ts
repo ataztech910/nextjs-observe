@@ -3,6 +3,7 @@
 // Rules for every tool: compact, token-cheap output (aggregates, not raw spans), rounded numbers, and a `note`
 // instead of an empty result when a name filter matches nothing (users say "checkout", spans say "chargePayment").
 import { isFrameworkSpan } from '../collector/framework.js'
+import { integrityFailureEvent } from './detector.js'
 import { errorRateChangeIsSignificant } from './stats.js'
 import type { NormalizedSpan, OperationStats, StorageAdapter } from '../collector/types.js'
 
@@ -40,6 +41,9 @@ export interface TraceRow {
   /** Self time of hidden Next.js internal spans under this one (routing, rendering, dev compilation) — not user code. */
   nextInternalMs?: number
   error?: string
+  /** A verified wrong-data response (incident F) — distinct from `error`: status was fine, duration was fine, the
+   * data inside was not what was asked for. Only an app that instruments its own identity check can ever report this. */
+  integrityCheck?: { expected: unknown; actual: unknown }
   attributes?: Record<string, unknown>
 }
 
@@ -319,6 +323,7 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
         for (const s of kids) {
           const internalMs = nextInternalMs.get(s.spanId)
           const attributes = Object.fromEntries(KEY_ATTRIBUTES.filter((k) => s.attributes[k] !== undefined).map((k) => [k, s.attributes[k]]))
+          const integrityEvent = integrityFailureEvent(s)
           rows.push({
             depth,
             name: s.name,
@@ -328,6 +333,9 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
             ...(storage.isColdStart(s) ? { coldStart: true } : {}),
             ...(internalMs ? { nextInternalMs: round(internalMs) } : {}),
             ...(s.status === 'error' ? { error: exceptionMessage(s) ?? 'error' } : {}),
+            // Checked independent of `status`: incident F's whole point is that this fires on spans that are
+            // otherwise fine — fast, no error — so it is never conditioned on one already being set above.
+            ...(integrityEvent ? { integrityCheck: { expected: integrityEvent.attributes.expected, actual: integrityEvent.attributes.actual } } : {}),
             ...(Object.keys(attributes).length ? { attributes } : {}),
           })
           visit(s.spanId, s.name, depth + 1)

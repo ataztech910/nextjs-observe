@@ -238,6 +238,26 @@ describe('getTrace', () => {
     })
   })
 
+  it('surfaces integrityCheck on a span that returned successfully but with the wrong data', async () => {
+    const storage = new MemoryStorage()
+    const base = { traceId: 'b'.repeat(32), kind: 'internal' as const, service: 'shop', serviceVersion: 'v1', scope: null, status: 'ok' as const, statusMessage: null, attributes: {}, resource: {}, events: [] }
+    await storage.insertSpans([
+      { ...base, spanId: 'root', parentSpanId: null, name: 'GET /api/cart', startTimeMs: NOW, durationMs: 50 },
+      {
+        ...base,
+        spanId: 'child',
+        parentSpanId: 'root',
+        name: 'db.query',
+        startTimeMs: NOW + 5,
+        durationMs: 10,
+        events: [{ name: 'integrity_check', timeMs: 0, attributes: { ok: false, expected: 'cart-42', actual: 'cart-17' } }],
+      },
+    ])
+    const trace = await createAgentQueries(storage, { now: () => NOW }).getTrace({ traceId: 'b'.repeat(32) })
+    expect(trace.spans[1]).toMatchObject({ name: 'db.query', integrityCheck: { expected: 'cart-42', actual: 'cart-17' } })
+    expect(trace.spans[1].error).toBeUndefined()
+  })
+
   it('handles unknown traces and caps long ones', async () => {
     expect(await q.getTrace({ traceId: '0'.repeat(32) })).toMatchObject({ note: expect.stringContaining('not found'), spans: [] })
     const [catalogTrace] = (await q.searchTraces({ operation: 'products', limit: 1 })).traces
