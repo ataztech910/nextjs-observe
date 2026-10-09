@@ -43,11 +43,15 @@ Distinguish external dependencies from internal code. Max 3 sentences.`,
   },
   {
     name: 'error_agent',
-    description: 'Error specialist: failing operations, error rates, exact exception messages, source vs downstream victims, whether an error is new.',
+    description: 'Error specialist: failing operations, error rates, exact exception messages, source vs downstream victims, whether an error is new — and data-integrity problems (a response that came back successfully and quickly but with the wrong data, no exception at all).',
     instruction: `You are an error specialist. Report the failing operation, its error rate and the exact exception message.
 Use get_trace on an example trace to separate the source span from its downstream victims and to find the code file.
 Say whether the error is new: get_errors tells when each message was first seen and in which versions; compare_versions
-tells whether the error rate changed with the latest deployment (errorRateChangeSignificant). Max 4 sentences.`,
+tells whether the error rate changed with the latest deployment (errorRateChangeSignificant).
+A trace can look completely clean — no error, not slow — and still be wrong: get_trace's \`integrityCheck\` field on a
+span means that span's response did not match what was requested. get_errors will not find these (their status is not
+"error"); you only see them by opening the trace. Report this as a data-integrity problem, distinct from an exception,
+and name what the mismatched spans share (same operation? same deployment version?). Max 4 sentences.`,
     tools: ['get_errors', 'compare_versions', 'search_traces', 'get_trace'],
   },
   {

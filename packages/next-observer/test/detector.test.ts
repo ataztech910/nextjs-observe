@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { NormalizedSpan } from '../src/collector/types.js'
+import type { AttributeValue, NormalizedSpan } from '../src/collector/types.js'
 import { AnomalyDetector, questionFor } from '../src/debug/detector.js'
 
 let seq = 0
@@ -27,6 +27,11 @@ function request(name: string, extra: Partial<NormalizedSpan> = {}): NormalizedS
 const failing = (name: string) => request(name, { status: 'error' })
 const slow = (name: string) => request(name, { durationMs: 2400 })
 const internal = (status: NormalizedSpan['status']) => request('render route (app) /x', { kind: 'internal', status })
+// Fast, 2xx by every other measure — status stays 'unset'/healthy and duration stays the 50 ms default. Only the
+// event says anything is wrong, exactly the point of incident F: a transaction-pooling connection returned another
+// concurrent query's result, not an error and not a hang.
+const wrongData = (name: string, expected: AttributeValue, actual: AttributeValue) =>
+  request(name, { events: [{ name: 'integrity_check', timeMs: 0, attributes: { ok: false, expected, actual } }] })
 
 function clock(start = 1_000_000) {
   let t = start
@@ -103,6 +108,42 @@ describe('AnomalyDetector', () => {
     c.advance(300_000)
     burst()
     expect(d.check()).toHaveLength(1)
+  })
+
+  it('flags a single wrong-data response even with no error and no slowness (no minSamples gate)', () => {
+    const c = clock()
+    const d = new AnomalyDetector({ now: c.now })
+    // Just 2 requests total — well under minSamples (5) for the rate-based rules, and both otherwise "healthy".
+    d.observe([request('GET /api/probe'), wrongData('GET /api/probe', 1, 24)])
+    const [anomaly] = d.check()
+    expect(anomaly).toMatchObject({ type: 'data_integrity', severity: 'critical', value: 1, sampleSize: 1 })
+    expect(anomaly.integrityFailures).toEqual([{ service: 'shop', operation: 'GET /api/probe', traceId: expect.any(String), expected: 1, actual: 24 }])
+  })
+
+  it('flags a wrong-data response even when the event sits on an internal child span, not the server entry span', () => {
+    const c = clock()
+    const d = new AnomalyDetector({ now: c.now })
+    // The real-world shape: the verifying code is a db.query child span (kind: 'internal'), not the route's own
+    // server-entry span — isServerRequest would be false for it, and it must still be seen.
+    const dbQuery = request('db.query', { kind: 'internal', events: [{ name: 'integrity_check', timeMs: 0, attributes: { ok: false, expected: 'cart-42', actual: 'cart-17' } }] })
+    d.observe([request('GET /api/cart'), dbQuery])
+    const [anomaly] = d.check()
+    expect(anomaly).toMatchObject({ type: 'data_integrity', sampleSize: 1 })
+    expect(anomaly.integrityFailures).toEqual([{ service: 'shop', operation: 'db.query', traceId: expect.any(String), expected: 'cart-42', actual: 'cart-17' }])
+  })
+
+  it('does not confuse a wrong-data response with an error or a slow one', () => {
+    const c = clock()
+    const d = new AnomalyDetector({ now: c.now })
+    d.observe([wrongData('GET /api/probe', 1, 24)])
+    expect(d.check().map((a) => a.type)).toEqual(['data_integrity'])
+  })
+
+  it('carries the expected/actual evidence into the question for the agents', () => {
+    const c = clock()
+    const d = new AnomalyDetector({ now: c.now })
+    d.observe([wrongData('GET /api/probe', 1, 24)])
+    expect(questionFor(d.check()[0])).toContain('asked for 1, got back 24')
   })
 
   it('flags silence only after traffic was seen', () => {

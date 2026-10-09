@@ -13,6 +13,8 @@ export function anomalyHeadline(a: Anomaly): string {
       return `Slow requests · ${pct(a.value)} of ${of} were slow in ${seconds}s`
     case 'no_traffic':
       return `No traffic · silent for ${a.value}s`
+    case 'data_integrity':
+      return `Wrong data · ${a.value} response${a.value === 1 ? '' : 's'} to ${of} came back wrong in ${seconds}s`
   }
 }
 
@@ -31,14 +33,24 @@ export function AnomalyView({ anomaly }: { anomaly: Anomaly }) {
         {anomalyHeadline(anomaly)}
         <span className="ml-auto text-xs font-normal text-muted-foreground">{new Date(anomaly.detectedAtMs).toLocaleTimeString()}</span>
       </div>
-      {anomaly.operations.length > 0 && (
+      {anomaly.integrityFailures && anomaly.integrityFailures.length > 0 ? (
         <ul className="font-mono text-xs text-muted-foreground">
-          {anomaly.operations.map((o) => (
-            <li key={`${o.service}:${o.operation}`}>
-              {o.operation} · {o.errors} errors, {o.slow} slow of {o.count}
+          {anomaly.integrityFailures.map((f, i) => (
+            <li key={`${f.traceId}-${i}`}>
+              {f.operation} · asked for {JSON.stringify(f.expected)}, got back {JSON.stringify(f.actual)} (trace {f.traceId.slice(0, 8)})
             </li>
           ))}
         </ul>
+      ) : (
+        anomaly.operations.length > 0 && (
+          <ul className="font-mono text-xs text-muted-foreground">
+            {anomaly.operations.map((o) => (
+              <li key={`${o.service}:${o.operation}`}>
+                {o.operation} · {o.errors} errors, {o.slow} slow of {o.count}
+              </li>
+            ))}
+          </ul>
+        )
       )}
     </div>
   )
