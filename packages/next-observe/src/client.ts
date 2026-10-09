@@ -4,9 +4,11 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
 import { registerInstrumentations } from '@opentelemetry/instrumentation'
 import { DocumentLoadInstrumentation } from '@opentelemetry/instrumentation-document-load'
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch'
+import { XMLHttpRequestInstrumentation } from '@opentelemetry/instrumentation-xml-http-request'
 import { resourceFromAttributes } from '@opentelemetry/resources'
 import { BatchSpanProcessor, WebTracerProvider } from '@opentelemetry/sdk-trace-web'
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions'
+import { captureBrowserErrors, markFailedFetch, markFailedXhr } from './browser-errors.js'
 import { BROWSER_PROXY_PATH, DEFAULT_SERVICE_NAME } from './constants.js'
 
 export interface ObserveClientOptions {
@@ -15,6 +17,11 @@ export interface ObserveClientOptions {
   serviceVersion?: string
   /** Where spans are POSTed. Default: same-origin proxy that withObserve() rewrites to the collector. */
   exportUrl?: string
+  /**
+   * Record uncaught errors, unhandled promise rejections, console.error calls and resources that failed to load as
+   * failed spans. Default true; `false` leaves `console.error` and the window's error events alone.
+   */
+  errors?: boolean
 }
 
 export function resolveClientOptions(options: ObserveClientOptions = {}) {
@@ -45,6 +52,8 @@ export function flushWhenHidden(
   })
 }
 
+const NEXT_DEV_REQUESTS = /\/__nextjs_/
+
 export function registerClient(options?: ObserveClientOptions): WebTracerProvider {
   const { serviceName, serviceVersion, exportUrl } = resolveClientOptions(options)
   const provider = new WebTracerProvider({
@@ -58,9 +67,15 @@ export function registerClient(options?: ObserveClientOptions): WebTracerProvide
     instrumentations: [
       new DocumentLoadInstrumentation(),
       // No ignoreUrls for our own exports: the OTLP exporter already suppresses tracing of its requests (checked e2e).
-      new FetchInstrumentation(),
+      // `/__nextjs_…` is next dev's own traffic (its error overlay asks for source frames) — not the app's.
+      new FetchInstrumentation({ ignoreUrls: [NEXT_DEV_REQUESTS], applyCustomAttributesOnSpan: markFailedFetch }),
+      // axios and older code talk to the API through XMLHttpRequest, not fetch.
+      new XMLHttpRequestInstrumentation({ ignoreUrls: [NEXT_DEV_REQUESTS], applyCustomAttributesOnSpan: markFailedXhr }),
     ],
   })
+  if (options?.errors !== false) {
+    captureBrowserErrors({ tracer: provider.getTracer('next-observe'), win: window, console, response: Response.prototype })
+  }
   return provider
 }
 
