@@ -148,7 +148,18 @@ describe('CheckWatch: an app that is down is one anomaly, not one per check', ()
     watch.observe(checks[0], refused(T0 + 1), 2, `${APP}/a`)
     const [anomaly] = watch.take()
     expect('alsoUnreachable' in anomaly.check!).toBe(false)
+    expect('origin' in anomaly.check!).toBe(false)
     expect(questionFor(anomaly)).not.toContain('looks down as a whole')
+  })
+
+  it('a neighbour refused only once is not yet counted as down', () => {
+    const watch = new CheckWatch()
+    for (const check of checks) watch.observe(check, refused(T0), 1, `${APP}${check.url}`)
+    watch.observe(checks[1], passed(T0 + 10_000), 0, `${APP}/b`) // the app answered for a moment
+    watch.observe(checks[1], refused(T0 + 20_000), 1, `${APP}/b`) // refused again, but only once in a row
+    watch.observe(checks[0], refused(T0 + 30_000), 2, `${APP}/a`)
+    watch.observe(checks[2], refused(T0 + 30_000), 2, `${APP}/c`)
+    expect(watch.take().map((a) => [a.check?.name, a.check?.alsoUnreachable])).toEqual([['check 1', ['check 3']]])
   })
 
   it('a check that answers again is no longer counted among the unreachable', () => {
@@ -160,13 +171,69 @@ describe('CheckWatch: an app that is down is one anomaly, not one per check', ()
     expect(questionFor((() => { const w = new CheckWatch(); rounds(w, 2, refused); const a = w.take()[0]; a.check!.alsoUnreachable = ['check 2']; return a })())).toContain('Another check gets no connection either (check 2): http://localhost:3000 looks down')
   })
 
+  it('a second outage after the app came back is news again, even within the cooldown', () => {
+    const watch = new CheckWatch()
+    rounds(watch, 2, refused)
+    expect(watch.take()).toHaveLength(1)
+    rounds(watch, 1, passed, T0 + 60_000) // back
+    expect(watch.take()).toEqual([])
+    rounds(watch, 2, refused, T0 + 120_000) // down again, 2 minutes after the first report
+    const found = watch.take()
+    // Check 1 already said "no connection" two minutes ago; the next one to break the rule says it for this outage.
+    expect(found.map((a) => [a.check?.name, a.check?.alsoUnreachable])).toEqual([['check 2', ['check 1', 'check 3']]])
+  })
+
+  it('one refused round is a blip, not an outage — even when it would tip a flaky check over its share', () => {
+    const watch = new CheckWatch()
+    watch.observe(checks[0], failed500(T0), 1, `${APP}/a`)
+    watch.observe(checks[0], passed(T0 + 1), 0, `${APP}/a`)
+    watch.observe(checks[0], failed500(T0 + 2), 1, `${APP}/a`)
+    watch.observe(checks[0], passed(T0 + 3), 0, `${APP}/a`)
+    rounds(watch, 1, refused, T0 + 30_000) // e.g. next dev restarting
+    expect(watch.take()).toEqual([])
+    // The next wrong answer is the third failure of ten: now it is said, and as what it is.
+    watch.observe(checks[0], failed500(T0 + 60_000), 1, `${APP}/a`)
+    const found = watch.take()
+    expect(found.map((a) => [a.check?.name, a.severity, a.check?.rule, a.check?.reason])).toEqual([['check 1', 'warning', 'share', 'expected status 2xx, got 500']])
+    expect('origin' in found[0].check!).toBe(false)
+  })
+
+  it('the check that reported the outage is not silenced about its own wrong answers afterwards', () => {
+    const watch = new CheckWatch()
+    rounds(watch, 2, refused)
+    expect(watch.take().map((a) => a.check?.name)).toEqual(['check 1'])
+    watch.observe(checks[0], failed500(T0 + 60_000), 3, `${APP}/a`)
+    watch.observe(checks[0], failed500(T0 + 90_000), 4, `${APP}/a`)
+    expect(watch.take().map((a) => [a.check?.name, a.check?.reason])).toEqual([['check 1', 'expected status 2xx, got 500']])
+    // And the same kind of failure again stays on its cooldown.
+    watch.observe(checks[0], failed500(T0 + 120_000), 5, `${APP}/a`)
+    expect(watch.take()).toEqual([])
+  })
+
+  it('the first slow answer of a restarted app is not "the fifth failure in a row"', () => {
+    // Seen on the real shop: four refused connections, then the cold start broke the time limit once.
+    const watch = new CheckWatch()
+    const slow = (atMs: number): CheckResult => ({ atMs, ok: false, durationMs: 423, status: 200, traceId: 'f'.repeat(32), reason: 'took 423 ms, limit 300 ms' })
+    rounds(watch, 4, refused)
+    expect(watch.take()).toHaveLength(1)
+    watch.observe(checks[0], slow(T0 + 150_000), 5, `${APP}/a`) // the runner's own count says 5
+    expect(watch.take()).toEqual([])
+    watch.observe(checks[0], passed(T0 + 180_000), 0, `${APP}/a`)
+    watch.observe(checks[0], slow(T0 + 210_000), 1, `${APP}/a`)
+    expect(watch.take()).toEqual([]) // two wrong answers in ten, the refused ones do not count towards the share
+    watch.observe(checks[0], slow(T0 + 240_000), 2, `${APP}/a`)
+    expect(watch.take().map((a) => [a.check?.rule, a.value, a.check?.reason])).toEqual([['in_row', 2, 'took 423 ms, limit 300 ms']])
+  })
+
   it('an answered failure of the same check is reported even while the address is on cooldown', () => {
     const watch = new CheckWatch({ cooldownMs: 300_000 })
     rounds(watch, 2, refused)
     watch.take()
     // The app is back but check 2 now gets a 500, twice: a different problem, said at once.
     watch.observe(checks[1], failed500(T0 + 60_000), 3, `${APP}/b`)
-    expect(watch.take().map((a) => [a.check?.name, a.check?.reason])).toEqual([['check 2', 'expected status 2xx, got 500']])
+    expect(watch.take()).toEqual([]) // the first wrong answer: not yet
+    watch.observe(checks[1], failed500(T0 + 90_000), 4, `${APP}/b`)
+    expect(watch.take().map((a) => [a.check?.name, a.check?.reason, a.value])).toEqual([['check 2', 'expected status 2xx, got 500', 2]])
   })
 })
 

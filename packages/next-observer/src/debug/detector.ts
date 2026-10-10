@@ -272,7 +272,7 @@ export function questionFor(anomaly: Anomaly): string {
     case 'check_failed': {
       const c = anomaly.check
       if (!c) return 'Anomaly detected: a scheduled check keeps failing.'
-      return `Anomaly detected: ${checkFailureQuestion({ ...c, answered: c.status !== undefined, count: anomaly.value, runs: anomaly.sampleSize, also: c.alsoUnreachable })}`
+      return `Anomaly detected: ${checkFailureQuestion({ ...c, answered: c.status !== undefined, count: anomaly.value, runs: anomaly.sampleSize })}`
     }
     case 'no_traffic':
       return `Anomaly detected: no spans received for ${anomaly.value}s after traffic was flowing. Check which services went silent.`

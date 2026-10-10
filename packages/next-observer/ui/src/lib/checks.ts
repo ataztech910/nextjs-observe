@@ -1,6 +1,6 @@
 // Words for the Checks page: how a scheduled check is doing and what it expects. Pure, so it is tested without a browser.
 import { CHECK_RULE, type CheckResult, type CheckRule, type CheckStatus } from '../../../src/checks/types.js'
-import { checkFailureQuestion, whereToLook } from '../../../src/checks/words.js'
+import { checkFailureQuestion, originOf, whereToLook } from '../../../src/checks/words.js'
 
 export type CheckState = 'failing' | 'unreliable' | 'passing' | 'waiting'
 
@@ -100,8 +100,11 @@ export function finishedAtMs(run: CheckResult): number {
   return run.atMs + Math.max(0, run.durationMs)
 }
 
+/** No connection, often enough in a row to count: the observer's own test for "this address is down". */
+const isDown = (c: CheckStatus, rule: CheckRule) => c.failures >= rule.failuresInRow && c.last?.unreachable === true
+
 /** The question the Investigate button sends to the AI agents — the same wording as the anomaly the observer raises. */
-export function checkQuestion(c: CheckStatus, rule: CheckRule = CHECK_RULE): string {
+export function checkQuestion(c: CheckStatus, rule: CheckRule = CHECK_RULE, all: CheckStatus[] = []): string {
   const failed = latestFailure(c, rule)
   const runs = recent(c.history, rule)
   const passing = `The scheduled check "${c.name}" (${c.method} ${c.url}) is passing`
@@ -126,6 +129,8 @@ export function checkQuestion(c: CheckStatus, rule: CheckRule = CHECK_RULE): str
     answered: failed.status !== undefined,
     unreachable: failed.unreachable,
     traceId: failed.traceId,
+    // The app as a whole is down when the other checks of this address are down the same way — as the observer says it.
+    ...(isDown(c, rule) ? { origin: originOf(c.url), alsoUnreachable: all.filter((o) => o.name !== c.name && isDown(o, rule) && originOf(o.url) === originOf(c.url)).map((o) => o.name) } : {}),
   })
   return question.charAt(0).toUpperCase() + question.slice(1)
 }
