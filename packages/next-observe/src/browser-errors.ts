@@ -3,7 +3,7 @@
 // image or a script that failed to load. Each becomes one failed span, so the observer lists it as a defect.
 import { SpanStatusCode, type Span, type Tracer } from '@opentelemetry/api'
 
-export type BrowserErrorKind = 'uncaught error' | 'unhandled rejection' | 'console.error' | 'resource error' | 'invalid JSON response'
+export type BrowserErrorKind = 'uncaught error' | 'unhandled rejection' | 'console.error' | 'resource error' | 'invalid JSON response' | 'hydration mismatch'
 
 export interface BrowserErrorTargets {
   tracer: Tracer
@@ -87,8 +87,13 @@ export function captureBrowserErrors(targets: BrowserErrorTargets): () => void {
   let recording = false
   const lastSeen = new Map<string, number>()
 
-  function record(kind: BrowserErrorKind, what: { type?: string; message: string; stack?: string }, attributes: Record<string, string | number> = {}) {
+  function record(reportedAs: BrowserErrorKind, reported: { type?: string; message: string; stack?: string }, attributes: Record<string, string | number> = {}) {
     if (!active || recording) return
+    // React reports a hydration mismatch as an ordinary error (window 'error') or a console.error: it is neither an
+    // uncaught exception nor an app's log line, so it gets its own kind and a message that says what differed.
+    const hydration = reportedAs === 'uncaught error' || reportedAs === 'console.error' ? describeHydrationMismatch(reported.message) : undefined
+    const kind = hydration ? 'hydration mismatch' : reportedAs
+    const what = hydration ? { ...reported, message: hydration } : reported
     const message = clip(what.message || '(no message)', MAX_MESSAGE)
     const key = `${kind}\u0000${message}`
     const at = now()
@@ -191,4 +196,60 @@ export function markFailedFetch(span: Pick<Span, 'setStatus'>, _request: unknown
 /** The same for XMLHttpRequest: finished (readyState 4) with status 0 = no response. An aborted one is back at readyState 0. */
 export function markFailedXhr(span: Pick<Span, 'setStatus'>, xhr: { readyState: number; status: number }): void {
   if (xhr.readyState === 4 && xhr.status === 0) span.setStatus({ code: SpanStatusCode.ERROR, message: 'Network request failed' })
+}
+
+// React's production build replaces messages with codes (https://react.dev/errors/<code>); these are the hydration ones,
+// worded from React's own error-codes list.
+const HYDRATION_CODES: Record<string, (args: string[]) => string> = {
+  '418': ([what]) => `Hydration failed because the server rendered ${what || 'HTML'} didn't match the client.`,
+  '421': () => 'A Suspense boundary received an update before it finished hydrating and switched to client rendering.',
+  '422': () => 'There was an error while hydrating; React recovered by client rendering from the nearest Suspense boundary.',
+  '423': () => 'There was an error while hydrating; React recovered by client rendering the entire root.',
+  '425': () => 'Text content does not match server-rendered HTML.',
+}
+const HYDRATION_TEXT = /^(Hydration failed because|A tree hydrated but some attributes|There was an error while hydrating|Text content does not match server-rendered HTML|This Suspense boundary received an update before it finished hydrating)/
+const TREE_LINES = 8
+
+/**
+ * If `message` is React reporting that the server's HTML and the client's first render differ, what to show instead of
+ * it; otherwise undefined.
+ *
+ * In development React's message is one sentence, a list of general causes, and a component tree whose last lines are
+ * the element and the two values ("+" what the client rendered, "-" what the server sent). Only the sentence and that
+ * end of the tree are kept — the part that says where and what. In production there is only a code: it is spelled out,
+ * with a note that the details need the development build.
+ */
+export function describeHydrationMismatch(message: string): string | undefined {
+  const minified = /^Minified React error #(\d+); visit (\S+)/.exec(message)
+  if (minified) {
+    const describe = HYDRATION_CODES[minified[1]]
+    if (!describe) return undefined
+    let args: string[] = []
+    try {
+      args = new URL(minified[2]).searchParams.getAll('args[]')
+    } catch {
+      // No usable link: the sentence without its details.
+    }
+    return `${describe(args)} (React error #${minified[1]}; the production build does not say which element — open the page in next dev to see it.)`
+  }
+  if (!HYDRATION_TEXT.test(message)) return undefined
+  const lines = message.split('\n')
+  const sentence = lines[0].split('. ')[0].replace(/\.$/, '') + '.'
+  // The tree is the indented block at the end; "..." lines only mark what React left out.
+  const lastDiff = lines.findLastIndex((line) => /^[+-]\s/.test(line))
+  if (lastDiff === -1) return sentence
+  let tree: string[] = []
+  for (let i = lastDiff; i >= 0 && tree.length < TREE_LINES; i--) {
+    const line = lines[i]
+    if (line.trim() === '') break
+    if (line.trim() !== '...') tree.unshift(line)
+  }
+  // Start at the nearest component above the difference (`<Page …>`): what is above it are the framework's wrappers.
+  const component = tree.findLastIndex((line) => /^\s*<[A-Z]/.test(line))
+  if (component > 0) tree = tree.slice(component)
+  // Common indentation removed; the "+" (client) / "-" (server) marker stays in the first column.
+  const body = (line: string) => line.replace(/^[+-]/, ' ')
+  const indent = Math.min(...tree.map((line) => body(line).search(/\S/)))
+  const dedented = tree.map((line) => (/^[+-]/.test(line) ? line[0] : ' ') + body(line).slice(indent))
+  return `${sentence}\n${dedented.join('\n')}`
 }

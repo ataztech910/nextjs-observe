@@ -39,8 +39,10 @@ To see the telemetry and have **AI agents** investigate it, run the observer nex
 - **Browser** traces: document load, every request (`fetch` and `XMLHttpRequest`, so axios too), React renders
 - **Browser errors**, each as a failed span the observer lists as a defect: uncaught exceptions, unhandled promise
   rejections, `console.error` (React reports errors caught by an `error.tsx` boundary there), images/scripts/styles
-  that failed to load, a response that is not JSON where `res.json()` was called, and requests that got no response
-  at all. `registerClient({ errors: false })` turns the error capture off.
+  that failed to load, a response that is not JSON where `res.json()` was called, requests that got no response at
+  all, and **hydration mismatches** — in `next dev` with the component, the element and what the server and the client
+  each rendered; in a production build React gives only a code, which is spelled out.
+  `registerClient({ errors: false })` turns the error capture off.
 - **Your own code** with a `'use observe'` directive: each call becomes a span with its file path, duration and errors
 - Sent as OTLP/HTTP to the observer, to any other OpenTelemetry backend (Dynatrace, Tempo, …), or to both
 
