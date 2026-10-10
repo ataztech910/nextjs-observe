@@ -259,7 +259,7 @@ async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collect
   if (args.demo) lines.push('  demo       "shop" scenario: v1 → v2 regression, inventory errors, catalog N+1, an error new in v2 — live v2 traffic every 2 s')
   const line = lines.join('\n')
   try {
-    const collector = await startCollector({ port: args.port, host: args.host, apiKey: args.apiKey, uiPassword: args.uiPassword, storage, chat, detector, checks: checks && { list: () => checks.list(), isCheckTrace: (traceId) => checks.isCheckTrace(traceId), ...(watch ? { anomalies: () => watch.take() } : {}) } })
+    const collector = await startCollector({ port: args.port, host: args.host, apiKey: args.apiKey, uiPassword: args.uiPassword, storage, chat, detector, checks: checks && { list: () => checks.list(), isCheckTrace: (traceId) => checks.isCheckTrace(traceId), ...(watch ? { anomalies: () => watch.take(), rule: watch.rule } : {}) } })
     checks?.start()
     const stopDemo = args.demo ? startLiveDemo({ storage, detector }) : undefined
     return {

@@ -1,5 +1,6 @@
 // Anomaly detector: a sliding window over incoming spans, three rules, a cooldown per rule. Pure — the clock is injected,
 // no timers, no I/O — so the collector drives it and tests control time.
+import { checkFailureQuestion } from '../checks/words.js'
 import type { NormalizedSpan, SpanEvent } from '../collector/types.js'
 
 export type AnomalyType = 'high_error_rate' | 'high_latency' | 'no_traffic' | 'data_integrity' | 'check_failed'
@@ -29,7 +30,7 @@ export interface Anomaly {
    * `check_failed` only (raised by checks/watch.ts, not by this detector): the scheduled check that keeps failing.
    * `value` is then the failures in a row (`rule: 'in_row'`) or the failures among the latest `sampleSize` runs (`'share'`).
    */
-  check?: { name: string; method: string; url: string; rule: 'in_row' | 'share'; reason: string; status?: number; traceId: string }
+  check?: { name: string; method: string; url: string; rule: 'in_row' | 'share'; reason: string; status?: number; unreachable?: true; traceId: string }
 }
 
 export interface DetectorOptions {
@@ -271,10 +272,7 @@ export function questionFor(anomaly: Anomaly): string {
     case 'check_failed': {
       const c = anomaly.check
       if (!c) return 'Anomaly detected: a scheduled check keeps failing.'
-      const how = c.rule === 'in_row' ? `failed ${anomaly.value} times in a row` : `failed ${anomaly.value} of its last ${anomaly.sampleSize} runs`
-      // Without a status nothing answered: there is no trace to open, and the app may be down.
-      const where = c.status === undefined ? 'No answer came back, so there is no trace of this request — check whether the service is receiving any traffic at all.' : `The app recorded the last failing request as trace ${c.traceId}: open it, name the span that failed or took the time and its code file.`
-      return `Anomaly detected: the scheduled check "${c.name}" (${c.method} ${c.url}) ${how}. Last failure: ${c.reason}. ${where}`
+      return `Anomaly detected: ${checkFailureQuestion({ ...c, answered: c.status !== undefined, count: anomaly.value, runs: anomaly.sampleSize })}`
     }
     case 'no_traffic':
       return `Anomaly detected: no spans received for ${anomaly.value}s after traffic was flowing. Check which services went silent.`

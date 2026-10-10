@@ -1,5 +1,6 @@
 // Types come straight from the collector, so the UI can't drift from the API.
 import type { ChatEvent, EvidenceCard, ProactiveEvent, VersionStats } from '../../src/collector/chat'
+import type { CheckResult, CheckRule, ChecksReport, CheckStatus } from '../../src/checks/types'
 import type { Anomaly } from '../../src/debug/detector'
 import type { Defect } from '../../src/collector/defects'
 import type { Histogram, OperationDetails, Speed } from '../../src/collector/operation'
@@ -7,7 +8,7 @@ import type { Overview, RouteRow } from '../../src/collector/overview'
 import type { Regression } from '../../src/debug/regression'
 import type { NormalizedSpan, OperationStats, ServiceInfo, TraceSpan, TraceSummary } from '../../src/collector/types'
 
-export type { Anomaly, Defect, Histogram, OperationDetails, Speed, Overview, Regression, RouteRow, ChatEvent, EvidenceCard, ProactiveEvent, VersionStats, NormalizedSpan, OperationStats, ServiceInfo, TraceSpan, TraceSummary }
+export type { Anomaly, CheckResult, CheckRule, ChecksReport, CheckStatus, Defect, Histogram, OperationDetails, Speed, Overview, Regression, RouteRow, ChatEvent, EvidenceCard, ProactiveEvent, VersionStats, NormalizedSpan, OperationStats, ServiceInfo, TraceSpan, TraceSummary }
 
 export type ChatInfo = { enabled: true; mode: 'mock' | 'real' } | { enabled: false; reason: string }
 
@@ -39,6 +40,7 @@ export const api = {
   overview: (windowMs: number, service?: string) => get<Overview>(`/api/overview${query({ windowMs, service })}`),
   operation: (operation: string, windowMs: number, service?: string, toMs?: number) => get<OperationDetails>(`/api/operation${query({ operation, windowMs, service, toMs })}`),
   defects: (windowMs: number, service?: string) => get<Defect[]>(`/api/defects${query({ windowMs, service })}`),
+  checks: () => get<ChecksReport>('/api/checks'),
   regression: () => get<{ regression: Regression | null }>('/api/regression'),
   chatInfo: () => get<ChatInfo>('/api/chat'),
 

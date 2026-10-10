@@ -4,19 +4,15 @@
 import type { Anomaly } from '../debug/detector.js'
 import type { CheckResult } from './runner.js'
 import type { Check } from './spec.js'
+import { CHECK_RULE, type CheckRule } from './types.js'
 
-export interface CheckWatchOptions {
-  /** Failed runs in a row that make an anomaly. Default 2. */
-  failuresInRow?: number
-  /** How many of the latest runs the share rule looks at. Default 10. */
-  shareWindow?: number
-  /** Failed runs among them that make an anomaly — a check failing every third time never fails twice in a row. Default 3. */
-  shareFailures?: number
+/** The rule's numbers default to CHECK_RULE: two in a row, or three of the last ten — a check failing every third time never fails twice in a row. */
+export interface CheckWatchOptions extends Partial<CheckRule> {
   /** The same check is not reported again within this time. Default 5 min, like the detector. */
   cooldownMs?: number
 }
 
-const DEFAULTS = { failuresInRow: 2, shareWindow: 10, shareFailures: 3, cooldownMs: 300_000 }
+const DEFAULTS = { ...CHECK_RULE, cooldownMs: 300_000 }
 
 export class CheckWatch {
   readonly options: Required<CheckWatchOptions>
@@ -27,6 +23,12 @@ export class CheckWatch {
 
   constructor(options: CheckWatchOptions = {}) {
     this.options = { ...DEFAULTS, ...options }
+  }
+
+  /** The numbers in force — what the Checks page colours by. */
+  get rule(): CheckRule {
+    const { failuresInRow, shareWindow, shareFailures } = this.options
+    return { failuresInRow, shareWindow, shareFailures }
   }
 
   /** The runner's `onResult`. */
@@ -64,6 +66,7 @@ export class CheckWatch {
         rule: inRow ? 'in_row' : 'share',
         reason: result.reason ?? 'failed',
         ...(result.status === undefined ? {} : { status: result.status }),
+        ...(result.unreachable ? { unreachable: true as const } : {}),
         traceId: result.traceId,
       },
     })

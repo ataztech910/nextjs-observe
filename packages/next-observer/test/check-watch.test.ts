@@ -99,8 +99,19 @@ describe('questionFor a failing check', () => {
   })
 
   it('does not send the agents after a trace that cannot exist', () => {
-    const question = questionFor(anomaly('xx', { status: undefined, reason: 'request failed: ECONNREFUSED' }))
-    expect(question).toContain('Last failure: request failed: ECONNREFUSED. No answer came back, so there is no trace of this request')
+    const question = questionFor(anomaly('xx', { status: undefined, reason: 'request failed: ECONNREFUSED', unreachable: true }))
+    expect(question).toContain('Last failure: request failed: ECONNREFUSED. The request reached nobody, so there is no trace of it')
     expect(question).not.toContain('open it')
+  })
+
+  it('a timeout: nobody knows whether the request arrived — the trace is worth a try, and its absence is an answer too', () => {
+    const question = questionFor(anomaly('xx', { status: undefined, reason: 'no answer within 10000 ms' }))
+    expect(question).toContain('Last failure: no answer within 10000 ms. No answer came back. If the request arrived, it is trace aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1: try to open it and name the span where it got stuck. If there is no such trace, the request never arrived or the app is stuck')
+    expect(question).not.toContain('The app recorded')
+  })
+
+  it('reports the rule in force', () => {
+    expect(new CheckWatch().rule).toEqual({ failuresInRow: 2, shareWindow: 10, shareFailures: 3 })
+    expect(new CheckWatch({ failuresInRow: 4, cooldownMs: 1 }).rule).toEqual({ failuresInRow: 4, shareWindow: 10, shareFailures: 3 })
   })
 })

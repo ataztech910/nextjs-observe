@@ -373,6 +373,10 @@ describe('project checks (observe.checks.*)', () => {
     expect(await events(off)).not.toContain('"type":"anomaly"')
     const failures = async (h: ReturnType<typeof harness>) => (await checks(h))[0].failures
     expect(await failures(off)).toBeGreaterThanOrEqual(2)
+    // The Checks page says whether anyone is sent to look.
+    const report = async (h: ReturnType<typeof harness>) => (await fetch(`${h.collectorUrl()}/api/checks`)).json()
+    expect(await report(on)).toEqual({ checks: expect.any(Array), nowMs: expect.any(Number), investigates: true, rule: { failuresInRow: 2, shareWindow: 10, shareFailures: 3 } })
+    expect(await report(off)).toMatchObject({ investigates: false, rule: { failuresInRow: 2, shareWindow: 10, shareFailures: 3 } })
 
     on.stop()
     off.stop()
