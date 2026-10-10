@@ -66,6 +66,9 @@ async function readBody(response: Response, wanted: boolean): Promise<{ text: st
   return { text: Buffer.concat(chunks).subarray(0, MAX_BODY_BYTES).toString('utf8'), cut, read: true }
 }
 
+/** Errors of making the connection: with one of these the request was never sent, so the app has no trace of it. */
+const NO_CONNECTION = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EHOSTUNREACH', 'ENETUNREACH', 'EADDRNOTAVAIL', 'UND_ERR_CONNECT_TIMEOUT'])
+
 /** What run() gives the timer when the app is not listening yet: try again soon. */
 const STARTING = Symbol('starting')
 
@@ -177,7 +180,7 @@ export class CheckRunner {
       const starting = own && cause?.code === 'ECONNREFUSED' && !this.appAnswered && this.startedAt !== null && started - this.startedAt < this.startupGraceMs
       if (starting) return generation === this.generation ? STARTING : undefined
       const reason = timedOut ? `no answer within ${check.timeoutMs} ms` : `request failed: ${cause?.code ?? cause?.message ?? (error as Error)?.message ?? String(error)}`
-      result = { atMs, ok: false, durationMs, traceId, reason, ...(timedOut ? {} : { unreachable: true as const }) }
+      result = { atMs, ok: false, durationMs, traceId, reason, ...(cause?.code && NO_CONNECTION.has(cause.code) ? { unreachable: true as const } : {}) }
     } finally {
       clearTimeout(timer)
       this.inFlight.delete(controller)

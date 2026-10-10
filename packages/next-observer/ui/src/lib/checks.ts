@@ -52,7 +52,7 @@ export function expectWords(expect: CheckStatus['expect']): string {
 /** One decimal, and the unit chosen after rounding: 3599 s is "1 h", not "60 min". */
 function inUnits(seconds: number): string {
   const tenth = (n: number) => Math.round(n * 10) / 10
-  if (seconds < 60) return `${Math.round(seconds)} s`
+  if (tenth(seconds) < 60) return `${tenth(seconds)} s`
   if (tenth(seconds / 60) < 60) return `${tenth(seconds / 60)} min`
   if (tenth(seconds / 3600) < 24) return `${tenth(seconds / 3600)} h`
   return `${tenth(seconds / 86_400)} d`
@@ -87,15 +87,28 @@ function latestFailure(c: Pick<CheckStatus, 'history'>, rule: CheckRule): CheckR
  * reached nobody — an older failure's trace would explain some other problem.
  */
 export function traceWorthOpening(c: Pick<CheckStatus, 'history'>, rule: CheckRule = CHECK_RULE): CheckResult | undefined {
-  const run = latestFailure(c, rule) ?? c.history.at(-1)
-  return run && !run.unreachable ? run : undefined
+  const failed = latestFailure(c, rule)
+  if (failed && !failed.unreachable) return failed
+  // No failure with a trace: the latest run — unless that is the one that reached nobody.
+  const latest = c.history.at(-1)
+  return latest && !latest.unreachable ? latest : undefined
+}
+
+/** When the answer (or the failure) came in — a run that timed out after 10 s did not "happen 10 s ago" the moment it shows up. */
+export function finishedAtMs(run: CheckResult): number {
+  return run.atMs + Math.max(0, run.durationMs)
 }
 
 /** The question the Investigate button sends to the AI agents — the same wording as the anomaly the observer raises. */
 export function checkQuestion(c: CheckStatus, rule: CheckRule = CHECK_RULE): string {
   const failed = latestFailure(c, rule)
-  if (!failed) return `The scheduled check "${c.name}" (${c.method} ${c.url}) is passing. Is there anything in its recent traces worth worrying about?`
   const runs = recent(c.history, rule)
+  const passing = `The scheduled check "${c.name}" (${c.method} ${c.url}) is passing`
+  if (!failed) return `${passing}. Is there anything in its recent traces worth worrying about?`
+  // Green and answering again: an old blip is a footnote, not "the service gets no traffic".
+  if (checkState(c, rule) === 'passing' && c.last?.ok) {
+    return `${passing} now, but failed ${runs.filter((r) => !r.ok).length} of its last ${runs.length} runs (last: ${failed.reason ?? 'failed'}). Is that worth worrying about?`
+  }
   const inRow = c.failures >= rule.failuresInRow
   const question = checkFailureQuestion({
     name: c.name,
@@ -105,8 +118,9 @@ export function checkQuestion(c: CheckStatus, rule: CheckRule = CHECK_RULE): str
     count: inRow ? c.failures : runs.filter((r) => !r.ok).length,
     runs: runs.length,
     reason: failed.reason ?? 'failed',
+    answered: failed.status !== undefined,
     unreachable: failed.unreachable,
     traceId: failed.traceId,
   })
-  return `T${question.slice(1)}`
+  return question.charAt(0).toUpperCase() + question.slice(1)
 }

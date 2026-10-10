@@ -1,4 +1,5 @@
-// What the runner reports — types only, so the UI can import them without pulling in Node code.
+// What the runner reports, and the rule about it. The UI bundle imports this file: nothing here may import Node code
+// (type imports are fine).
 import type { Check } from './spec.js'
 
 export interface CheckResult {
@@ -12,8 +13,9 @@ export interface CheckResult {
   /** Why it failed, in words; absent when ok. */
   reason?: string
   /**
-   * The request never got to anyone (connection refused, unknown host): the app has no trace of it. A timeout is not
-   * this — the request arrived, and its trace shows where the time went.
+   * No connection was made (refused, unknown host, no route): the app cannot have a trace of this request. Absent on a
+   * timeout or a connection that broke later — then nobody knows: the request may have arrived, and if it did, its
+   * trace shows where it got stuck.
    */
   unreachable?: true
 }

@@ -3,7 +3,7 @@ import { validateCheck } from '../src/checks/spec.js'
 import { CheckWatch } from '../src/checks/watch.js'
 import { questionFor } from '../src/debug/detector.js'
 import type { CheckResult as CheckRun, CheckStatus as CheckFacts } from '../src/checks/types.js'
-import { agoWords, checkQuestion, checkState, everyWords, expectWords, passedWords, sortChecks, summaryWords, traceWorthOpening } from '../ui/src/lib/checks.js'
+import { agoWords, finishedAtMs, checkQuestion, checkState, everyWords, expectWords, passedWords, sortChecks, summaryWords, traceWorthOpening } from '../ui/src/lib/checks.js'
 
 /** '.' passed, 'x' failed with a 500, '!' reached nobody, 't' timed out. */
 function runs(series: string): CheckRun[] {
@@ -75,10 +75,16 @@ describe('words', () => {
   it('says how often', () => {
     expect([5, 59, 60, 90, 300, 3597, 3599, 3600, 5400, 86399, 86400, 129600].map(everyWords)).toEqual(['every 5 s', 'every 59 s', 'every 1 min', 'every 1.5 min', 'every 5 min', 'every 1 h', 'every 1 h', 'every 1 h', 'every 1.5 h', 'every 1 d', 'every 1 d', 'every 1.5 d'])
     expect(everyWords(3540)).toBe('every 59 min')
+    expect([7.5, 59.94, 59.96].map(everyWords)).toEqual(['every 7.5 s', 'every 59.9 s', 'every 1 min'])
   })
 
   it('says how long ago without rounding up', () => {
     expect([-5, 0, 999, 59_999, 60_000, 90_000, 3_599_000, 3_600_000, 86_399_000, 86_400_000, 172_800_000].map(agoWords)).toEqual(['0s ago', '0s ago', '0s ago', '59s ago', '1 min ago', '1 min ago', '59 min ago', '1 h ago', '23 h ago', '1 d ago', '2 d ago'])
+  })
+
+  it('a run happened when its answer came, not when it was sent', () => {
+    expect(finishedAtMs({ atMs: 1000, ok: false, durationMs: 10_000, traceId: 'a' })).toBe(11_000)
+    expect(finishedAtMs({ atMs: 1000, ok: true, durationMs: -5, traceId: 'a' })).toBe(1000)
   })
 
   it('counts the runs that passed', () => {
@@ -132,6 +138,10 @@ describe('traceWorthOpening', () => {
     expect(trace('.x.!')).toBeUndefined()
     expect(trace('!!')).toBeUndefined()
   })
+  it('once the app answers again, the latest run is offered', () => {
+    expect(trace('.!..')).toMatchObject({ ok: true, traceId: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3' })
+    expect(trace('!x')).toMatchObject({ ok: false, traceId: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1' })
+  })
   it('the latest run when nothing failed lately', () => {
     expect(trace('...')).toMatchObject({ ok: true, traceId: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2' })
     expect(trace('x..........')).toMatchObject({ ok: true, traceId: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa10' }) // the failure left the window
@@ -158,7 +168,16 @@ describe('checkQuestion', () => {
     expect(question).not.toContain('open it')
   })
   it('a timeout sends the agents to the trace', () => {
-    expect(checkQuestion(facts('.tt'))).toContain('Last failure: no answer within 10000 ms. The app recorded the last failing request as trace aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2: open it')
+    expect(checkQuestion(facts('.tt'))).toContain('Last failure: no answer within 10000 ms. No answer came back. If the request arrived, it is trace aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2: try to open it')
+  })
+  it('green again after a blip: the blip is a footnote, not "the service gets no traffic"', () => {
+    expect(checkQuestion(facts('.!...'))).toBe('The scheduled check "stock is known" (GET http://localhost:3000/api/inventory/1) is passing now, but failed 1 of its last 5 runs (last: request failed: ECONNREFUSED). Is that worth worrying about?')
+    // Unreliable, or the latest run failed: still a failure question.
+    expect(checkQuestion(facts('x.x.x.'))).toContain('failed 3 of its last 6 runs. Last failure:')
+    expect(checkQuestion(facts('...x'))).toContain('Last failure: expected status 2xx, got 500.')
+  })
+  it('starts with a capital whatever the shared wording starts with', () => {
+    expect(checkQuestion(facts('.xx'))).toMatch(/^The scheduled check /)
   })
   it('one failure is a share of the recent runs, not "in a row"', () => {
     expect(checkQuestion(facts('...x'))).toContain('failed 1 of its last 4 runs.')

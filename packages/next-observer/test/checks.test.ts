@@ -202,6 +202,17 @@ describe('CheckRunner against a real HTTP server', () => {
     expect(result).toMatchObject({ ok: false, reason: 'request failed: ECONNREFUSED', unreachable: true })
   })
 
+  it('only a connection that was never made means "no trace"; one that broke later may have one', async () => {
+    const failing = (code: string) => (() => Promise.reject(Object.assign(new TypeError('fetch failed'), { cause: { code } }))) as unknown as typeof fetch
+    const list = validateChecks([{ name: 'a', url: '/a' }])
+    const result = async (code: string) => new CheckRunner({ checks: list, baseUrl: 'http://app', fetch: failing(code) }).run(list[0])
+    for (const code of ['ECONNREFUSED', 'ENOTFOUND', 'EHOSTUNREACH', 'UND_ERR_CONNECT_TIMEOUT']) expect(await result(code), code).toMatchObject({ ok: false, unreachable: true })
+    for (const code of ['ECONNRESET', 'UND_ERR_SOCKET', 'CERT_HAS_EXPIRED']) expect('unreachable' in (await result(code))!, code).toBe(false)
+    const plain = await new CheckRunner({ checks: list, baseUrl: 'http://app', fetch: (() => Promise.reject(new Error('boom'))) as unknown as typeof fetch }).run(list[0])
+    expect(plain).toMatchObject({ ok: false, reason: 'request failed: boom' })
+    expect('unreachable' in plain!).toBe(false)
+  })
+
   it('a full URL ignores the base', async () => {
     const list = validateChecks([{ name: 'a', url: `${base}/ok` }])
     const r = new CheckRunner({ checks: list, baseUrl: 'http://127.0.0.1:1' })

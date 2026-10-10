@@ -5,7 +5,7 @@ import { api, type CheckRule, type CheckStatus } from '@/api'
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { agoWords, checkQuestion, checkState, everyWords, expectWords, passedWords, sortChecks, summaryWords, traceWorthOpening, type CheckState } from '@/lib/checks'
+import { agoWords, checkQuestion, checkState, everyWords, expectWords, finishedAtMs, passedWords, sortChecks, summaryWords, traceWorthOpening, type CheckState } from '@/lib/checks'
 
 const REFRESH_MS = 2000
 
@@ -22,21 +22,24 @@ const TONE: Record<CheckState, { label: string; badge: string }> = {
   waiting: { label: 'waiting', badge: 'bg-muted text-muted-foreground' },
 }
 
-/** The observer's clock, ticking: its last answer plus the time since — so ages keep counting between runs and do not depend on this machine's clock. */
-function useObserverNow(nowMs: number | undefined, receivedAtMs: number): number {
+/**
+ * "5s ago", counting on its own. A leaf, so the second-by-second tick redraws this text and not the page. `clock` is
+ * the observer's time when its answer arrived — ages do not depend on this machine's clock.
+ */
+function Ago({ atMs, clock }: { atMs: number; clock: { nowMs: number; receivedAtMs: number } }) {
   const [, tick] = useState(0)
   useEffect(() => {
     const timer = setInterval(() => tick((n) => n + 1), 1000)
     return () => clearInterval(timer)
   }, [])
-  return (nowMs ?? Date.now()) + (nowMs === undefined ? 0 : Date.now() - receivedAtMs)
+  return <>{agoWords(clock.nowMs + (Date.now() - clock.receivedAtMs) - atMs)}</>
 }
 
 export function ChecksPage() {
   const checks = useQuery({ queryKey: ['checks'], queryFn: api.checks, refetchInterval: REFRESH_MS })
   const rule = checks.data?.rule
   const list = checks.data ? sortChecks(checks.data.checks, rule) : undefined
-  const now = useObserverNow(checks.data?.nowMs, checks.dataUpdatedAt)
+  const clock = { nowMs: checks.data?.nowMs ?? Date.now(), receivedAtMs: checks.dataUpdatedAt || Date.now() }
 
   return (
     <div className="space-y-6">
@@ -59,7 +62,7 @@ export function ChecksPage() {
           </p>
           <div className="space-y-4">
             {list.map((c) => (
-              <CheckCard key={c.name} check={c} rule={rule} now={now} />
+              <CheckCard key={c.name} check={c} rule={rule} clock={clock} />
             ))}
           </div>
         </>
@@ -68,7 +71,7 @@ export function ChecksPage() {
   )
 }
 
-function CheckCard({ check: c, rule, now }: { check: CheckStatus; rule: CheckRule | undefined; now: number }) {
+function CheckCard({ check: c, rule, clock }: { check: CheckStatus; rule: CheckRule | undefined; clock: { nowMs: number; receivedAtMs: number } }) {
   const navigate = useNavigate()
   const state = checkState(c, rule)
   const tone = TONE[state]
@@ -95,11 +98,11 @@ function CheckCard({ check: c, rule, now }: { check: CheckStatus; rule: CheckRul
           {c.last &&
             (c.last.ok ? (
               <p className="font-mono text-sm text-muted-foreground" data-testid="check-last">
-                {c.last.status} · {Math.round(c.last.durationMs)} ms · {agoWords(now - c.last.atMs)}
+                {c.last.status} · {Math.round(c.last.durationMs)} ms · <Ago atMs={finishedAtMs(c.last)} clock={clock} />
               </p>
             ) : (
               <p className="font-mono text-sm break-words text-destructive" data-testid="check-last">
-                {c.last.reason} · {agoWords(now - c.last.atMs)}
+                {c.last.reason} · <Ago atMs={finishedAtMs(c.last)} clock={clock} />
               </p>
             ))}
           {!c.last && <p className="font-mono text-sm text-muted-foreground">no run yet — the first one comes a few seconds after the app starts answering</p>}
@@ -128,7 +131,7 @@ function CheckCard({ check: c, rule, now }: { check: CheckStatus; rule: CheckRul
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t px-5 py-2.5 font-mono text-xs text-muted-foreground">
         {trace ? (
           <span className="flex items-center gap-2">
-            {trace.ok ? 'last trace' : 'last failed trace'}
+            {trace.ok ? 'last trace' : trace.status === undefined ? 'last failed trace, if the request arrived' : 'last failed trace'}
             <Link to="/traces/$traceId" params={{ traceId: trace.traceId }} className="text-signal underline-offset-2 hover:underline" data-testid="check-trace">
               {trace.traceId.slice(0, 6)}…{trace.traceId.slice(-4)}
             </Link>

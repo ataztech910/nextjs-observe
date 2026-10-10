@@ -104,8 +104,14 @@ describe('questionFor a failing check', () => {
     expect(question).not.toContain('open it')
   })
 
-  it('a timeout reached the app: its trace is where to look', () => {
+  it('a timeout: nobody knows whether the request arrived — the trace is worth a try, and its absence is an answer too', () => {
     const question = questionFor(anomaly('xx', { status: undefined, reason: 'no answer within 10000 ms' }))
-    expect(question).toContain('Last failure: no answer within 10000 ms. The app recorded the last failing request as trace')
+    expect(question).toContain('Last failure: no answer within 10000 ms. No answer came back. If the request arrived, it is trace aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1: try to open it and name the span where it got stuck. If there is no such trace, the request never arrived or the app is stuck')
+    expect(question).not.toContain('The app recorded')
+  })
+
+  it('reports the rule in force', () => {
+    expect(new CheckWatch().rule).toEqual({ failuresInRow: 2, shareWindow: 10, shareFailures: 3 })
+    expect(new CheckWatch({ failuresInRow: 4, cooldownMs: 1 }).rule).toEqual({ failuresInRow: 4, shareWindow: 10, shareFailures: 3 })
   })
 })

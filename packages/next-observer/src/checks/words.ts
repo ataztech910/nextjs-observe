@@ -10,6 +10,9 @@ export interface CheckFailure {
   count: number
   runs: number
   reason: string
+  /** A status came back: the app handled the request and has its trace. */
+  answered: boolean
+  /** No connection was made: there cannot be a trace. Neither flag: nobody knows whether the request arrived. */
   unreachable?: boolean
   traceId: string
 }
@@ -19,6 +22,8 @@ export function checkFailureQuestion(f: CheckFailure): string {
   // A request that reached nobody left no trace: sending the agents after one would have them report "trace not found".
   const where = f.unreachable
     ? 'The request reached nobody, so there is no trace of it — check whether the service is receiving any traffic at all.'
-    : `The app recorded the last failing request as trace ${f.traceId}: open it, name the span that failed or took the time and its code file.`
+    : f.answered
+      ? `The app recorded the last failing request as trace ${f.traceId}: open it, name the span that failed or took the time and its code file.`
+      : `No answer came back. If the request arrived, it is trace ${f.traceId}: try to open it and name the span where it got stuck. If there is no such trace, the request never arrived or the app is stuck — check whether the service is receiving any traffic at all.`
   return `the scheduled check "${f.name}" (${f.method} ${f.url}) ${how}. Last failure: ${f.reason}. ${where}`
 }
