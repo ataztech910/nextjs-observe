@@ -18,7 +18,7 @@ import { createHash, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { fileURLToPath } from 'node:url'
-import { questionFor, type AnomalyDetector } from '../debug/detector.js'
+import { questionFor, type Anomaly, type AnomalyDetector } from '../debug/detector.js'
 import { createAgentQueries } from '../debug/queries.js'
 import { findRegression } from '../debug/regression.js'
 import type { ChatEvent, ChatHandler, ProactiveEvent } from './chat.js'
@@ -59,7 +59,7 @@ export interface CollectorOptions {
   /** How often the detector window is checked. Default 5 s. */
   detectorIntervalMs?: number
   /** Scheduled checks (observe.checks.ts) whose results /api/checks reports; absent → none configured. */
-  checks?: Pick<CheckRunner, 'list'> & Partial<Pick<CheckRunner, 'isCheckTrace'>>
+  checks?: Pick<CheckRunner, 'list'> & Partial<Pick<CheckRunner, 'isCheckTrace'>> & { /** Checks that keep failing, as anomalies; taken on the detector's timer. */ anomalies?: () => Anomaly[] }
 }
 
 const REPLAY_EVENTS = 200
@@ -195,7 +195,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
   }
   let investigations = Promise.resolve()
   const onAnomalies = () => {
-    for (const anomaly of options.detector?.check() ?? []) {
+    for (const anomaly of [...(options.detector?.check() ?? []), ...(options.checks?.anomalies?.() ?? [])]) {
       const turnId = anomaly.id
       broadcast({ turnId, event: { type: 'anomaly', anomaly } })
       if (!options.chat) continue
@@ -359,7 +359,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     server.once('error', reject)
     server.listen(options.port ?? 4318, options.host ?? '127.0.0.1', resolve)
   })
-  const detectorTimer = options.detector ? setInterval(onAnomalies, options.detectorIntervalMs ?? 5000) : undefined
+  const detectorTimer = options.detector || options.checks?.anomalies ? setInterval(onAnomalies, options.detectorIntervalMs ?? 5000) : undefined
   // A comment line every 15 s keeps proxies from closing idle SSE connections.
   const heartbeat = setInterval(() => {
     for (const res of subscribers) res.write(': ping\n\n')

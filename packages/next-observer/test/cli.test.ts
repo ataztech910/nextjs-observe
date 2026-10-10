@@ -269,7 +269,7 @@ describe('project checks (observe.checks.*)', () => {
     const h = harness({ OBSERVE_APP_URL: 'http://localhost:3100/' })
     const exit = run(['collector', '--port', '0', '--root', root], h.deps)
     await until(h.collectorUrl)
-    expect(h.logs[0]).toMatch(/^  checks     observe\.checks\.ts: 2 checks against http:\/\/localhost:3100$/m)
+    expect(h.logs[0]).toMatch(/^  checks     observe\.checks\.ts: 2 checks against http:\/\/localhost:3100 → agents investigate one that fails 2 times in a row$/m)
     expect(await checks(h)).toEqual([
       { name: 'catalog answers', method: 'GET', url: 'http://localhost:3100/api/products', everySeconds: 60, expect: { status: [200], maxMs: 500 }, failures: 0, history: [] },
       { name: 'docs', method: 'GET', url: 'https://example.com/docs', everySeconds: 300, expect: {}, failures: 0, history: [] },
@@ -283,7 +283,7 @@ describe('project checks (observe.checks.*)', () => {
     const h = harness({})
     const exit = run(['dev', '--port', '0', '--root', root, '--', '-p', '3100'], h.deps)
     await until(h.collectorUrl)
-    expect(h.logs[0]).toContain('  checks     observe.checks.mjs: 1 check against http://localhost:3100')
+    expect(h.logs[0]).toContain('  checks     observe.checks.mjs: 1 check against http://localhost:3100 → agents investigate one that fails 2 times in a row')
     expect((await checks(h))[0].url).toBe('http://localhost:3100/')
     h.stop()
     expect(await exit).toBe(0)
@@ -293,7 +293,7 @@ describe('project checks (observe.checks.*)', () => {
     const h = harness({})
     const exit = run(['collector', '--port', '0', '--root', project({ 'observe.checks.mjs': `export default [{ name: 'docs', url: 'https://example.com/docs' }]` })], h.deps)
     await until(h.collectorUrl)
-    expect(h.logs[0]).toMatch(/^  checks     observe\.checks\.mjs: 1 check$/m)
+    expect(h.logs[0]).toMatch(/^  checks     observe\.checks\.mjs: 1 check → agents investigate one that fails 2 times in a row$/m)
     h.stop()
     expect(await exit).toBe(0)
   })
@@ -334,6 +334,51 @@ describe('project checks (observe.checks.*)', () => {
     expect(hits).toHaveLength(2)
     app.close()
   }, 15_000)
+
+  it('a check that fails twice in a row starts an investigation; with the detector off it does not', async () => {
+    const app = (await import('node:http')).createServer((_req, res) => void res.writeHead(503).end('down'))
+    await new Promise<void>((resolve) => app.listen(0, '127.0.0.1', resolve))
+    const base = `http://127.0.0.1:${(app.address() as import('node:net').AddressInfo).port}`
+    const root = project({ 'observe.checks.mjs': `export default [{ name: 'health', url: '/health', everySeconds: 5 }]` })
+    const on = harness({ OBSERVE_APP_URL: base })
+    const off = harness({ OBSERVE_APP_URL: base, OBSERVE_DETECTOR: 'off' })
+    const exits = [run(['collector', '--port', '0', '--root', root], on.deps), run(['collector', '--port', '0', '--root', root], off.deps)]
+    await until(() => on.collectorUrl() && off.collectorUrl())
+    expect(off.logs[0]).toMatch(/^  checks     observe\.checks\.mjs: 1 check against http:\/\/127\.0\.0\.1:\d+$/m)
+
+    // Runs at 3 s and 8 s, the anomaly is picked up within 5 s more; the mock agents answer at once.
+    const events = async (h: ReturnType<typeof harness>) => {
+      const res = await fetch(`${h.collectorUrl()}/api/chat/events`, { signal: AbortSignal.timeout(500) })
+      const reader = res.body!.getReader()
+      let text = ''
+      try {
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          text += new TextDecoder().decode(value)
+        }
+      } catch {
+        // the timeout: the stream never ends on its own
+      }
+      return text
+    }
+    let seen = ''
+    for (let i = 0; i < 40 && !seen.includes('"type":"report"'); i++) {
+      await new Promise((r) => setTimeout(r, 500))
+      seen = await events(on)
+    }
+    expect(seen).toContain('"type":"anomaly"')
+    expect(seen).toContain('"check":{"name":"health","method":"GET","url":"' + base + '/health","rule":"in_row","reason":"expected status 2xx, got 503","status":503')
+    expect(seen).toContain('"type":"report"')
+    expect(await events(off)).not.toContain('"type":"anomaly"')
+    const failures = async (h: ReturnType<typeof harness>) => (await checks(h))[0].failures
+    expect(await failures(off)).toBeGreaterThanOrEqual(2)
+
+    on.stop()
+    off.stop()
+    expect(await Promise.all(exits)).toEqual([0, 0])
+    app.close()
+  }, 40_000)
 
   it.each([
     [{ 'observe.checks.mjs': `export default [{ name: 'a', url: 'api' }]` }, 'observe.checks.mjs: check "a": `url` must be a path'],

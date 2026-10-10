@@ -13,6 +13,9 @@ export function anomalyHeadline(a: Anomaly): string {
       return `Slow requests · ${pct(a.value)} of ${of} were slow in ${seconds}s`
     case 'no_traffic':
       return `No traffic · silent for ${a.value}s`
+    case 'check_failed':
+      if (!a.check) return 'Check failing'
+      return a.check.rule === 'in_row' ? `Check failing · "${a.check.name}" failed ${a.value} times in a row` : `Check unreliable · "${a.check.name}" failed ${a.value} of its last ${a.sampleSize} runs`
     case 'data_integrity':
       return `Wrong data · ${a.value} response${a.value === 1 ? '' : 's'} to ${of} came back wrong in ${seconds}s`
   }
@@ -33,6 +36,11 @@ export function AnomalyView({ anomaly }: { anomaly: Anomaly }) {
         {anomalyHeadline(anomaly)}
         <span className="ml-auto text-xs font-normal text-muted-foreground">{new Date(anomaly.detectedAtMs).toLocaleTimeString()}</span>
       </div>
+      {anomaly.check && (
+        <p className="font-mono text-xs text-muted-foreground" data-testid="anomaly-check">
+          {anomaly.check.method} {anomaly.check.url} · {anomaly.check.reason}
+        </p>
+      )}
       {anomaly.integrityFailures && anomaly.integrityFailures.length > 0 ? (
         <ul className="font-mono text-xs text-muted-foreground">
           {anomaly.integrityFailures.map((f, i) => (

@@ -9,6 +9,7 @@ import { MemoryStorage, startCollector, type Collector, type CollectorOptions } 
 import { seedDemo, startLiveDemo } from './debug/demo.js'
 import { detectPackageManager, init, installArgs, type InitChange, type PackageManager } from './init.js'
 import { CheckRunner } from './checks/runner.js'
+import { CheckWatch } from './checks/watch.js'
 import { validateChecks } from './checks/spec.js'
 import { AnomalyDetector } from './debug/detector.js'
 
@@ -177,7 +178,7 @@ export function appUrl(env: Env, nextArgs: string[] = []): string {
 }
 
 /** The checks from observe.checks.* in the app root (`export default [{ name, url, expect }]`), ready to run. */
-async function loadChecks(root: string, env: Env, nextArgs: string[]): Promise<{ runner?: CheckRunner; line?: string }> {
+async function loadChecks(root: string, env: Env, nextArgs: string[], react: boolean): Promise<{ runner?: CheckRunner; watch?: CheckWatch; line?: string }> {
   const { file, exported } = await importProjectFile(root, CHECKS_FILES)
   if (!file) return {}
   let checks
@@ -190,8 +191,11 @@ async function loadChecks(root: string, env: Env, nextArgs: string[]): Promise<{
   const own = checks.some((c) => c.url.startsWith('/'))
   // Asked for only when a check needs it: a wrong OBSERVE_APP_URL nobody uses is not a reason to refuse to start.
   const baseUrl = own ? appUrl(env, nextArgs) : ''
-  const runner = new CheckRunner({ checks, baseUrl })
-  return { runner, line: `  checks     ${file}: ${checks.length} ${checks.length === 1 ? 'check' : 'checks'}${own ? ` against ${baseUrl}` : ''}` }
+  // The detector switched off means "no investigations on their own" — for failing checks too.
+  const watch = react ? new CheckWatch() : undefined
+  const runner: CheckRunner = new CheckRunner({ checks, baseUrl, onResult: (check, result, failures) => watch?.observe(check, result, failures, runner.urlOf(check)) })
+  const reaction = watch ? ` → agents investigate one that fails ${watch.options.failuresInRow} times in a row` : ''
+  return { runner, watch, line: `  checks     ${file}: ${checks.length} ${checks.length === 1 ? 'check' : 'checks'}${own ? ` against ${baseUrl}` : ''}${reaction}` }
 }
 
 type SpecialistSpec = import('./agents/index.js').SpecialistSpec
@@ -250,12 +254,12 @@ async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collect
     const o = detector.options
     lines.push(`  detector   errors > ${o.errorRate * 100}%, slow (>${o.slowMs}ms) > ${o.slowRate * 100}%, silence > ${o.noTrafficMs / 1000}s → agents investigate on their own`)
   } else lines.push('  detector   off (OBSERVE_DETECTOR=off)')
-  const { runner: checks, line: checksLine } = await loadChecks(args.root, deps.env, args.nextArgs)
+  const { runner: checks, watch, line: checksLine } = await loadChecks(args.root, deps.env, args.nextArgs, detector !== undefined)
   if (checksLine) lines.push(checksLine)
   if (args.demo) lines.push('  demo       "shop" scenario: v1 → v2 regression, inventory errors, catalog N+1, an error new in v2 — live v2 traffic every 2 s')
   const line = lines.join('\n')
   try {
-    const collector = await startCollector({ port: args.port, host: args.host, apiKey: args.apiKey, uiPassword: args.uiPassword, storage, chat, detector, checks })
+    const collector = await startCollector({ port: args.port, host: args.host, apiKey: args.apiKey, uiPassword: args.uiPassword, storage, chat, detector, checks: checks && { list: () => checks.list(), isCheckTrace: (traceId) => checks.isCheckTrace(traceId), ...(watch ? { anomalies: () => watch.take() } : {}) } })
     checks?.start()
     const stopDemo = args.demo ? startLiveDemo({ storage, detector }) : undefined
     return {
