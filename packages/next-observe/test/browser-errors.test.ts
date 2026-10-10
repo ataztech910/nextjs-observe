@@ -1,6 +1,6 @@
 import { SpanStatusCode, type Tracer } from '@opentelemetry/api'
 import { describe, expect, it } from 'vitest'
-import { captureBrowserErrors, formatConsole, markFailedFetch, markFailedXhr, type BrowserErrorTargets } from '../src/browser-errors.js'
+import { captureBrowserErrors, describeHydrationMismatch, formatConsole, markFailedFetch, markFailedXhr, type BrowserErrorTargets } from '../src/browser-errors.js'
 
 interface Recorded {
   name: string
@@ -340,5 +340,139 @@ describe('formatConsole', () => {
     expect(formatConsole(['%s and %s', 'one'])).toBe('one and %s')
     expect(formatConsole([new Error('boom'), '%s', 'x'])).toBe('boom %s x')
     expect(formatConsole([])).toBe('')
+  })
+})
+
+// React 19's real messages, captured in a browser against Next 16 (dev) and from `next build` (the minified code).
+const HYDRATION_DEV = `Hydration failed because the server rendered text didn't match the client. As a result this tree will be regenerated on the client. This can happen if a SSR-ed Client Component used:
+
+- A server/client branch \`if (typeof window !== 'undefined')\`.
+- Variable input such as \`Date.now()\` or \`Math.random()\` which changes each time it's called.
+- Date formatting in a user's locale which doesn't match the server.
+- External changing data without sending a snapshot of it along with the HTML.
+- Invalid HTML tag nesting.
+
+It can also happen if the client has a browser extension installed which messes with the HTML before React loaded.
+
+https://react.dev/link/hydration-mismatch
+
+  ...
+    <ScrollAndMaybeFocusHandler cacheNode={{rsc:{...}, ...}}>
+      <InnerScrollHandlerNew focusAndScrollRef={{scrollRef:null, ...}} cacheNode={{rsc:{...}, ...}}>
+        <ErrorBoundary errorComponent={undefined} errorStyles={undefined} errorScripts={undefined}>
+          <LoadingBoundary name="hydration/" loading={null}>
+            <HTTPAccessFallbackBoundary notFound={undefined} forbidden={undefined} unauthorized={undefined}>
+              <RedirectBoundary>
+                <RedirectErrorBoundary router={{...}}>
+                  <InnerLayoutRouter url="/lab/hydra..." tree={[...]} params={{}} cacheNode={{rsc:{...}, ...}} ...>
+                    <SegmentViewNode type="page" pagePath="lab/hydrat...">
+                      <SegmentTrieNode>
+                      <ClientPageRoot Component={function Page} serverProvidedParams={{...}}>
+                        <Page params={Promise} searchParams={Promise}>
+                          <div>
+                            <h1>
+                            <p id="where">
++                             Your cart is empty
+-                             Loading your cart…
+                    ...
+                  ...
+        ...
+`
+const HYDRATION_PROD = 'Minified React error #418; visit https://react.dev/errors/418?args[]=text&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.'
+
+describe('describeHydrationMismatch', () => {
+  it('development: the sentence and the end of the tree — the component, the element, what the client and the server rendered', () => {
+    expect(describeHydrationMismatch(HYDRATION_DEV)).toBe(
+      [
+        "Hydration failed because the server rendered text didn't match the client.",
+        ' <Page params={Promise} searchParams={Promise}>',
+        '   <div>',
+        '     <h1>',
+        '     <p id="where">',
+        '+      Your cart is empty',
+        '-      Loading your cart…',
+      ].join('\n'),
+    )
+  })
+
+  it('production: the code spelled out, with what React says differed, and where to look for the details', () => {
+    expect(describeHydrationMismatch(HYDRATION_PROD)).toBe(
+      "Hydration failed because the server rendered text didn't match the client. (React error #418; the production build does not say which element — open the page in next dev to see it.)",
+    )
+    expect(describeHydrationMismatch('Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message')).toContain('the server rendered HTML didn')
+    expect(describeHydrationMismatch('Minified React error #423; visit https://react.dev/errors/423 for the full message')).toMatch(/^There was an error while hydrating; React recovered by client rendering the entire root\. \(React error #423;/)
+    expect(describeHydrationMismatch('Minified React error #425; visit https://react.dev/errors/425 for the full message')).toMatch(/^Text content does not match server-rendered HTML\./)
+  })
+
+  it('other React errors and ordinary messages are not hydration mismatches', () => {
+    // #31: "Objects are not valid as a React child" — a real bug, but a different one.
+    expect(describeHydrationMismatch('Minified React error #31; visit https://react.dev/errors/31?args[]=object for the full message')).toBeUndefined()
+    expect(describeHydrationMismatch("Cannot read properties of undefined (reading 'price')")).toBeUndefined()
+    expect(describeHydrationMismatch('Failed to save: Hydration failed because the cache was cold')).toBeUndefined()
+    expect(describeHydrationMismatch('')).toBeUndefined()
+  })
+
+  it('the other development wordings are recognised; without a tree just the sentence', () => {
+    expect(describeHydrationMismatch("A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up.")).toBe(
+      "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties.",
+    )
+    expect(describeHydrationMismatch('There was an error while hydrating but React was able to recover by instead client rendering the entire root.')).toBe(
+      'There was an error while hydrating but React was able to recover by instead client rendering the entire root.',
+    )
+  })
+
+  it('a difference deep in plain markup: the last lines only, and React\'s "..." markers are dropped', () => {
+    const nested = Array.from({ length: 12 }, (_, i) => `${' '.repeat(4 + i * 2)}<div data-level="${i}">`)
+    const message = ["Hydration failed because the server rendered text didn't match the client.", '', '  ...', '    <Page>', ...nested, `${' '.repeat(28)}...`, `${' '.repeat(28)}<span>`, `+${' '.repeat(29)}client`, `-${' '.repeat(29)}server`].join('\n')
+    const lines = describeHydrationMismatch(message)!.split('\n')
+    // The sentence, then at most 8 lines of tree: <Page> is 15 lines up, so the tree starts in the markup.
+    expect(lines).toHaveLength(9)
+    expect(lines.slice(-3)).toEqual(['           <span>', '+            client', '-            server'])
+    expect(lines.some((line) => line.trim() === '...')).toBe(false)
+    expect(lines[1]).toBe(' <div data-level="7">')
+  })
+
+  it('an attribute mismatch: the tree is kept the same way', () => {
+    const message = `A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:
+
+- A server/client branch.
+
+  ...
+    <Layout>
+      <ThemeToggle>
+        <button
++         className="dark"
+-         className="light"
+        >
+`
+    expect(describeHydrationMismatch(message)).toBe(
+      ["A tree hydrated but some attributes of the server rendered HTML didn't match the client properties.", ' <ThemeToggle>', '   <button', '+    className="dark"', '-    className="light"'].join('\n'),
+    )
+  })
+})
+
+describe('captureBrowserErrors: hydration', () => {
+  it('reported by React as an error or through console.error — recorded as its own kind with the short message, the stack kept', () => {
+    const h = setup()
+    const error = new Error(HYDRATION_DEV)
+    h.fire('error', { error, message: `Uncaught ${error}` })
+    expect(h.spans[0].name).toBe('hydration mismatch')
+    expect(h.spans[0].status!.message).toMatch(/^Hydration failed because the server rendered text didn't match the client\.\n <Page /)
+    expect(h.spans[0].status!.message).toContain('+      Your cart is empty')
+    expect(h.spans[0].status!.message).not.toContain('Date.now()')
+    expect(exception(h.spans[0])['exception.stacktrace']).toBe(error.stack)
+    h.tick(5000)
+    h.fakeConsole.error(HYDRATION_PROD)
+    expect(h.spans[1].name).toBe('hydration mismatch')
+    expect(h.spans[1].status!.message).toContain('React error #418')
+  })
+
+  it('an unhandled rejection or a failed resource that merely mentions hydration keeps its own kind', () => {
+    const h = setup()
+    h.fire('unhandledrejection', { reason: new Error(HYDRATION_PROD) })
+    expect(h.spans[0].name).toBe('unhandled rejection')
+    // An ordinary error stays an uncaught error.
+    h.fire('error', { error: new TypeError('x is undefined') })
+    expect(h.spans[1].name).toBe('uncaught error')
   })
 })

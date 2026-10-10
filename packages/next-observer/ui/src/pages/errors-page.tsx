@@ -72,7 +72,8 @@ function DefectCard({ defect: d }: { defect: Defect }) {
             </span>
             {d.type && <span className="font-mono text-xs text-muted-foreground">{d.type}</span>}
           </div>
-          <p className="font-mono text-sm break-words text-destructive" data-testid="defect-message">
+          {/* pre-wrap: a hydration mismatch comes as a small tree — the element and the two values on their own lines. */}
+          <p className="font-mono text-sm break-words whitespace-pre-wrap text-destructive" data-testid="defect-message">
             {d.message}
           </p>
           <p className="text-sm text-muted-foreground" data-testid="defect-where">
