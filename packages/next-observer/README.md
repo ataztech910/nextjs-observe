@@ -182,6 +182,14 @@ address in the observer's banner with the one Next prints, and set `OBSERVE_APP_
 
 Results: `GET /api/checks` — the last 50 per check and how many failed in a row.
 
+**When a check keeps failing, the AI agents look into it on their own** — the same way as with an anomaly in real
+traffic: it appears in the chat, and the investigation starts from the trace of the failing request.
+
+- twice in a row → `critical` (it is down now);
+- 3 of the last 10 runs → `warning` (it is unreliable — a check failing every third time never fails twice in a row);
+- one failure is not an anomaly: the first answer after a restart is often just slow;
+- the same check is reported once in 5 minutes; `OBSERVE_DETECTOR=off` switches this off too.
+
 ## Configuration
 
 | Variable | Default | |

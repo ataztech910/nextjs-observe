@@ -54,6 +54,33 @@ async function listen(until: (events: ProactiveEvent[]) => boolean, timeoutMs = 
 const types = (events: ProactiveEvent[]) => events.map((e) => e.event.type)
 
 describe('proactive investigations', () => {
+  it('a check that keeps failing → anomaly over SSE and an investigation, with or without the detector', async () => {
+    const anomaly = {
+      id: 'check_failed-1-1', type: 'check_failed' as const, scope: 'operation' as const, severity: 'critical' as const, detectedAtMs: 1, value: 2, threshold: 2, sampleSize: 2, windowMs: 10_000, operations: [],
+      check: { name: 'stock is known', method: 'GET', url: 'http://app/api/inventory/1', rule: 'in_row' as const, reason: 'expected status 2xx, got 500', status: 500, traceId: 'a'.repeat(32) },
+    }
+    for (const detector of [undefined, new AnomalyDetector()]) {
+      const asked: string[] = []
+      const handle: ChatHandler = async ({ question }, emit) => {
+        asked.push(question)
+        emit({ type: 'report', text: 'checkInventory throws' })
+      }
+      let pending = [anomaly]
+      const taken = () => {
+        const found = pending
+        pending = []
+        return found
+      }
+      collector = await startCollector({ port: 0, uiDir: false, chat: { mode: 'mock', handle }, detector, detectorIntervalMs: 50, checks: { list: () => [], anomalies: taken } })
+      const events = await listen((e) => types(e).includes('report'))
+      expect(types(events)).toEqual(['anomaly', 'report'])
+      expect(events[0]).toMatchObject({ turnId: 'check_failed-1-1', event: { type: 'anomaly', anomaly: { check: { name: 'stock is known' } } } })
+      expect(asked).toEqual([expect.stringContaining('the scheduled check "stock is known" (GET http://app/api/inventory/1) failed 2 times in a row')])
+      await collector.close()
+      collector = undefined
+    }
+  })
+
   it('failing traffic → anomaly pushed over SSE, then the agents investigate in the same turn', async () => {
     const asked: string[] = []
     const handle: ChatHandler = async ({ question }, emit) => {

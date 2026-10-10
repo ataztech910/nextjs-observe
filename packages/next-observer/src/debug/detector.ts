@@ -2,7 +2,7 @@
 // no timers, no I/O — so the collector drives it and tests control time.
 import type { NormalizedSpan, SpanEvent } from '../collector/types.js'
 
-export type AnomalyType = 'high_error_rate' | 'high_latency' | 'no_traffic' | 'data_integrity'
+export type AnomalyType = 'high_error_rate' | 'high_latency' | 'no_traffic' | 'data_integrity' | 'check_failed'
 
 export interface Anomaly {
   id: string
@@ -25,6 +25,11 @@ export interface Anomaly {
    * show — the response came back fast, with a 2xx, and still was not the one that was asked for.
    */
   integrityFailures?: { service: string; operation: string; traceId: string; expected: unknown; actual: unknown }[]
+  /**
+   * `check_failed` only (raised by checks/watch.ts, not by this detector): the scheduled check that keeps failing.
+   * `value` is then the failures in a row (`rule: 'in_row'`) or the failures among the latest `sampleSize` runs (`'share'`).
+   */
+  check?: { name: string; method: string; url: string; rule: 'in_row' | 'share'; reason: string; status?: number; traceId: string }
 }
 
 export interface DetectorOptions {
@@ -262,6 +267,14 @@ export function questionFor(anomaly: Anomaly): string {
       const sample = anomaly.integrityFailures?.[0]
       const evidence = sample ? ` Example: asked for ${JSON.stringify(sample.expected)}, got back ${JSON.stringify(sample.actual)} (trace ${sample.traceId}).` : ''
       return `Anomaly detected: ${anomaly.sampleSize} response(s) to ${what} in the last ${seconds}s did not match what was requested — not an error, not slow, just wrong.${evidence} This is not a latency or error-rate problem: find what these requests share (same connection pool? same deployment?) and whether it is still happening.`
+    }
+    case 'check_failed': {
+      const c = anomaly.check
+      if (!c) return 'Anomaly detected: a scheduled check keeps failing.'
+      const how = c.rule === 'in_row' ? `failed ${anomaly.value} times in a row` : `failed ${anomaly.value} of its last ${anomaly.sampleSize} runs`
+      // Without a status nothing answered: there is no trace to open, and the app may be down.
+      const where = c.status === undefined ? 'No answer came back, so there is no trace of this request — check whether the service is receiving any traffic at all.' : `The app recorded the last failing request as trace ${c.traceId}: open it, name the span that failed or took the time and its code file.`
+      return `Anomaly detected: the scheduled check "${c.name}" (${c.method} ${c.url}) ${how}. Last failure: ${c.reason}. ${where}`
     }
     case 'no_traffic':
       return `Anomaly detected: no spans received for ${anomaly.value}s after traffic was flowing. Check which services went silent.`
