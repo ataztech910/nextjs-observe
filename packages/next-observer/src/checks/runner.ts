@@ -66,8 +66,13 @@ async function readBody(response: Response, wanted: boolean): Promise<{ text: st
   return { text: Buffer.concat(chunks).subarray(0, MAX_BODY_BYTES).toString('utf8'), cut, read: true }
 }
 
-/** Errors of making the connection: with one of these the request was never sent, so the app has no trace of it. */
-const NO_CONNECTION = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EHOSTUNREACH', 'ENETUNREACH', 'EADDRNOTAVAIL', 'UND_ERR_CONNECT_TIMEOUT'])
+/**
+ * Errors of making the connection — no listener, no such host, no route, no reply to the connection attempt, a TLS
+ * handshake that failed: with one of these the request was never sent, so the app has no trace of it.
+ */
+const NO_CONNECTION = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EHOSTUNREACH', 'ENETUNREACH', 'EADDRNOTAVAIL', 'ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT'])
+const TLS = /^(CERT_|ERR_TLS_|ERR_SSL_|DEPTH_ZERO_|SELF_SIGNED_|UNABLE_TO_)/
+const neverSent = (code: string | undefined) => code !== undefined && (NO_CONNECTION.has(code) || TLS.test(code))
 
 /** What run() gives the timer when the app is not listening yet: try again soon. */
 const STARTING = Symbol('starting')
@@ -156,10 +161,12 @@ export class CheckRunner {
       const e = check.expect
       // The status is known from here on: a body that never finishes must not turn it into "no answer".
       let body: Awaited<ReturnType<typeof readBody>> | undefined
+      let broken: string | undefined
       try {
         body = await readBody(response, e.bodyIncludes !== undefined || e.maxMs !== undefined)
       } catch (error) {
-        if (!timedOut) throw error
+        // The connection broke off mid-body. Still an answer: the app handled the request, the status stands.
+        if (!timedOut) broken = (error as { cause?: { code?: string }; code?: string; message?: string })?.cause?.code ?? (error as { code?: string })?.code ?? (error as Error)?.message ?? String(error)
       }
       const durationMs = this.elapsed() - started
       const reasons: string[] = []
@@ -167,7 +174,7 @@ export class CheckRunner {
         reasons.push(`expected status ${e.status ? e.status.join(' or ') : '2xx'}, got ${response.status}`)
       }
       if (e.maxMs !== undefined && durationMs > e.maxMs) reasons.push(`took ${Math.round(durationMs)} ms, limit ${e.maxMs} ms`)
-      if (!body) reasons.push(`the body did not finish within ${check.timeoutMs} ms`)
+      if (!body) reasons.push(broken === undefined ? `the body did not finish within ${check.timeoutMs} ms` : `the body broke off: ${broken}`)
       else if (e.bodyIncludes !== undefined && !body.text.includes(e.bodyIncludes)) {
         const where = !body.read ? ' (an event stream is not read)' : body.cut ? ' in its first megabyte (the rest is not read)' : ''
         reasons.push(`body does not contain ${JSON.stringify(e.bodyIncludes)}${where}`)
@@ -180,7 +187,7 @@ export class CheckRunner {
       const starting = own && cause?.code === 'ECONNREFUSED' && !this.appAnswered && this.startedAt !== null && started - this.startedAt < this.startupGraceMs
       if (starting) return generation === this.generation ? STARTING : undefined
       const reason = timedOut ? `no answer within ${check.timeoutMs} ms` : `request failed: ${cause?.code ?? cause?.message ?? (error as Error)?.message ?? String(error)}`
-      result = { atMs, ok: false, durationMs, traceId, reason, ...(cause?.code && NO_CONNECTION.has(cause.code) ? { unreachable: true as const } : {}) }
+      result = { atMs, ok: false, durationMs, traceId, reason, ...(neverSent(cause?.code) ? { unreachable: true as const } : {}) }
     } finally {
       clearTimeout(timer)
       this.inFlight.delete(controller)

@@ -101,6 +101,10 @@ describe('CheckRunner against a real HTTP server', () => {
         res.writeHead(200).write('first')
         return void setTimeout(() => res.end('last'), 400)
       }
+      if (req.url === '/cut') {
+        res.writeHead(200, { 'content-length': '1000' }).write('part')
+        return void setTimeout(() => res.destroy(), 50)
+      }
       if (req.url === '/ndjson') return void res.writeHead(200, { 'content-type': 'application/x-ndjson' }).write('{"type":"step"}\n') // stays open
       if (req.url === '/endless') return void res.writeHead(200).write('x'.repeat(MAX_BODY_BYTES + 10)) // a megabyte, then stays open
       if (req.url === '/big') return void res.writeHead(200).end(`${'x'.repeat(MAX_BODY_BYTES - 3)}needle-across-the-limit${'y'.repeat(2 * MAX_BODY_BYTES)}tail`)
@@ -206,8 +210,11 @@ describe('CheckRunner against a real HTTP server', () => {
     const failing = (code: string) => (() => Promise.reject(Object.assign(new TypeError('fetch failed'), { cause: { code } }))) as unknown as typeof fetch
     const list = validateChecks([{ name: 'a', url: '/a' }])
     const result = async (code: string) => new CheckRunner({ checks: list, baseUrl: 'http://app', fetch: failing(code) }).run(list[0])
-    for (const code of ['ECONNREFUSED', 'ENOTFOUND', 'EHOSTUNREACH', 'UND_ERR_CONNECT_TIMEOUT']) expect(await result(code), code).toMatchObject({ ok: false, unreachable: true })
-    for (const code of ['ECONNRESET', 'UND_ERR_SOCKET', 'CERT_HAS_EXPIRED']) expect('unreachable' in (await result(code))!, code).toBe(false)
+    // No listener, no host, no route, no reply to the connection attempt, a failed TLS handshake: nothing was sent.
+    for (const code of ['ECONNREFUSED', 'ENOTFOUND', 'EHOSTUNREACH', 'ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'CERT_HAS_EXPIRED', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'ERR_TLS_CERT_ALTNAME_INVALID']) {
+      expect(await result(code), code).toMatchObject({ ok: false, unreachable: true })
+    }
+    for (const code of ['ECONNRESET', 'UND_ERR_SOCKET', 'EPIPE']) expect('unreachable' in (await result(code))!, code).toBe(false)
     const plain = await new CheckRunner({ checks: list, baseUrl: 'http://app', fetch: (() => Promise.reject(new Error('boom'))) as unknown as typeof fetch }).run(list[0])
     expect(plain).toMatchObject({ ok: false, reason: 'request failed: boom' })
     expect('unreachable' in plain!).toBe(false)
@@ -262,6 +269,15 @@ describe('CheckRunner against a real HTTP server', () => {
   it('does not read a body nobody asked about — any endless stream can be checked for its status', async () => {
     const { list, runner: r } = runner([{ name: 'ndjson', url: '/ndjson', timeoutMs: 1000, expect: { status: 200 } }])
     expect(await r.run(list[0])).toMatchObject({ ok: true, status: 200 })
+  })
+
+  it('a connection that breaks mid-body is still an answer: the status stands', async () => {
+    const { list, runner: r } = runner([{ name: 'cut', url: '/cut', expect: { bodyIncludes: 'part' } }, { name: 'cut, status only', url: '/cut' }])
+    const result = await run(r, list[0])
+    expect(result).toMatchObject({ ok: false, status: 200, reason: expect.stringMatching(/^the body broke off: \S+/) })
+    expect('unreachable' in result).toBe(false)
+    // Nobody asked about the body: it is not read, so there is nothing to break.
+    expect(await r.run(list[1])).toMatchObject({ ok: true, status: 200 })
   })
 
   it('a body that never finishes keeps the status it came with', async () => {

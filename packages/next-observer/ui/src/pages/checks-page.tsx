@@ -37,15 +37,15 @@ function Ago({ atMs, clock }: { atMs: number; clock: { nowMs: number; receivedAt
 
 export function ChecksPage() {
   const checks = useQuery({ queryKey: ['checks'], queryFn: api.checks, refetchInterval: REFRESH_MS })
-  const rule = checks.data?.rule
-  const list = checks.data ? sortChecks(checks.data.checks, rule) : undefined
-  const clock = { nowMs: checks.data?.nowMs ?? Date.now(), receivedAtMs: checks.dataUpdatedAt || Date.now() }
+  const data = checks.data
+  const rule = data?.rule
+  const list = data ? sortChecks(data.checks, rule) : []
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Checks" count={list?.length} subtitle="Requests the observer sends on a timer — is the app up, fast enough, still refusing what it must refuse." />
+      <PageHeader title="Checks" count={data ? list.length : undefined} subtitle="Requests the observer sends on a timer — is the app up, fast enough, still refusing what it must refuse." />
 
-      {!list ? (
+      {!data ? (
         <p className="text-muted-foreground">{checks.isError ? 'The observer is not reachable.' : 'Loading…'}</p>
       ) : list.length === 0 ? (
         <Card className="gap-3 px-5 py-8" data-testid="checks-empty">
@@ -58,11 +58,11 @@ export function ChecksPage() {
       ) : (
         <>
           <p className="font-mono text-sm text-muted-foreground" data-testid="checks-summary">
-            {summaryWords(list, rule, checks.data?.investigates)}
+            {summaryWords(list, rule, data.investigates)}
           </p>
           <div className="space-y-4">
             {list.map((c) => (
-              <CheckCard key={c.name} check={c} rule={rule} clock={clock} />
+              <CheckCard key={c.name} check={c} rule={rule} clock={{ nowMs: data.nowMs, receivedAtMs: checks.dataUpdatedAt }} />
             ))}
           </div>
         </>
@@ -137,7 +137,7 @@ function CheckCard({ check: c, rule, clock }: { check: CheckStatus; rule: CheckR
             </Link>
           </span>
         ) : (
-          <span>{c.last ? 'no trace — the request reached nobody' : 'no trace yet'}</span>
+          <span>{c.last ? 'no trace — the failed request reached nobody' : 'no trace yet'}</span>
         )}
         <Button type="button" size="sm" variant="outline" className="ml-auto font-sans" data-testid="check-investigate" onClick={() => void navigate({ to: '/chat', search: { ask: checkQuestion(c, rule) } })}>
           Investigate

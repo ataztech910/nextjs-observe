@@ -1,6 +1,6 @@
 // Words for the Checks page: how a scheduled check is doing and what it expects. Pure, so it is tested without a browser.
 import { CHECK_RULE, type CheckResult, type CheckRule, type CheckStatus } from '../../../src/checks/types.js'
-import { checkFailureQuestion } from '../../../src/checks/words.js'
+import { checkFailureQuestion, whereToLook } from '../../../src/checks/words.js'
 
 export type CheckState = 'failing' | 'unreliable' | 'passing' | 'waiting'
 
@@ -83,15 +83,16 @@ function latestFailure(c: Pick<CheckStatus, 'history'>, rule: CheckRule): CheckR
 }
 
 /**
- * The run whose trace the card links to: the latest recent failure, else the latest run. Nothing when that request
- * reached nobody — an older failure's trace would explain some other problem.
+ * The run whose trace the card links to: the latest recent failure, else the latest run. Nothing while the problem is
+ * requests that reached nobody — an older failure's trace, or a healthy one's, would explain something else.
  */
-export function traceWorthOpening(c: Pick<CheckStatus, 'history'>, rule: CheckRule = CHECK_RULE): CheckResult | undefined {
+export function traceWorthOpening(c: Facts, rule: CheckRule = CHECK_RULE): CheckResult | undefined {
   const failed = latestFailure(c, rule)
-  if (failed && !failed.unreachable) return failed
-  // No failure with a trace: the latest run — unless that is the one that reached nobody.
-  const latest = c.history.at(-1)
-  return latest && !latest.unreachable ? latest : undefined
+  if (!failed) return c.history.at(-1)
+  if (!failed.unreachable) return failed
+  // The failure reached nobody. On a card that is green again the latest run is the one to show; on a red or amber
+  // one a healthy request's trace would only point away from the problem.
+  return checkState(c, rule) === 'passing' && c.last?.ok ? c.last : undefined
 }
 
 /** When the answer (or the failure) came in — a run that timed out after 10 s did not "happen 10 s ago" the moment it shows up. */
@@ -107,7 +108,11 @@ export function checkQuestion(c: CheckStatus, rule: CheckRule = CHECK_RULE): str
   if (!failed) return `${passing}. Is there anything in its recent traces worth worrying about?`
   // Green and answering again: an old blip is a footnote, not "the service gets no traffic".
   if (checkState(c, rule) === 'passing' && c.last?.ok) {
-    return `${passing} now, but failed ${runs.filter((r) => !r.ok).length} of its last ${runs.length} runs (last: ${failed.reason ?? 'failed'}). Is that worth worrying about?`
+    const was = `${passing} now, but failed ${runs.filter((r) => !r.ok).length} of its last ${runs.length} runs`
+    const reason = failed.reason ?? 'failed'
+    // A failure that left a trace is still worth opening; one that reached nobody is just a line in the history.
+    if (failed.unreachable) return `${was} (last: ${reason}). Is that worth worrying about?`
+    return `${was}. Last failure: ${reason}. ${whereToLook({ answered: failed.status !== undefined, traceId: failed.traceId })}`
   }
   const inRow = c.failures >= rule.failuresInRow
   const question = checkFailureQuestion({

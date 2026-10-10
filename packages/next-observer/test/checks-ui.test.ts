@@ -138,9 +138,15 @@ describe('traceWorthOpening', () => {
     expect(trace('.x.!')).toBeUndefined()
     expect(trace('!!')).toBeUndefined()
   })
-  it('once the app answers again, the latest run is offered', () => {
+  it('once the app answers again and the card is green, the latest run is offered', () => {
     expect(trace('.!..')).toMatchObject({ ok: true, traceId: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3' })
     expect(trace('!x')).toMatchObject({ ok: false, traceId: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1' })
+  })
+  it('an amber card whose failures reached nobody gets no healthy trace in their place', () => {
+    expect(checkState(facts('!.!.!.'))).toBe('unreliable')
+    expect(trace('!.!.!.')).toBeUndefined()
+    // What the card links to and what Investigate asks stay about the same thing.
+    expect(checkQuestion(facts('!.!.!.'))).toContain('The request reached nobody, so there is no trace of it')
   })
   it('the latest run when nothing failed lately', () => {
     expect(trace('...')).toMatchObject({ ok: true, traceId: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2' })
@@ -172,6 +178,12 @@ describe('checkQuestion', () => {
   })
   it('green again after a blip: the blip is a footnote, not "the service gets no traffic"', () => {
     expect(checkQuestion(facts('.!...'))).toBe('The scheduled check "stock is known" (GET http://localhost:3000/api/inventory/1) is passing now, but failed 1 of its last 5 runs (last: request failed: ECONNREFUSED). Is that worth worrying about?')
+    // An answered failure keeps its trace even when the check is green again — the card links to it too.
+    expect(checkQuestion(facts('x....'))).toBe(
+      'The scheduled check "stock is known" (GET http://localhost:3000/api/inventory/1) is passing now, but failed 1 of its last 5 runs. Last failure: expected status 2xx, got 500. The app recorded the last failing request as trace aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0: open it, name the span that failed or took the time and its code file.',
+    )
+    expect(traceWorthOpening(facts('x....'))?.traceId).toBe('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0')
+    expect(checkQuestion(facts('t....'))).toContain('is passing now, but failed 1 of its last 5 runs. Last failure: no answer within 10000 ms. No answer came back. If the request arrived, it is trace aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0')
     // Unreliable, or the latest run failed: still a failure question.
     expect(checkQuestion(facts('x.x.x.'))).toContain('failed 3 of its last 6 runs. Last failure:')
     expect(checkQuestion(facts('...x'))).toContain('Last failure: expected status 2xx, got 500.')
