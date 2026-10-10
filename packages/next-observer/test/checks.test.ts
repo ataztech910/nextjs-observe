@@ -64,6 +64,7 @@ describe('observe.checks: validation', () => {
     [{ name: 'a', url: '/a', method: 'HEAD', expect: { bodyIncludes: 'x' } }, 'check "a": `expect.bodyIncludes` cannot be used with HEAD'],
     [{ name: 'a', url: '/a', expect: { status: 204, bodyIncludes: 'x' } }, 'check "a": `expect.bodyIncludes` cannot be used with status 204'],
     [{ name: 'a', url: '/a', expect: { status: [204, 304], bodyIncludes: 'x' } }, 'check "a": `expect.bodyIncludes` cannot be used with status 204 or 304'],
+    [{ name: 'a', url: '/a', expect: { status: 205, bodyIncludes: 'x' } }, 'check "a": `expect.bodyIncludes` cannot be used with status 205'],
 
   ])('rejects %j', (raw, message) => {
     expect(() => validateCheck(raw)).toThrow(message)
@@ -96,6 +97,11 @@ describe('CheckRunner against a real HTTP server', () => {
       if (req.url === '/refuse') return void res.writeHead(400).end('{"error":"quantity must be an integer from 1 to 10"}')
       if (req.url === '/hang') return // never answers
       if (req.url === '/events') return void res.writeHead(200, { 'content-type': 'text/event-stream' }).write('data: hello\n\n') // stays open
+      if (req.url === '/slow-body') {
+        res.writeHead(200).write('first')
+        return void setTimeout(() => res.end('last'), 400)
+      }
+      if (req.url === '/ndjson') return void res.writeHead(200, { 'content-type': 'application/x-ndjson' }).write('{"type":"step"}\n') // stays open
       if (req.url === '/endless') return void res.writeHead(200).write('x'.repeat(MAX_BODY_BYTES + 10)) // a megabyte, then stays open
       if (req.url === '/big') return void res.writeHead(200).end(`${'x'.repeat(MAX_BODY_BYTES - 3)}needle-across-the-limit${'y'.repeat(2 * MAX_BODY_BYTES)}tail`)
       res.writeHead(404).end()
@@ -170,6 +176,13 @@ describe('CheckRunner against a real HTTP server', () => {
     expect(await r.run(list[1])).toMatchObject({ ok: false, durationMs: 400, reason: 'took 400 ms, limit 399 ms' })
   })
 
+  it('the time limit covers the body, not just the headers', async () => {
+    const { list, runner: r } = runner([{ name: 'slow body', url: '/slow-body', expect: { maxMs: 200 } }])
+    const result = await run(r, list[0])
+    expect(result).toMatchObject({ ok: false, status: 200 })
+    expect(result.durationMs).toBeGreaterThanOrEqual(390)
+  })
+
   it('gives up after the timeout', async () => {
     const { list, runner: r } = runner([{ name: 'a', url: '/hang', timeoutMs: 100 }])
     const result = await run(r, list[0])
@@ -228,8 +241,20 @@ describe('CheckRunner against a real HTTP server', () => {
   })
 
   it('does not wait for an event stream to end', async () => {
-    const { list, runner: r } = runner([{ name: 'events', url: '/events', timeoutMs: 1000 }])
+    const { list, runner: r } = runner([{ name: 'events', url: '/events', timeoutMs: 1000, expect: { maxMs: 900 } }, { name: 'events text', url: '/events', timeoutMs: 1000, expect: { bodyIncludes: 'hello' } }])
     expect(await r.run(list[0])).toMatchObject({ ok: true, status: 200 })
+    expect(await r.run(list[1])).toMatchObject({ ok: false, status: 200, reason: 'body does not contain "hello" (an event stream is not read)' })
+  })
+
+  it('does not read a body nobody asked about — any endless stream can be checked for its status', async () => {
+    const { list, runner: r } = runner([{ name: 'ndjson', url: '/ndjson', timeoutMs: 1000, expect: { status: 200 } }])
+    expect(await r.run(list[0])).toMatchObject({ ok: true, status: 200 })
+  })
+
+  it('a body that never finishes keeps the status it came with', async () => {
+    const { list, runner: r } = runner([{ name: 'ndjson', url: '/ndjson', timeoutMs: 300, expect: { bodyIncludes: 'step' } }])
+    const result = await run(r, list[0])
+    expect(result).toMatchObject({ ok: false, status: 200, reason: 'the body did not finish within 300 ms' })
   })
 
   it('reads only the first megabyte of a body', async () => {
@@ -239,12 +264,12 @@ describe('CheckRunner against a real HTTP server', () => {
       { name: 'end', url: '/big', expect: { bodyIncludes: 'tail' } },
     ])
     expect(await r.run(list[0])).toMatchObject({ ok: true })
-    expect(await r.run(list[1])).toMatchObject({ ok: false, reason: 'body does not contain "needle-across-the-limit"' })
-    expect(await r.run(list[2])).toMatchObject({ ok: false })
+    expect(await r.run(list[1])).toMatchObject({ ok: false, reason: 'body does not contain "needle-across-the-limit" in its first megabyte (the rest is not read)' })
+    expect(await r.run(list[2])).toMatchObject({ ok: false, reason: 'body does not contain "tail" in its first megabyte (the rest is not read)' })
   })
 
   it('stops reading at the limit instead of waiting for the end of the body', async () => {
-    const { list, runner: r } = runner([{ name: 'endless', url: '/endless', timeoutMs: 2000 }])
+    const { list, runner: r } = runner([{ name: 'endless', url: '/endless', timeoutMs: 2000, expect: { bodyIncludes: 'xxx' } }])
     expect(await r.run(list[0])).toMatchObject({ ok: true, status: 200 })
   })
 
@@ -361,18 +386,100 @@ describe('CheckRunner: timers', () => {
   describe('while the app is still starting', () => {
     const refused = () => Promise.reject(Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } }))
 
+    const failing = (code: string) => () => Promise.reject(Object.assign(new TypeError('fetch failed'), { cause: { code } }))
+    const make = (checks: unknown[], fetchMock: unknown, extra: Partial<ConstructorParameters<typeof CheckRunner>[0]> = {}) =>
+      new CheckRunner({ checks: validateChecks(checks), baseUrl: 'http://app', fetch: fetchMock as typeof fetch, firstDelayMs: 0, ...extra })
+
     it('a refused connection is not a result until the grace time is over', async () => {
       vi.useFakeTimers()
       const onResult = vi.fn()
-      const fetchMock = vi.fn(refused)
-      const r = new CheckRunner({ checks: validateChecks([{ name: 'a', url: '/a', everySeconds: 10 }]), baseUrl: 'http://app', fetch: fetchMock as unknown as typeof fetch, firstDelayMs: 0, startupGraceMs: 25_000, onResult })
+      const r = make([{ name: 'a', url: '/a', everySeconds: 10 }], vi.fn(refused), { startupGraceMs: 25_000, onResult })
       r.start()
-      await vi.advanceTimersByTimeAsync(20_000) // runs at 0, 10 and 20 s
-      expect(fetchMock).toHaveBeenCalledTimes(3)
+      await vi.advanceTimersByTimeAsync(24_999)
       expect(r.list()[0]).toMatchObject({ failures: 0, history: [] })
       expect(onResult).not.toHaveBeenCalled()
-      await vi.advanceTimersByTimeAsync(10_000) // 30 s: nobody is listening, and that is the news
-      expect(r.list()[0]).toMatchObject({ failures: 1, last: { ok: false, reason: 'request failed: ECONNREFUSED' } })
+      await vi.advanceTimersByTimeAsync(10_000) // past 25 s: nobody is listening, and that is the news
+      expect(r.list()[0]).toMatchObject({ last: { ok: false, reason: 'request failed: ECONNREFUSED' } })
+      expect(r.list()[0].failures).toBeGreaterThan(0)
+      r.stop()
+    })
+
+    it('tries again soon, so a check with a long interval has its result as the app comes up', async () => {
+      vi.useFakeTimers()
+      let up = false
+      const fetchMock = vi.fn(() => (up ? Promise.resolve(response()) : refused()))
+      const r = make([{ name: 'hourly', url: '/a', everySeconds: 3600 }], fetchMock, { startupRetryMs: 5000 })
+      r.start()
+      await vi.advanceTimersByTimeAsync(12_000) // tries at 0, 5 and 10 s
+      expect(fetchMock).toHaveBeenCalledTimes(3)
+      up = true
+      await vi.advanceTimersByTimeAsync(3000)
+      expect(r.list()[0]).toMatchObject({ failures: 0, last: { ok: true } })
+      await vi.advanceTimersByTimeAsync(600_000) // and no more retries after that
+      expect(fetchMock).toHaveBeenCalledTimes(4)
+      r.stop()
+    })
+
+    it('keeps one retry going, however many ticks met the starting app', async () => {
+      vi.useFakeTimers()
+      const fetchMock = vi.fn(refused)
+      const r = make([{ name: 'a', url: '/a', everySeconds: 5 }], fetchMock, { startupRetryMs: 5000, startupGraceMs: 60_000 })
+      r.start()
+      await vi.advanceTimersByTimeAsync(30_000)
+      // The interval alone gives 7 runs (0…30 s); the retries may add one per 5 s, not a growing pile.
+      expect(fetchMock.mock.calls.length).toBeLessThanOrEqual(14)
+      r.stop()
+    })
+
+    it.each(['ENOTFOUND', 'CERT_HAS_EXPIRED'])('any other failure is news at once: %s', async (code) => {
+      vi.useFakeTimers()
+      const r = make([{ name: 'a', url: '/a' }], vi.fn(failing(code)))
+      r.start()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(r.list()[0]).toMatchObject({ failures: 1, last: { reason: `request failed: ${code}` } })
+      r.stop()
+    })
+
+    it('a check of another site gets no grace', async () => {
+      vi.useFakeTimers()
+      const r = make([{ name: 'partner', url: 'https://partner.example/health' }], vi.fn(refused))
+      r.start()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(r.list()[0]).toMatchObject({ failures: 1 })
+      r.stop()
+    })
+
+    it('another site answering does not end the grace time of the app', async () => {
+      vi.useFakeTimers()
+      const fetchMock = vi.fn((url: string) => (url.startsWith('https://partner.example') ? Promise.resolve(response()) : refused()))
+      const r = make([{ name: 'partner', url: 'https://partner.example/health', everySeconds: 10 }, { name: 'app', url: '/a', everySeconds: 10 }], fetchMock)
+      r.start()
+      await vi.advanceTimersByTimeAsync(20_000)
+      expect(r.list().map((c) => [c.name, c.history.length > 0, c.failures])).toEqual([['partner', true, 0], ['app', false, 0]])
+      r.stop()
+    })
+
+    it('a new start gives the app its grace time again', async () => {
+      vi.useFakeTimers()
+      let up = true
+      const r = make([{ name: 'a', url: '/a', everySeconds: 10 }], vi.fn(() => (up ? Promise.resolve(response()) : refused())))
+      r.start()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(r.list()[0].history).toHaveLength(1)
+      up = false
+      r.start() // the observer restarted together with the app
+      await vi.advanceTimersByTimeAsync(20_000)
+      expect(r.list()[0].history).toHaveLength(1)
+      r.stop()
+    })
+
+    it('measures the grace time on the clock that does not jump', async () => {
+      vi.useFakeTimers()
+      let wall = 1_000_000
+      const r = make([{ name: 'a', url: '/a', everySeconds: 10 }], vi.fn(refused), { startupGraceMs: 25_000, now: () => (wall -= 60_000) })
+      r.start()
+      await vi.advanceTimersByTimeAsync(40_000)
+      expect(r.list()[0].failures).toBeGreaterThan(0)
       r.stop()
     })
 

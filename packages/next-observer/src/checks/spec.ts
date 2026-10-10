@@ -5,7 +5,7 @@
 export interface CheckExpect {
   /** The status (or any of several) that counts as good. Default: any 2xx. */
   status?: number | number[]
-  /** The whole answer, body included, must arrive within this many ms. */
+  /** The answer, body included (its first megabyte), must arrive within this many ms. */
   maxMs?: number
   /** Text the body must contain. */
   bodyIncludes?: string
@@ -44,6 +44,8 @@ export const CHECK_DEFAULTS = { everySeconds: 60, timeoutMs: 10_000 }
 const METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
 const KEYS = ['name', 'url', 'method', 'headers', 'body', 'everySeconds', 'timeoutMs', 'expect']
 const EXPECT_KEYS = ['status', 'maxMs', 'bodyIncludes']
+/** Statuses whose answer never has a body. */
+const NO_BODY = [204, 205, 304]
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
@@ -123,7 +125,7 @@ export function validateCheck(raw: unknown): Check {
       if (typeof e.bodyIncludes !== 'string' || e.bodyIncludes === '') fail('`expect.bodyIncludes` must be a non-empty string')
       // An answer without a body can never contain it: the check would fail forever.
       if (method === 'HEAD') fail('`expect.bodyIncludes` cannot be used with HEAD — the answer has no body')
-      if (expect.status?.every((s) => s === 204 || s === 304)) fail(`\`expect.bodyIncludes\` cannot be used with status ${expect.status.join(' or ')} — the answer has no body`)
+      if (expect.status?.every((s) => NO_BODY.includes(s))) fail(`\`expect.bodyIncludes\` cannot be used with status ${expect.status.join(' or ')} — the answer has no body`)
       expect.bodyIncludes = e.bodyIncludes as string
     }
   }

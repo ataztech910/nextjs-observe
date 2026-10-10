@@ -156,16 +156,19 @@ export function appUrl(env: Env, nextArgs: string[] = []): string {
   const given = env.OBSERVE_APP_URL
   if (given) {
     const url = /^https?:\/\//i.test(given) && URL.canParse(given) ? new URL(given) : undefined
-    if (!url || url.search || url.hash) throw new CliError(`invalid OBSERVE_APP_URL "${given}" — expected something like http://localhost:3000`)
-    return given.replace(/\/+$/, '')
+    // Judged on the text too: `http://host?` parses with an empty query and would turn every path into one.
+    if (!url || /[?#]/.test(given) || url.username || url.password) throw new CliError(`invalid OBSERVE_APP_URL "${given}" — expected something like http://localhost:3000`)
+    return `${url.origin}${url.pathname}`.replace(/\/+$/, '')
   }
   let port = env.PORT
   let host = 'localhost'
+  // The value after a flag — unless what follows is the next flag (`-H --turbo`).
+  const valueAfter = (i: number) => (nextArgs[i + 1]?.startsWith('-') === false ? nextArgs[i + 1] : undefined)
   nextArgs.forEach((arg, i) => {
-    if (arg === '-p' || arg === '--port') port = nextArgs[i + 1] ?? port
+    if (arg === '-p' || arg === '--port') port = valueAfter(i) ?? port
     else if (arg.startsWith('--port=')) port = arg.slice('--port='.length)
     else if (/^-p\d+$/.test(arg)) port = arg.slice(2)
-    else if (arg === '-H' || arg === '--hostname') host = nextArgs[i + 1] ?? host
+    else if (arg === '-H' || arg === '--hostname') host = valueAfter(i) ?? host
     else if (arg.startsWith('--hostname=')) host = arg.slice('--hostname='.length)
   })
   // "All interfaces" is not an address to call.

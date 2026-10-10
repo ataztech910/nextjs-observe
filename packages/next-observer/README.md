@@ -174,8 +174,10 @@ address in the observer's banner with the one Next prints, and set `OBSERVE_APP_
 - Every request carries the header `x-observe-check` (the check's name, URL-encoded) and a trace id of its own, so each
   result links to the trace the app recorded for it.
 - These requests are not traffic for the anomaly detector: an expected refusal is not an error, and a quiet app stays quiet.
-- While the app is still starting (nothing answered yet, first minute), a refused connection is not a failure.
-- Only the first megabyte of a body is read; an event stream is not read at all.
+- While the app is still starting (it has not answered yet, first minute), a refused connection is not a failure — the
+  check is tried again every 5 s.
+- A body is read only when `maxMs` or `bodyIncludes` asks about it, and then its first megabyte; an event stream is
+  never read. So the status of a streaming route can be checked.
 - A field that is misspelled, or an expectation that can never hold (a body text on `HEAD`), is an error on start.
 
 Results: `GET /api/checks` — the last 50 per check and how many failed in a row.

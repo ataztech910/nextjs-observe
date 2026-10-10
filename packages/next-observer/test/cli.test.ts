@@ -378,13 +378,16 @@ describe('appUrl', () => {
     [{}, ['--hostname=shop.local'], 'http://shop.local:3000'],
     [{}, ['--hostname', '0.0.0.0'], 'http://localhost:3000'],
     [{}, ['-H', '::'], 'http://localhost:3000'],
+    [{}, ['-H', '--turbo', '-p', '3100'], 'http://localhost:3100'],
+    [{ PORT: '4000' }, ['-p', '--turbo'], 'http://localhost:4000'],
+    [{ OBSERVE_APP_URL: 'HTTP://Shop.Example:8080' }, [], 'http://shop.example:8080'],
     [{ OBSERVE_APP_URL: 'https://shop.example/' }, ['-p', '3100'], 'https://shop.example'],
     [{ OBSERVE_APP_URL: 'https://shop.example/eu/' }, [], 'https://shop.example/eu'],
   ])('%j %j → %s', (env, nextArgs, expected) => {
     expect(appUrl(env, nextArgs)).toBe(expected)
   })
 
-  it.each(['shop.example', 'http://host/?env=dev', 'http://host/#top'])('rejects %s', (value) => {
+  it.each(['shop.example', 'http://host/?env=dev', 'http://host/#top', 'http://localhost:3000?', 'http://localhost:3000#', 'http://user:pass@host:3000'])('rejects %s', (value) => {
     expect(() => appUrl({ OBSERVE_APP_URL: value })).toThrow(CliError)
   })
 })

@@ -43,10 +43,12 @@ export interface CheckRunnerOptions {
   /** The first run of every check waits this long (the app may still be starting). Default 3 s. */
   firstDelayMs?: number
   /**
-   * While nothing has answered yet, a refused connection within this time of start() is not a result: `next dev` is
-   * still starting. After it, "nobody is listening" is exactly what a check is for. Default 60 s.
+   * While the app has not answered yet, a refused connection to it within this time of start() is not a result:
+   * `next dev` is still starting. After it, "nobody is listening" is exactly what a check is for. Default 60 s.
    */
   startupGraceMs?: number
+  /** A run that met the starting app is tried again this soon, whatever the check's interval. Default 5 s. */
+  startupRetryMs?: number
   onResult?: (check: Check, result: CheckResult, failures: number) => void
 }
 
@@ -57,28 +59,38 @@ export const MAX_BODY_BYTES = 1_000_000
 /** Trace ids of recent check requests that are remembered, to tell their spans from real traffic. */
 const REMEMBERED_TRACES = 5000
 
-/** The body as text, up to MAX_BODY_BYTES; an event stream never ends, so it is not read at all. */
-async function readBody(response: Response): Promise<string> {
-  if (!response.body) return ''
-  if ((response.headers.get('content-type') ?? '').includes('text/event-stream')) {
+const STREAM = /text\/event-stream/i
+
+/**
+ * The body as text, up to MAX_BODY_BYTES (`cut` says whether more was left). Not read at all when nobody asked about
+ * it (`wanted` false) or when it is an event stream, which never ends.
+ */
+async function readBody(response: Response, wanted: boolean): Promise<{ text: string; cut: boolean; read: boolean }> {
+  if (!response.body) return { text: '', cut: false, read: true }
+  if (!wanted || STREAM.test(response.headers.get('content-type') ?? '')) {
     await response.body.cancel().catch(() => {})
-    return ''
+    return { text: '', cut: false, read: false }
   }
   const reader = response.body.getReader()
   const chunks: Uint8Array[] = []
   let size = 0
+  let cut = false
   for (;;) {
     const { done, value } = await reader.read()
     if (done) break
     chunks.push(value)
     size += value.byteLength
     if (size >= MAX_BODY_BYTES) {
+      cut = true
       await reader.cancel().catch(() => {})
       break
     }
   }
-  return Buffer.concat(chunks).subarray(0, MAX_BODY_BYTES).toString('utf8')
+  return { text: Buffer.concat(chunks).subarray(0, MAX_BODY_BYTES).toString('utf8'), cut, read: true }
 }
+
+/** What run() gives the timer when the app is not listening yet: try again soon. */
+const STARTING = Symbol('starting')
 
 export class CheckRunner {
   readonly baseUrl: string
@@ -89,6 +101,7 @@ export class CheckRunner {
   private readonly keep: number
   private readonly firstDelayMs: number
   private readonly startupGraceMs: number
+  private readonly startupRetryMs: number
   private readonly results = new Map<string, CheckResult[]>()
   /** Failed runs in a row per check — counted, not derived from the kept history, which is cut at `keep`. */
   private readonly streak = new Map<string, number>()
@@ -98,8 +111,10 @@ export class CheckRunner {
   private timers: ReturnType<typeof setTimeout>[] = []
   /** Changes on every start()/stop(): a run from an earlier one must not report into this one. */
   private generation = 0
+  /** On the `elapsed` clock: a wall clock stepping back would keep the grace time open for ever. */
   private startedAt: number | null = null
-  private answered = false
+  /** The app itself (a check with a path) has answered since start(). */
+  private appAnswered = false
 
   constructor(private readonly options: CheckRunnerOptions) {
     this.checks = options.checks
@@ -110,6 +125,7 @@ export class CheckRunner {
     this.keep = Math.max(1, options.history ?? 50)
     this.firstDelayMs = options.firstDelayMs ?? 3000
     this.startupGraceMs = options.startupGraceMs ?? 60_000
+    this.startupRetryMs = options.startupRetryMs ?? 5000
   }
 
   /** Was this trace started by one of our own requests? Their spans are not real traffic. */
@@ -126,6 +142,12 @@ export class CheckRunner {
    * to report — the runner was stopped meanwhile, or the app has not started listening yet (see startupGraceMs).
    */
   async run(check: Check): Promise<CheckResult | undefined> {
+    const result = await this.attempt(check)
+    return result === STARTING ? undefined : result
+  }
+
+  private async attempt(check: Check): Promise<CheckResult | undefined | typeof STARTING> {
+    const own = check.url.startsWith('/')
     const generation = this.generation
     const traceId = randomBytes(16).toString('hex')
     this.traces.add(traceId)
@@ -150,22 +172,33 @@ export class CheckRunner {
         redirect: 'manual',
         signal: controller.signal,
       })
-      this.answered = true
-      const text = await readBody(response)
+      if (own) this.appAnswered = true
+      const e = check.expect
+      // The status is known from here on: a body that never finishes must not turn it into "no answer".
+      let body: Awaited<ReturnType<typeof readBody>> | undefined
+      try {
+        body = await readBody(response, e.bodyIncludes !== undefined || e.maxMs !== undefined)
+      } catch (error) {
+        if (!timedOut) throw error
+      }
       const durationMs = this.elapsed() - started
       const reasons: string[] = []
-      const e = check.expect
       if (e.status ? !e.status.includes(response.status) : response.status < 200 || response.status > 299) {
         reasons.push(`expected status ${e.status ? e.status.join(' or ') : '2xx'}, got ${response.status}`)
       }
       if (e.maxMs !== undefined && durationMs > e.maxMs) reasons.push(`took ${Math.round(durationMs)} ms, limit ${e.maxMs} ms`)
-      if (e.bodyIncludes !== undefined && !text.includes(e.bodyIncludes)) reasons.push(`body does not contain ${JSON.stringify(e.bodyIncludes)}`)
+      if (!body) reasons.push(`the body did not finish within ${check.timeoutMs} ms`)
+      else if (e.bodyIncludes !== undefined && !body.text.includes(e.bodyIncludes)) {
+        const where = !body.read ? ' (an event stream is not read)' : body.cut ? ' in its first megabyte (the rest is not read)' : ''
+        reasons.push(`body does not contain ${JSON.stringify(e.bodyIncludes)}${where}`)
+      }
       result = { atMs, ok: reasons.length === 0, durationMs, status: response.status, traceId, ...(reasons.length ? { reason: reasons.join('; ') } : {}) }
     } catch (error) {
       const durationMs = this.elapsed() - started
       const cause = (error as { cause?: { code?: string; message?: string } })?.cause
-      const starting = !timedOut && !this.answered && this.startedAt !== null && atMs - this.startedAt < this.startupGraceMs
-      if (starting) return undefined
+      // Only the app's own checks, only "nobody is listening": a wrong host name or a certificate error is news at once.
+      const starting = own && cause?.code === 'ECONNREFUSED' && !this.appAnswered && this.startedAt !== null && started - this.startedAt < this.startupGraceMs
+      if (starting) return generation === this.generation ? STARTING : undefined
       const reason = timedOut ? `no answer within ${check.timeoutMs} ms` : `request failed: ${cause?.code ?? cause?.message ?? (error as Error)?.message ?? String(error)}`
       result = { atMs, ok: false, durationMs, traceId, reason }
     } finally {
@@ -190,14 +223,30 @@ export class CheckRunner {
   /** Starts the timers. A check whose previous run is still waiting for its answer is skipped, not stacked. */
   start(): void {
     this.stop()
-    this.startedAt = this.now()
+    this.startedAt = this.elapsed()
+    this.appAnswered = false
+    const generation = this.generation
     // This start's own set: a run left over from an earlier start must not hold back the first tick of this one.
     const running = this.running
     for (const check of this.checks) {
+      let retryPending = false
       const tick = () => {
         if (running.has(check.name)) return
         running.add(check.name)
-        void this.run(check).finally(() => running.delete(check.name))
+        void this.attempt(check)
+          .then((result) => {
+            // The app is not up yet: do not make a check with a long interval wait a whole interval for its first
+            // result. One retry at a time — the interval's own ticks must not each start a chain of them.
+            if (result !== STARTING || generation !== this.generation || retryPending) return
+            retryPending = true
+            const retry = setTimeout(() => {
+              retryPending = false
+              tick()
+            }, this.startupRetryMs)
+            retry.unref?.()
+            this.timers.push(retry)
+          })
+          .finally(() => running.delete(check.name))
       }
       const first = setTimeout(() => {
         tick()
