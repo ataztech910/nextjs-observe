@@ -17,12 +17,13 @@ export interface CheckWatchOptions extends Partial<CheckRule> {
 }
 
 const DEFAULTS = { ...CHECK_RULE, cooldownMs: 300_000 }
-const addressKey = (origin: string) => `\u0000${origin}`
 
 export class CheckWatch {
   readonly options: Required<CheckWatchOptions>
   private readonly recent = new Map<string, boolean[]>()
   private readonly lastReportedMs = new Map<string, number>()
+  /** When an outage of an address was last reported. */
+  private readonly addressReportedMs = new Map<string, number>()
   /** Checks whose latest run got no connection, with the address they could not reach. */
   private readonly down = new Map<string, string>()
   private pending: Anomaly[] = []
@@ -38,8 +39,11 @@ export class CheckWatch {
     return { failuresInRow, shareWindow, shareFailures }
   }
 
-  /** The runner's `onResult`; `failures` is its count of failed runs in a row — the same number the Checks page shows. */
-  observe = (check: Check, result: CheckResult, failures: number, url: string = check.url): void => {
+  /**
+   * The runner's `onResult`; `failures` is its count of failed runs in a row — the same number the Checks page shows.
+   * `url` is where the request really went (a check's own `url` may be just a path): the address is taken from it.
+   */
+  observe = (check: Check, result: CheckResult, failures: number, url: string): void => {
     const o = this.options
     const recent = this.recent.get(check.name) ?? []
     recent.push(result.ok)
@@ -53,19 +57,20 @@ export class CheckWatch {
     const failed = recent.filter((ok) => !ok).length
     const inRow = failures >= o.failuresInRow
     if (!inRow && failed < o.shareFailures) return
-    const quiet = (key: string) => {
-      const last = this.lastReportedMs.get(key)
-      return last !== undefined && result.atMs - last < o.cooldownMs
-    }
-    if (quiet(check.name)) return
+    // A clock set back (NTP, a laptop waking up) must not keep anyone quiet for longer: a negative age is no cooldown.
+    const quiet = (last: number | undefined) => last !== undefined && result.atMs >= last && result.atMs - last < o.cooldownMs
+    if (quiet(this.lastReportedMs.get(check.name))) return
     // Set even when the address turns out to be quiet below: this failure is part of the outage already reported,
     // and the first slow answer of the restarted app is not worth an anomaly of its own either.
     this.lastReportedMs.set(check.name, result.atMs)
-    if (result.unreachable) {
+    // No connection, repeatedly: an outage. (A flaky check tipped over its share by one refused connection is not —
+    // it must not make the address quiet before the outage itself is reported.)
+    const outage = result.unreachable === true && inRow
+    if (outage) {
       // An app that is down fails every check of it the same way: one anomaly says so, the rest would only queue the
       // same investigation again. Checks with other intervals reach the rule later — the address is quiet by then.
-      if (quiet(addressKey(origin))) return
-      this.lastReportedMs.set(addressKey(origin), result.atMs)
+      if (quiet(this.addressReportedMs.get(origin))) return
+      this.addressReportedMs.set(origin, result.atMs)
     }
 
     this.pending.push({
@@ -90,7 +95,7 @@ export class CheckWatch {
         ...(result.unreachable ? { unreachable: true as const } : {}),
         traceId: result.traceId,
         // No connection, repeatedly: maybe the whole app — take() adds the other checks that cannot reach it either.
-        ...(result.unreachable && inRow ? { origin } : {}),
+        ...(outage ? { origin } : {}),
       },
     })
   }
@@ -100,10 +105,11 @@ export class CheckWatch {
     const found = this.pending
     this.pending = []
     // Filled in only now: the other checks of a dead app report their own failures a moment after the first one.
-    // A check with a longer interval may still be on its last good run — it is then missing from the list.
+    // A check with a longer interval may still be on its last good run — it is then missing from the list, and quiet
+    // about this outage when its turn comes.
     for (const { check } of found) {
       if (!check?.origin) continue
-      const also = [...this.down].filter(([name, at]) => at === check.origin && name !== check.name).map(([name]) => name)
+      const also = [...this.down].filter(([name, at]) => at === check.origin && name !== check.name).map(([name]) => name).sort()
       if (also.length > 0) check.alsoUnreachable = also
       else delete check.origin
     }

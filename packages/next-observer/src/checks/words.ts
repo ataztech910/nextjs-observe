@@ -3,7 +3,12 @@
 
 /** "http://localhost:3000" of a check's address — what is down when nothing there accepts a connection. */
 export function originOf(url: string): string {
-  return URL.canParse(url) ? new URL(url).origin : url
+  // try/catch, not URL.canParse: this runs in the browser too, and older ones do not have it.
+  try {
+    return new URL(url).origin
+  } catch {
+    return url
+  }
 }
 
 export interface CheckFailure {

@@ -68,10 +68,10 @@ describe('CheckWatch: when a failing check becomes an anomaly', () => {
     const other = validateCheck({ name: 'home', url: '/' })
     const failed = (at: number): CheckResult => ({ atMs: at, ok: false, durationMs: 5, traceId: 'b'.repeat(32), reason: 'request failed: ECONNREFUSED' })
     watch.observe(check, failed(T0), 1, URL_)
-    watch.observe(other, failed(T0), 1)
+    watch.observe(other, failed(T0), 1, other.url)
     expect(watch.take()).toEqual([])
     watch.observe(check, failed(T0 + 1), 2, URL_)
-    watch.observe(other, failed(T0 + 1), 2)
+    watch.observe(other, failed(T0 + 1), 2, other.url)
     const found = watch.take()
     expect(found.map((a) => [a.check?.name, a.check?.url])).toEqual([['stock is known', URL_], ['home', '/']])
     expect(found[0].id).not.toBe(found[1].id)
@@ -136,8 +136,8 @@ describe('CheckWatch: an app that is down is one anomaly, not one per check', ()
   it('another address is another matter', () => {
     const watch = new CheckWatch()
     rounds(watch, 2, refused)
-    watch.observe(partner, refused(T0), 1)
-    watch.observe(partner, refused(T0 + 30_000), 2)
+    watch.observe(partner, refused(T0), 1, partner.url)
+    watch.observe(partner, refused(T0 + 30_000), 2, partner.url)
     const found = watch.take()
     expect(found.map((a) => [a.check?.name, a.check?.alsoUnreachable])).toEqual([['check 1', ['check 2', 'check 3']], ['partner', undefined]])
   })
@@ -199,6 +199,26 @@ describe('CheckWatch: an app that is down is one anomaly, not one per check', ()
     expect('origin' in found[0].check!).toBe(false)
     expect('alsoUnreachable' in found[0].check!).toBe(false)
     expect(questionFor(found[0])).not.toContain('looks down as a whole')
+
+    // And that warning has not made the address quiet: the outage itself, one round later, is still announced.
+    rounds(watch, 1, refused, T0 + 60_000, 1)
+    expect(watch.take().map((a) => [a.check?.name, a.severity, a.check?.alsoUnreachable])).toEqual([['check 2', 'critical', ['check 1', 'check 3']]])
+  })
+
+  it('lists the neighbours by name, whatever order they went down in', () => {
+    const watch = new CheckWatch()
+    for (const i of [2, 1, 0]) watch.observe(checks[i], refused(T0), 1, `${APP}${checks[i].url}`)
+    for (const i of [2, 1, 0]) watch.observe(checks[i], refused(T0 + 30_000), 2, `${APP}${checks[i].url}`)
+    expect(watch.take().map((a) => [a.check?.name, a.check?.alsoUnreachable])).toEqual([['check 3', ['check 1', 'check 2']]])
+  })
+
+  it('a clock set back does not keep anyone quiet for longer', () => {
+    const watch = new CheckWatch()
+    rounds(watch, 2, refused)
+    expect(watch.take()).toHaveLength(1)
+    // 20 minutes earlier by the wall clock: the cooldown would otherwise last 25 minutes.
+    rounds(watch, 1, refused, T0 - 1_200_000, 2)
+    expect(watch.take().map((a) => a.check?.name)).toEqual(['check 1'])
   })
 
   it('after an anomaly a check is quiet for the cooldown, whatever it fails with — then it speaks', () => {

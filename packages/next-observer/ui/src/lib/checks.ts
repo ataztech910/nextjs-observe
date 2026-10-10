@@ -130,7 +130,7 @@ export function checkQuestion(c: CheckStatus, rule: CheckRule = CHECK_RULE, all:
     unreachable: failed.unreachable,
     traceId: failed.traceId,
     // The app as a whole is down when the other checks of this address are down the same way — as the observer says it.
-    ...(isDown(c, rule) ? { origin: originOf(c.url), alsoUnreachable: all.filter((o) => o.name !== c.name && o.last?.unreachable === true && originOf(o.url) === originOf(c.url)).map((o) => o.name) } : {}),
+    ...(isDown(c, rule) ? { origin: originOf(c.url), alsoUnreachable: all.filter((o) => o.name !== c.name && o.last?.unreachable === true && originOf(o.url) === originOf(c.url)).map((o) => o.name).sort() } : {}),
   })
   return question.charAt(0).toUpperCase() + question.slice(1)
 }

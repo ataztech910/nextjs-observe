@@ -47,7 +47,7 @@ describe('checkState', () => {
       let raised = 0
       runs(series).forEach((r) => {
         failures = r.ok ? 0 : failures + 1
-        watch.observe(check, r, failures)
+        watch.observe(check, r, failures, check.url)
         raised = watch.take().length
       })
       // The watch judges a run when it fails; the page judges the state now — they agree whenever the last run failed.
@@ -200,11 +200,11 @@ describe('checkQuestion', () => {
   })
   it('names the other checks that cannot reach the address, as the observer does', () => {
     const at = (name: string, url: string, series: string) => facts(series, { name, url })
-    const all = [at('a', 'http://localhost:3000/a', '.!!'), at('b', 'http://localhost:3000/b', '.!!'), at('c', 'http://localhost:3000/c', '..!'), at('d', 'http://localhost:3000/d', '.xx'), at('e', 'http://localhost:3000/e', '!!.'), at('partner', 'https://partner.example/x', '.!!')]
+    const all = [at('a', 'http://localhost:3000/a', '.!!'), at('c', 'http://localhost:3000/c', '..!'), at('b', 'http://localhost:3000/b', '.!!'), at('d', 'http://localhost:3000/d', '.xx'), at('e', 'http://localhost:3000/e', '!!.'), at('partner', 'https://partner.example/x', '.!!')]
     // b and c got no connection on their latest run; d got answers, e is back, the partner is another address.
     expect(checkQuestion(all[0], undefined, all)).toMatch(/there is no trace of it — check whether the service is receiving any traffic at all\. 2 other checks get no connection either \(b, c\): http:\/\/localhost:3000 looks down as a whole, not one route\.$/)
     // Asked about a check that is not itself down in a row, or got answers: no such claim.
-    expect(checkQuestion(all[2], undefined, all)).not.toContain('looks down')
+    expect(checkQuestion(all[1], undefined, all)).not.toContain('looks down')
     expect(checkQuestion(all[3], undefined, all)).not.toContain('looks down')
     expect(checkQuestion(all[5], undefined, all)).not.toContain('looks down')
     expect(checkQuestion(all[0])).not.toContain('looks down')
@@ -225,7 +225,7 @@ describe('checkQuestion', () => {
       const c = facts(series, { url: '/api/inventory/1' })
       const watch = new CheckWatch()
       let failures = 0
-      c.history.forEach((r) => watch.observe(check, r, (failures = r.ok ? 0 : failures + 1)))
+      c.history.forEach((r) => watch.observe(check, r, (failures = r.ok ? 0 : failures + 1), c.url))
       const anomaly = watch.take().at(-1)!
       expect(`Anomaly detected: t${checkQuestion(c).slice(1)}`, series).toBe(questionFor(anomaly))
     }
