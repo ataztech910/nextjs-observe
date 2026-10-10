@@ -5,7 +5,7 @@ export interface DefectFacts {
   isNew: boolean
   firstSeenVersion: string | null
   versions: string[]
-  affected: { operation: string }[]
+  affected: { operation: string; spanName?: string }[]
   /** Default 'code' — an operation that is a piece of code. */
   category?: 'browser-error' | 'request' | 'code'
   /** Who made the request or hit the error. Default 'server'. */
@@ -16,9 +16,13 @@ export interface DefectFacts {
 /** "The browser's request" or, for a call a server made to another service, "The outgoing request". */
 export const requestWords = (source: DefectFacts['source']) => (source === 'browser' ? "The browser's request" : 'The outgoing request')
 
-/** The requests that failed because of a defect, without the one that is just the same route seen from the caller. */
-export function affectedBy<T extends { operation: string }>(d: { operation: string; affected: T[] }): T[] {
-  return d.affected.filter((a) => !sameRoute(a.operation, d.operation))
+/**
+ * The requests that failed because of a defect, without the one that is just the same route seen from the caller: the
+ * browser's request to it, which reads the same. Only a request row is dropped (its label differs from its span name).
+ * Another service's route of the same name — a BFF passing the call through — is a real request that failed, and stays.
+ */
+export function affectedBy<T extends { operation: string; spanName?: string }>(d: { operation: string; affected: T[] }): T[] {
+  return d.affected.filter((a) => !(a.spanName !== undefined && a.spanName !== a.operation && sameRoute(a.operation, d.operation)))
 }
 
 /**
@@ -28,7 +32,9 @@ export function affectedBy<T extends { operation: string }>(d: { operation: stri
 export function describeDefect(d: DefectFacts): string {
   const pages = d.pages?.length ? ` on ${d.pages.map((p) => p.path).join(', ')}` : ''
   if (d.category === 'browser-error') return `In the browser${pages}: ${d.operation} "${d.message}"`
-  if (d.category === 'request') return `${requestWords(d.source)} ${d.operation} fails with "${d.message}"`
+  // The AI agents' tools look spans up by name, and a request's span is named by its method only: say so, or they
+  // search for "GET /api/x" and find nothing.
+  if (d.category === 'request') return `${requestWords(d.source)} ${d.operation} (a span named "${d.operation.split(' ')[0]}") fails with "${d.message}"`
   const affected = affectedBy(d)
   const where = affected.length ? ` (requests to ${affected[0].operation} fail because of it)` : ''
   return `${d.operation} fails with "${d.message}"${where}`

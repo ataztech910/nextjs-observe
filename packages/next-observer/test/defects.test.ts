@@ -53,9 +53,13 @@ describe('messageShape', () => {
     expect(messageShape('Request failed with status code 404')).toBe('Request failed with status code 404')
     expect(messageShape('Request failed with status code 500')).toBe('Request failed with status code 500')
     expect(messageShape('HTTP 503 from upstream after 3 retries, order 4127')).toBe('HTTP 503 from upstream after <n> retries, order <n>')
-    expect(messageShape('status 404 then HTTP 500')).toBe('status 404 then HTTP 500')
-    // Not a status: a number that merely follows other words, or more than three digits.
+    expect(messageShape('status code 404 then HTTP 500')).toBe('status code 404 then HTTP 500')
+    // Not an HTTP status: a number after other words, a bare "status" (an order status, an exit status), a value
+    // outside 100–599, or more than three digits.
     expect(messageShape('Order 404 not found')).toBe('Order <n> not found')
+    expect(messageShape('Order status 417 is not allowed')).toBe('Order status <n> is not allowed')
+    expect(messageShape('worker exited with status 137')).toBe('worker exited with status <n>')
+    expect(messageShape('HTTP 999')).toBe('HTTP <n>')
     expect(messageShape('status code 40412')).toBe('status code <n>')
   })
 
@@ -207,11 +211,26 @@ describe('computeDefects', () => {
       expect(asked).toEqual(['shop-browser/applyCoupon@v1'])
     })
 
-    it('what a defect is comes from its most recent occurrence, like its message', () => {
-      // An older span of the same name without the APM agent's marker, then the marked ones.
-      const old = browser('uncaught error', 30 * MIN, { message: 'x is undefined' })
-      const fresh = caught('uncaught error', MIN, 'x is undefined', '/cart')
-      expect(compute([old, fresh])[0]).toMatchObject({ category: 'browser-error', count: 1, pages: [{ path: '/cart', count: 1 }] })
+    it('a method-named client span is a request even when its URL is missing or relative', () => {
+      const noUrl = browser('GET', 2 * MIN, { kind: 'client', serviceVersion: 'v2', attributes: { 'http.status_code': 500 } })
+      const relative = browser('POST', MIN, { kind: 'client', serviceVersion: 'v2', attributes: { 'url.full': '/api/x', 'http.status_code': 500 } })
+      const asked: string[] = []
+      const defects = compute([noUrl, relative], { historyComplete: false, deployOrder: new Map([['shop-browser', ['v1', 'v2']]]), ranIn: (_s, operation) => (asked.push(operation), true) })
+      expect(defects.map((d) => [d.operation, d.category, d.isNew]).sort()).toEqual([
+        ['GET', 'request', false],
+        ['POST', 'request', false],
+      ])
+      // "Some GET ran in v1" was never asked.
+      expect(asked).toEqual([])
+    })
+
+    it('an APM-agent error and an app span that happens to share its name and message are two defects', () => {
+      const fromAgent = caught('console.error', 2 * MIN, 'Failed to save', '/lab')
+      const fromApp = browser('console.error', MIN, { message: 'Failed to save' })
+      const defects = compute([fromAgent, fromApp])
+      expect(defects).toHaveLength(2)
+      expect(defects.find((d) => d.category === 'browser-error')).toMatchObject({ count: 1, pages: [{ path: '/lab', count: 1 }] })
+      expect(defects.find((d) => d.category === 'code')).toMatchObject({ count: 1, pages: [] })
     })
 
     it('affected rows keep a request and a span literally named like its label apart', () => {
@@ -383,13 +402,18 @@ describe('describeDefect', () => {
   })
 
   it('a request is named as a request; code as before', () => {
-    expect(describeDefect({ ...base, operation: 'GET /api/coupons/:id', message: 'HTTP 404', category: 'request', source: 'browser' })).toBe('The browser\'s request GET /api/coupons/:id fails with "HTTP 404"')
+    // The span's own name is given too: the AI agents' tools find a request by it, not by the path.
+    expect(describeDefect({ ...base, operation: 'GET /api/coupons/:id', message: 'HTTP 404', category: 'request', source: 'browser' })).toBe('The browser\'s request GET /api/coupons/:id (a span named "GET") fails with "HTTP 404"')
     // A call the server made to another service is not the browser's.
-    expect(describeDefect({ ...base, operation: 'GET /api/charge/:id', message: 'HTTP 503', category: 'request', source: 'server' })).toBe('The outgoing request GET /api/charge/:id fails with "HTTP 503"')
-    expect(describeDefect({ ...base, operation: 'GET /api/charge/:id', message: 'HTTP 503', category: 'request' })).toBe('The outgoing request GET /api/charge/:id fails with "HTTP 503"')
+    expect(describeDefect({ ...base, operation: 'POST /api/charge/:id', message: 'HTTP 503', category: 'request', source: 'server' })).toBe('The outgoing request POST /api/charge/:id (a span named "POST") fails with "HTTP 503"')
+    expect(describeDefect({ ...base, operation: 'GET /api/charge/:id', message: 'HTTP 503', category: 'request' })).toBe('The outgoing request GET /api/charge/:id (a span named "GET") fails with "HTTP 503"')
     expect(describeDefect({ ...base, operation: 'checkInventory', category: 'code', affected: [{ operation: 'GET /api/inventory/[id]' }] })).toBe('checkInventory fails with "x is undefined" (requests to GET /api/inventory/[id] fail because of it)')
-    // The browser's request to the failing route itself is not "another request failing because of it".
-    expect(describeDefect({ ...base, operation: 'GET /api/inventory/[id]', category: 'code', affected: [{ operation: 'GET /api/inventory/:id' }] })).toBe('GET /api/inventory/[id] fails with "x is undefined"')
+    // The browser's request to the failing route itself is not "another request failing because of it"…
+    expect(describeDefect({ ...base, operation: 'GET /api/inventory/[id]', category: 'code', affected: [{ operation: 'GET /api/inventory/:id', spanName: 'GET' }] })).toBe('GET /api/inventory/[id] fails with "x is undefined"')
+    // …but another service's route of the same name (a BFF passing the call through) is a real failing request.
+    expect(describeDefect({ ...base, operation: 'GET /api/products/[id]', category: 'code', affected: [{ operation: 'GET /api/products/[id]', spanName: 'GET /api/products/[id]' }] })).toBe(
+      'GET /api/products/[id] fails with "x is undefined" (requests to GET /api/products/[id] fail because of it)',
+    )
     // No category given (older callers): treated as code.
     expect(describeDefect({ ...base, operation: 'checkInventory' })).toBe('checkInventory fails with "x is undefined"')
   })

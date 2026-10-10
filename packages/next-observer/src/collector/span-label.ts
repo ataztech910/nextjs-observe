@@ -6,9 +6,12 @@ const METHOD_ONLY = /^(GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS)$/
 
 type Labelled = Pick<NormalizedSpan, 'name' | 'kind' | 'attributes'>
 
-/** The method and path of a client request span that is named by its method only; undefined for any other span. */
+/** An outgoing HTTP call as OTel names it: a client span whose name is just the method — whether or not its URL is usable. */
+export const isRequestSpan = (span: Pick<NormalizedSpan, 'name' | 'kind'>) => span.kind === 'client' && METHOD_ONLY.test(span.name)
+
+/** The method and path of such a span; undefined for any other span, or when it carries no parseable absolute URL. */
 export function requestParts(span: Labelled): { method: string; pathname: string } | undefined {
-  if (span.kind !== 'client' || !METHOD_ONLY.test(span.name)) return undefined
+  if (!isRequestSpan(span)) return undefined
   const url = span.attributes['url.full'] ?? span.attributes['http.url']
   if (typeof url !== 'string') return undefined
   try {

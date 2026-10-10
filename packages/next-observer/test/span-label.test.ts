@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { MemoryStorage, spanLabel, spanOperation, type NormalizedSpan } from '../src/collector/index.js'
-import { requestParts } from '../src/collector/span-label.js'
+import { isRequestSpan, requestParts } from '../src/collector/span-label.js'
 
 const span = (name: string, kind: NormalizedSpan['kind'], attributes: NormalizedSpan['attributes'] = {}) => ({ name, kind, attributes })
 
@@ -75,5 +75,13 @@ describe('requestParts', () => {
     expect(requestParts(span('GET /api/x', 'client', { 'url.full': 'http://localhost:3000/api/x' }))).toBeUndefined()
     expect(requestParts(span('GET', 'client', { 'url.full': 'not a url' }))).toBeUndefined()
     expect(requestParts(span('GET', 'client'))).toBeUndefined()
+  })
+
+  it('isRequestSpan: a method-named client span, with or without a usable URL', () => {
+    expect(isRequestSpan(span('GET', 'client'))).toBe(true)
+    expect(isRequestSpan(span('DELETE', 'client', { 'url.full': '/relative' }))).toBe(true)
+    expect(isRequestSpan(span('GET', 'server'))).toBe(false)
+    expect(isRequestSpan(span('GET /api/x', 'client'))).toBe(false)
+    expect(isRequestSpan(span('fetchUser', 'client'))).toBe(false)
   })
 })

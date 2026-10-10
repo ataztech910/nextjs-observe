@@ -2,7 +2,7 @@
 // A failing function also marks every span above it as failed, so a defect is counted where the error ORIGINATED —
 // the deepest failed span — and the route that returned 500 because of it is listed as affected.
 import { isFrameworkSpan } from './framework.js'
-import { requestParts, spanOperation, statusCode } from './span-label.js'
+import { isRequestSpan, spanOperation, statusCode } from './span-label.js'
 import type { NormalizedSpan } from './types.js'
 
 export interface DefectsOptions {
@@ -117,7 +117,9 @@ function isBrowser(span: NormalizedSpan): boolean {
 
 function categoryOf(span: NormalizedSpan): Defect['category'] {
   if (span.attributes['observe.kind'] === 'browser-error') return 'browser-error'
-  return requestParts(span) ? 'request' : 'code'
+  // By what the span is, not by whether its URL could be parsed: a "GET" without a usable URL is still a request, and
+  // must not get the operation-page link or the name-based "new" evidence meant for code.
+  return isRequestSpan(span) ? 'request' : 'code'
 }
 
 /**
@@ -129,7 +131,9 @@ export function messageShape(message: string): string {
   // A status code inside the text ("Request failed with status code 404", "HTTP 500") is what the message says, not
   // an id: 404 and 500 must stay different defects. It is fenced off before the digits are replaced.
   const statuses: string[] = []
-  const fenced = message.replace(/\b(HTTP|status(?: code)?)(\s+)(\d{3})\b/gi, (_all, word: string, space: string, code: string) => (statuses.push(code), `${word}${space}\u00010\u0001`))
+  // Only in an HTTP context ("HTTP 404", "status code 404") and only a real status (100–599): "Order status 417" or
+  // "exited with status 137" carry a value, and such messages must keep collapsing into one defect.
+  const fenced = message.replace(/\b(HTTP|status code)(\s+)([1-5]\d{2})\b/gi, (_all, word: string, space: string, code: string) => (statuses.push(code), `${word}${space}\u00010\u0001`))
   return shapeIds(fenced).replace(/\u0001<n>\u0001/g, () => statuses.shift()!)
 }
 
@@ -181,7 +185,9 @@ export function computeDefects(spans: NormalizedSpan[], options: DefectsOptions)
     if (hasFailedDescendant.has(s)) continue
     // The span's own name is part of the key: a client request "GET" to /api/x and a span literally named
     // "GET /api/x" read the same but are different things (a request and a piece of code).
-    const id = `${s.service}\u0000${s.name}\u0000${operationOf(s)}\u0000${messageKey(s)}`
+    // …and so is the category: an APM-agent "console.error" and an app span that happens to be named the same must
+    // not share a card whose kind flips with whichever came last.
+    const id = `${s.service}\u0000${categoryOf(s)}\u0000${s.name}\u0000${operationOf(s)}\u0000${messageKey(s)}`
     const list = groups.get(id)
     if (list) list.push(s)
     else groups.set(id, [s])
