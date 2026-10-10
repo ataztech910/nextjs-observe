@@ -180,7 +180,10 @@ address in the observer's banner with the one Next prints, and set `OBSERVE_APP_
   never read. So the status of a streaming route can be checked.
 - A field that is misspelled, or an expectation that can never hold (a body text on `HEAD`), is an error on start.
 
-Results: `GET /api/checks` — the last 50 per check and how many failed in a row.
+Results: the **Checks** page — every check with its state, the last answer, a bar per run and a link to the trace of the
+last failed request — and `GET /api/checks` (the last 50 runs per check and how many failed in a row).
+
+![Checks: four scheduled checks, one of them unreliable, with a bar per run](https://raw.githubusercontent.com/ataztech910/nextjs-observe/master/docs/screenshots/checks.png)
 
 **When a check keeps failing, the AI agents look into it on their own** — the same way as with an anomaly in real
 traffic: it appears in the chat, and the investigation starts from the trace of the failing request.
