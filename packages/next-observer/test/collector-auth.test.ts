@@ -13,7 +13,7 @@ const get = (path: string, authorization?: string) => fetch(`${collector.url}${p
 
 describe('UI password (HTTP Basic Auth)', () => {
   it('closes the UI, the query API and the chat; the browser gets a login dialog', async () => {
-    for (const path of ['/', '/traces', '/api/services', '/api/traces', '/api/overview', '/api/operation?operation=x', '/api/defects', '/api/regression', '/api/chat']) {
+    for (const path of ['/', '/traces', '/api/services', '/api/traces', '/api/overview', '/api/operation?operation=x', '/api/defects', '/api/checks', '/api/regression', '/api/chat']) {
       const res = await get(path)
       expect(res.status, path).toBe(401)
       expect(res.headers.get('www-authenticate'), path).toMatch(/^Basic realm="next-observer"/)

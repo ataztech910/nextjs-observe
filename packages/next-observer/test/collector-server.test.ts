@@ -39,6 +39,17 @@ describe('collector: ingest from the real OTLP exporter + query API', () => {
     expect(await get('/health')).toEqual({ status: 200, body: { status: 'ok', spans: 2 } })
   })
 
+  it('has no checks unless a runner is given', async () => {
+    expect(await get('/api/checks')).toEqual({ status: 200, body: { checks: [] } })
+    const status = { name: 'home', method: 'GET', url: 'http://app/', everySeconds: 60, expect: {}, failures: 0, history: [] }
+    const withChecks = await startCollector({ port: 0, checks: { list: () => [status] } })
+    try {
+      expect(await (await fetch(`${withChecks.url}/api/checks`)).json()).toEqual({ checks: [status] })
+    } finally {
+      await withChecks.close()
+    }
+  })
+
   it('lists services with versions', async () => {
     const { body } = await get('/api/services')
     expect(body).toEqual([{ name: 'shop', versions: ['v2'], spanCount: 2, lastSeenMs: expect.any(Number), versionLastSeenMs: { v2: expect.any(Number) } }])

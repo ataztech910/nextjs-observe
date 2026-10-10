@@ -8,6 +8,7 @@
 //   GET  /api/overview?windowMs&service&toMs   dashboard: requests by status class, latency, errors, top routes
 //   GET  /api/operation?operation&service&windowMs&toMs   one operation: overview, latency histogram, two speeds, versions
 //   GET  /api/defects?windowMs&service&toMs   errors grouped by where they originated and their message
+//   GET  /api/checks                { checks }: scheduled checks from observe.checks.ts with their latest results
 //   GET  /api/regression?service&sinceMinutes   { regression }: the latest version vs the previous one, or null
 //   GET  /api/chat                  { enabled, mode }
 //   POST /api/chat                  { question, sessionId? } → NDJSON stream of ChatEvent (status, step…, card…, report | error)
@@ -22,6 +23,7 @@ import { createAgentQueries } from '../debug/queries.js'
 import { findRegression } from '../debug/regression.js'
 import type { ChatEvent, ChatHandler, ProactiveEvent } from './chat.js'
 import { gunzipSync } from 'node:zlib'
+import type { CheckRunner } from '../checks/runner.js'
 import { decodeOtlpJson, type OtlpTraceRequest } from './decode.js'
 import { protobufToOtlpJson } from './protobuf.js'
 import { computeDefects } from './defects.js'
@@ -56,6 +58,8 @@ export interface CollectorOptions {
   detector?: Pick<AnomalyDetector, 'observe' | 'check'>
   /** How often the detector window is checked. Default 5 s. */
   detectorIntervalMs?: number
+  /** Scheduled checks (observe.checks.ts) whose results /api/checks reports; absent → none configured. */
+  checks?: Pick<CheckRunner, 'list'>
 }
 
 const REPLAY_EVENTS = 200
@@ -309,6 +313,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
       if (!operation) throw new HttpError(400, 'operation is required')
       return send(res, 200, computeOperation(spans, { ...options, operation }))
     }
+    if (url.pathname === '/api/checks') return send(res, 200, { checks: options.checks?.list() ?? [] })
     if (url.pathname === '/api/defects') {
       const windowMs = numberParam(q, 'windowMs') ?? OVERVIEW_DEFAULT_WINDOW_MS
       if (windowMs < 60_000 || windowMs > 86_400_000) throw new HttpError(400, 'windowMs must be between 60000 (1 min) and 86400000 (24 h)')

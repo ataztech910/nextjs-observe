@@ -20,6 +20,7 @@ packages/next-observe/   goes INTO the app — OpenTelemetry only, no AI depende
 packages/next-observer/            the observer, run with `npx next-observer dev` — never an app dependency
   src/collector/         OTLP/JSON ingest, MemoryStorage, query API, chat transport (NDJSON + SSE), static UI
   src/debug/             agent tools as pure functions (queries.ts), anomaly detector, demo data — no ADK imports
+  src/checks/            scheduled checks from the app's observe.checks.ts: validation (spec.ts) and the runner
   src/agents/            ADK agents (@google/adk, @kitana-sdk/adk are regular deps), MockLlm, chat handler, evidence
                          cards; specialists.ts = specialists as data (built-ins + the app's observe.agents.ts)
   src/cli.ts, bin.ts     next-observer dev | next-observer collector [--demo]
