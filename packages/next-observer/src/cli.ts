@@ -8,6 +8,8 @@ import { parseArgs } from 'node:util'
 import { MemoryStorage, startCollector, type Collector, type CollectorOptions } from './collector/index.js'
 import { seedDemo, startLiveDemo } from './debug/demo.js'
 import { detectPackageManager, init, installArgs, type InitChange, type PackageManager } from './init.js'
+import { CheckRunner } from './checks/runner.js'
+import { validateChecks } from './checks/spec.js'
 import { AnomalyDetector } from './debug/detector.js'
 
 // Type-only: the agents module (and @google/adk behind it) is loaded lazily, so `next-observer --help` stays instant.
@@ -29,6 +31,7 @@ export const HELP = `Usage:
 
 Environment: OBSERVE_ROOT, OBSERVE_PORT (default 4318), OBSERVE_HOST (default 127.0.0.1), OBSERVE_API_KEY,
              OBSERVE_AI (mock | real), OBSERVE_DETECTOR (off to disable the anomaly detector),
+             OBSERVE_APP_URL (where the checks from observe.checks.ts are sent; default http://localhost:3000),
              OBSERVE_MODEL_TIMEOUT_MS (one model call; default 90000, a call that hangs is started again once)`
 
 export class CliError extends Error {}
@@ -118,19 +121,15 @@ function resolveNextBin(root: string): string {
 
 export const AGENTS_FILES = ['observe.agents.ts', 'observe.agents.mts', 'observe.agents.js', 'observe.agents.mjs']
 
-type SpecialistSpec = import('./agents/index.js').SpecialistSpec
+export const CHECKS_FILES = ['observe.checks.ts', 'observe.checks.mts', 'observe.checks.js', 'observe.checks.mjs']
 
-/**
- * The project's own specialists from observe.agents.* in the app root: `export default [defineSpecialist({…})]`.
- * Same name as a built-in replaces it, a new name adds a specialist. Node ≥22.18 runs the .ts file as is (type stripping).
- */
-async function loadProjectSpecialists(root: string, agents: AgentsModule): Promise<{ file?: string; specs: SpecialistSpec[] }> {
-  const found = AGENTS_FILES.filter((name) => existsSync(join(root, name)))
-  if (found.length === 0) return { specs: [] }
+/** The default export of the one file from `names` that exists in the app root; `{}` when there is none. */
+async function importProjectFile(root: string, names: string[]): Promise<{ file?: string; exported?: unknown }> {
+  const found = names.filter((name) => existsSync(join(root, name)))
+  if (found.length === 0) return {}
   if (found.length > 1) throw new CliError(`found ${found.join(' and ')} in ${root} — keep one`)
   const file = found[0]
-  let exported: unknown
-  // Next apps rarely have "type": "module", so Node warns that it reparses observe.agents.ts as ESM — noise, not a problem.
+  // Next apps rarely have "type": "module", so Node warns that it reparses the .ts file as ESM — noise, not a problem.
   const emitWarning = process.emitWarning
   process.emitWarning = ((warning: string | Error, ...rest: unknown[]) => {
     const code = (rest[0] as { code?: string } | undefined)?.code
@@ -138,14 +137,72 @@ async function loadProjectSpecialists(root: string, agents: AgentsModule): Promi
     return (emitWarning as (...args: unknown[]) => void).call(process, warning, ...rest)
   }) as typeof process.emitWarning
   try {
-    exported = (await import(pathToFileURL(join(root, file)).href)).default
+    return { file, exported: (await import(pathToFileURL(join(root, file)).href)).default }
   } catch (error) {
     const e = error as NodeJS.ErrnoException
-    if (e?.code === 'ERR_UNKNOWN_FILE_EXTENSION') throw new CliError(`${file}: this Node.js cannot load TypeScript — use Node.js ≥22.18 or rename it to observe.agents.mjs`)
+    if (e?.code === 'ERR_UNKNOWN_FILE_EXTENSION') throw new CliError(`${file}: this Node.js cannot load TypeScript — use Node.js ≥22.18 or rename it to ${file.replace(/\.m?ts$/, '.mjs')}`)
     throw new CliError(`${file}: ${e?.message ?? String(error)}`)
   } finally {
     process.emitWarning = emitWarning
   }
+}
+
+/**
+ * Where checks with a path go: OBSERVE_APP_URL, else the host and port `next dev` was given (-H, -p, PORT), else
+ * localhost:3000. A guess: when that port is busy `next dev` moves to the next free one without telling us — the banner
+ * names the address so it can be compared with the one Next prints.
+ */
+export function appUrl(env: Env, nextArgs: string[] = []): string {
+  const given = env.OBSERVE_APP_URL
+  if (given) {
+    const url = /^https?:\/\//i.test(given) && URL.canParse(given) ? new URL(given) : undefined
+    // Judged on the text too: `http://host?` parses with an empty query and would turn every path into one.
+    if (!url || /[?#]/.test(given) || url.username || url.password) throw new CliError(`invalid OBSERVE_APP_URL "${given}" — expected something like http://localhost:3000`)
+    return `${url.origin}${url.pathname}`.replace(/\/+$/, '')
+  }
+  let port = env.PORT
+  let host = 'localhost'
+  // The value after a flag — unless what follows is the next flag (`-H --turbo`).
+  const valueAfter = (i: number) => (nextArgs[i + 1]?.startsWith('-') === false ? nextArgs[i + 1] : undefined)
+  nextArgs.forEach((arg, i) => {
+    if (arg === '-p' || arg === '--port') port = valueAfter(i) ?? port
+    else if (arg.startsWith('--port=')) port = arg.slice('--port='.length)
+    else if (/^-p\d+$/.test(arg)) port = arg.slice(2)
+    else if (arg === '-H' || arg === '--hostname') host = valueAfter(i) ?? host
+    else if (arg.startsWith('--hostname=')) host = arg.slice('--hostname='.length)
+  })
+  // "All interfaces" is not an address to call.
+  if (host === '0.0.0.0' || host === '::' || !/^[\w.-]+$/.test(host)) host = 'localhost'
+  return `http://${host}:${port && /^\d+$/.test(port) ? port : '3000'}`
+}
+
+/** The checks from observe.checks.* in the app root (`export default [{ name, url, expect }]`), ready to run. */
+async function loadChecks(root: string, env: Env, nextArgs: string[]): Promise<{ runner?: CheckRunner; line?: string }> {
+  const { file, exported } = await importProjectFile(root, CHECKS_FILES)
+  if (!file) return {}
+  let checks
+  try {
+    checks = validateChecks(exported)
+  } catch (error) {
+    throw new CliError(`${file}: ${(error as Error).message}`)
+  }
+  if (checks.length === 0) return {}
+  const own = checks.some((c) => c.url.startsWith('/'))
+  // Asked for only when a check needs it: a wrong OBSERVE_APP_URL nobody uses is not a reason to refuse to start.
+  const baseUrl = own ? appUrl(env, nextArgs) : ''
+  const runner = new CheckRunner({ checks, baseUrl })
+  return { runner, line: `  checks     ${file}: ${checks.length} ${checks.length === 1 ? 'check' : 'checks'}${own ? ` against ${baseUrl}` : ''}` }
+}
+
+type SpecialistSpec = import('./agents/index.js').SpecialistSpec
+
+/**
+ * The project's own specialists from observe.agents.* in the app root: `export default [defineSpecialist({…})]`.
+ * Same name as a built-in replaces it, a new name adds a specialist. Node ≥22.18 runs the .ts file as is (type stripping).
+ */
+async function loadProjectSpecialists(root: string, agents: AgentsModule): Promise<{ file?: string; specs: SpecialistSpec[] }> {
+  const { file, exported } = await importProjectFile(root, AGENTS_FILES)
+  if (!file) return { specs: [] }
   const list = Array.isArray(exported) ? exported : exported === undefined ? undefined : [exported]
   if (!list) throw new CliError(`${file}: export default an array of defineSpecialist({…})`)
   const specs: SpecialistSpec[] = []
@@ -193,16 +250,20 @@ async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collect
     const o = detector.options
     lines.push(`  detector   errors > ${o.errorRate * 100}%, slow (>${o.slowMs}ms) > ${o.slowRate * 100}%, silence > ${o.noTrafficMs / 1000}s → agents investigate on their own`)
   } else lines.push('  detector   off (OBSERVE_DETECTOR=off)')
+  const { runner: checks, line: checksLine } = await loadChecks(args.root, deps.env, args.nextArgs)
+  if (checksLine) lines.push(checksLine)
   if (args.demo) lines.push('  demo       "shop" scenario: v1 → v2 regression, inventory errors, catalog N+1, an error new in v2 — live v2 traffic every 2 s')
   const line = lines.join('\n')
   try {
-    const collector = await startCollector({ port: args.port, host: args.host, apiKey: args.apiKey, uiPassword: args.uiPassword, storage, chat, detector })
+    const collector = await startCollector({ port: args.port, host: args.host, apiKey: args.apiKey, uiPassword: args.uiPassword, storage, chat, detector, checks })
+    checks?.start()
     const stopDemo = args.demo ? startLiveDemo({ storage, detector }) : undefined
     return {
       collector,
       chatLine: line,
       stop: async () => {
         stopDemo?.()
+        checks?.stop()
         await collector.close()
       },
     }

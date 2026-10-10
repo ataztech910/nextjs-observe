@@ -8,6 +8,7 @@
 //   GET  /api/overview?windowMs&service&toMs   dashboard: requests by status class, latency, errors, top routes
 //   GET  /api/operation?operation&service&windowMs&toMs   one operation: overview, latency histogram, two speeds, versions
 //   GET  /api/defects?windowMs&service&toMs   errors grouped by where they originated and their message
+//   GET  /api/checks                { checks }: scheduled checks from observe.checks.ts with their latest results
 //   GET  /api/regression?service&sinceMinutes   { regression }: the latest version vs the previous one, or null
 //   GET  /api/chat                  { enabled, mode }
 //   POST /api/chat                  { question, sessionId? } → NDJSON stream of ChatEvent (status, step…, card…, report | error)
@@ -22,6 +23,7 @@ import { createAgentQueries } from '../debug/queries.js'
 import { findRegression } from '../debug/regression.js'
 import type { ChatEvent, ChatHandler, ProactiveEvent } from './chat.js'
 import { gunzipSync } from 'node:zlib'
+import type { CheckRunner } from '../checks/runner.js'
 import { decodeOtlpJson, type OtlpTraceRequest } from './decode.js'
 import { protobufToOtlpJson } from './protobuf.js'
 import { computeDefects } from './defects.js'
@@ -56,6 +58,8 @@ export interface CollectorOptions {
   detector?: Pick<AnomalyDetector, 'observe' | 'check'>
   /** How often the detector window is checked. Default 5 s. */
   detectorIntervalMs?: number
+  /** Scheduled checks (observe.checks.ts) whose results /api/checks reports; absent → none configured. */
+  checks?: Pick<CheckRunner, 'list'> & Partial<Pick<CheckRunner, 'isCheckTrace'>>
 }
 
 const REPLAY_EVENTS = 200
@@ -169,7 +173,9 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     const spans = decodeOtlpJson(payload)
     await storage.insertSpans(spans)
     // A restart of next dev compiles each route on its first request — not an anomaly to investigate.
-    options.detector?.observe(spans.filter((s) => !storage.isColdStart(s)))
+    // The observer's own check requests are not traffic: counted, they would keep the "silence" rule from ever
+    // firing and put expected refusals into the error rate.
+    options.detector?.observe(spans.filter((s) => !storage.isColdStart(s) && !options.checks?.isCheckTrace?.(s.traceId)))
     // OTLP answers in the request's format; an empty ExportTraceServiceResponse is zero bytes in protobuf.
     if (protobuf) res.writeHead(200, { ...CORS, 'content-type': 'application/x-protobuf' }).end()
     else send(res, 200, {})
@@ -309,6 +315,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
       if (!operation) throw new HttpError(400, 'operation is required')
       return send(res, 200, computeOperation(spans, { ...options, operation }))
     }
+    if (url.pathname === '/api/checks') return send(res, 200, { checks: options.checks?.list() ?? [] })
     if (url.pathname === '/api/defects') {
       const windowMs = numberParam(q, 'windowMs') ?? OVERVIEW_DEFAULT_WINDOW_MS
       if (windowMs < 60_000 || windowMs > 86_400_000) throw new HttpError(400, 'windowMs must be between 60000 (1 min) and 86400000 (24 h)')

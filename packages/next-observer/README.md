@@ -142,12 +142,53 @@ export default [
 Tools: `get_services`, `get_operation_stats`, `compare_versions`, `get_errors`, `search_traces`, `get_trace`.
 `next-observer` validates the file and lists the loaded specialists on start.
 
+## Scheduled checks
+
+Put `observe.checks.ts` (or `.mts`, `.js`, `.mjs`) in the app root to have the observer ask the app on a timer: is it
+up, is it fast enough, does it still refuse what it must refuse. The file is plain data — no imports:
+
+```ts
+export default [
+  { name: 'catalog answers fast', url: '/api/products', expect: { status: 200, maxMs: 300 } },
+  { name: 'home page shows the shop', url: '/', expect: { bodyIncludes: 'Porto Shop' } },
+  { name: 'guests cannot see orders', url: '/api/orders', expect: { status: [401, 403] } },
+  { name: 'checkout refuses a bad quantity', url: '/api/checkout', method: 'POST', body: { quantity: 99 }, expect: { status: 400 } },
+]
+```
+
+| Field | Default | |
+|---|---|---|
+| `name` | — | unique in the file |
+| `url` | — | a path (sent to the app) or a full `http(s)` URL |
+| `method`, `headers`, `body` | `GET` | a `body` that is not a string is sent as JSON |
+| `everySeconds` | `60` | at least 5 |
+| `timeoutMs` | `10000` | no answer within it is a failure |
+| `expect.status` | any 2xx | one status or a list; redirects are not followed — a 302 is an answer |
+| `expect.maxMs` | — | the whole answer, body included |
+| `expect.bodyIncludes` | — | text the body must contain |
+
+Paths go to `OBSERVE_APP_URL`; without it, to the host and port `next dev` was given (`-H`, `-p`, `PORT`), else
+`http://localhost:3000`. That is a guess: when the port is busy, `next dev` moves to the next free one — compare the
+address in the observer's banner with the one Next prints, and set `OBSERVE_APP_URL` if they differ.
+
+- Every request carries the header `x-observe-check` (the check's name, URL-encoded) and a trace id of its own, so each
+  result links to the trace the app recorded for it.
+- These requests are not traffic for the anomaly detector: an expected refusal is not an error, and a quiet app stays quiet.
+- While the app is still starting (it has not answered yet, first minute), a refused connection is not a failure — the
+  check is tried again every 5 s.
+- A body is read only when `maxMs` or `bodyIncludes` asks about it, and then its first megabyte; an event stream is
+  never read. So the status of a streaming route can be checked.
+- A field that is misspelled, or an expectation that can never hold (a body text on `HEAD`), is an error on start.
+
+Results: `GET /api/checks` — the last 50 per check and how many failed in a row.
+
 ## Configuration
 
 | Variable | Default | |
 |---|---|---|
 | `OBSERVE_AI` | `mock` | `mock` \| `real` |
 | `OBSERVE_DETECTOR` | on | `off` disables the anomaly detector |
+| `OBSERVE_APP_URL` | `http://localhost:3000` | where the checks from `observe.checks.ts` are sent |
 | `OBSERVE_MODEL_TIMEOUT_MS` | `90000` | how long one model call may take before it is started again |
 | `OBSERVE_API_KEY` | — | require `x-api-key` on ingest (`/v1/traces`) |
 | `OBSERVE_UI_PASSWORD` | — | require a password for the UI, the query API and the chat (browser login, any user name) |

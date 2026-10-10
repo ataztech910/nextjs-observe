@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ChildProcess, SpawnOptions } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
-import { CliError, HELP, parseCliArgs, run, type CliDeps, type Env } from '../src/cli.js'
+import { appUrl, CliError, HELP, parseCliArgs, run, type CliDeps, type Env } from '../src/cli.js'
 import { startCollector } from '../src/collector/index.js'
 
 // A project dir with a resolvable `next` package, like a real app after npm install.
@@ -253,6 +253,142 @@ describe('project agents (observe.agents.*)', () => {
     const h = harness({})
     expect(await run(['collector', '--port', '0', '--root', project(files)], h.deps)).toBe(1)
     expect(h.logs[0]).toContain(message)
+  })
+})
+
+describe('project checks (observe.checks.*)', () => {
+  function project(files: Record<string, string>, withNext = false): string {
+    const root = fixtureApp(withNext)
+    for (const [name, content] of Object.entries(files)) writeFileSync(join(root, name), content)
+    return root
+  }
+  const checks = async (h: ReturnType<typeof harness>) => (await (await fetch(`${h.collectorUrl()}/api/checks`)).json()).checks
+
+  it('loads a .ts file, lists it in the banner and serves the checks at /api/checks', async () => {
+    const root = project({ 'observe.checks.ts': `const checks: object[] = [{ name: 'catalog answers', url: '/api/products', expect: { status: 200, maxMs: 500 } }, { name: 'docs', url: 'https://example.com/docs', everySeconds: 300 }]\nexport default checks\n` })
+    const h = harness({ OBSERVE_APP_URL: 'http://localhost:3100/' })
+    const exit = run(['collector', '--port', '0', '--root', root], h.deps)
+    await until(h.collectorUrl)
+    expect(h.logs[0]).toMatch(/^  checks     observe\.checks\.ts: 2 checks against http:\/\/localhost:3100$/m)
+    expect(await checks(h)).toEqual([
+      { name: 'catalog answers', method: 'GET', url: 'http://localhost:3100/api/products', everySeconds: 60, expect: { status: [200], maxMs: 500 }, failures: 0, history: [] },
+      { name: 'docs', method: 'GET', url: 'https://example.com/docs', everySeconds: 300, expect: {}, failures: 0, history: [] },
+    ])
+    h.stop()
+    expect(await exit).toBe(0)
+  })
+
+  it('in dev the checks go to the port next dev was given', async () => {
+    const root = project({ 'observe.checks.mjs': `export default [{ name: 'home', url: '/' }]` }, true)
+    const h = harness({})
+    const exit = run(['dev', '--port', '0', '--root', root, '--', '-p', '3100'], h.deps)
+    await until(h.collectorUrl)
+    expect(h.logs[0]).toContain('  checks     observe.checks.mjs: 1 check against http://localhost:3100')
+    expect((await checks(h))[0].url).toBe('http://localhost:3100/')
+    h.stop()
+    expect(await exit).toBe(0)
+  })
+
+  it('names no app when every check has a full URL', async () => {
+    const h = harness({})
+    const exit = run(['collector', '--port', '0', '--root', project({ 'observe.checks.mjs': `export default [{ name: 'docs', url: 'https://example.com/docs' }]` })], h.deps)
+    await until(h.collectorUrl)
+    expect(h.logs[0]).toMatch(/^  checks     observe\.checks\.mjs: 1 check$/m)
+    h.stop()
+    expect(await exit).toBe(0)
+  })
+
+  it.each([[{}], [{ 'observe.checks.mjs': 'export default []' }]])('without checks there is no line and the list is empty %#', async (files) => {
+    const h = harness({})
+    const exit = run(['collector', '--port', '0', '--root', project(files)], h.deps)
+    await until(h.collectorUrl)
+    expect(h.logs[0]).not.toMatch(/^  checks /m)
+    expect(await checks(h)).toEqual([])
+    h.stop()
+    expect(await exit).toBe(0)
+  })
+
+  it('runs the checks while the observer is up and stops them with it', async () => {
+    const hits: string[] = []
+    const app = (await import('node:http')).createServer((req, res) => {
+      hits.push(`${req.url} ${req.headers['x-observe-check']}`)
+      res.writeHead(req.url === '/down' ? 503 : 200).end('ok')
+    })
+    await new Promise<void>((resolve) => app.listen(0, '127.0.0.1', resolve))
+    const base = `http://127.0.0.1:${(app.address() as import('node:net').AddressInfo).port}`
+    const root = project({ 'observe.checks.mjs': `export default [{ name: 'up', url: '/up', everySeconds: 5 }, { name: 'down', url: '/down', everySeconds: 5 }]` })
+    const h = harness({ OBSERVE_APP_URL: base })
+    const exit = run(['collector', '--port', '0', '--root', root], h.deps)
+    await until(h.collectorUrl)
+    // The first run comes 3 s after the start.
+    for (let i = 0; i < 100 && hits.length < 2; i++) await new Promise((r) => setTimeout(r, 50))
+    expect(hits.sort()).toEqual(['/down down', '/up up'])
+    const list = await checks(h)
+    expect(list.map((c: { name: string; failures: number; last: { ok: boolean; status: number; reason?: string } }) => [c.name, c.failures, c.last.ok, c.last.status, c.last.reason])).toEqual([
+      ['up', 0, true, 200, undefined],
+      ['down', 1, false, 503, 'expected status 2xx, got 503'],
+    ])
+    h.stop()
+    expect(await exit).toBe(0)
+    await new Promise((r) => setTimeout(r, 5500))
+    expect(hits).toHaveLength(2)
+    app.close()
+  }, 15_000)
+
+  it.each([
+    [{ 'observe.checks.mjs': `export default [{ name: 'a', url: 'api' }]` }, 'observe.checks.mjs: check "a": `url` must be a path'],
+    [{ 'observe.checks.mjs': `export default [{ name: 'a', url: '/a' }, { name: 'a', url: '/b' }]` }, 'observe.checks.mjs: check "a" is defined twice'],
+    [{ 'observe.checks.mjs': 'export const x = 1' }, 'observe.checks.mjs: export default an array of checks'],
+    [{ 'observe.checks.mjs': 'export default [' }, 'observe.checks.mjs: '],
+    [{ 'observe.checks.mjs': 'export default []', 'observe.checks.ts': 'export default []' }, 'found observe.checks.ts and observe.checks.mjs'],
+  ])('fails with a clear message %#', async (files, message) => {
+    const h = harness({})
+    expect(await run(['collector', '--port', '0', '--root', project(files)], h.deps)).toBe(1)
+    expect(h.logs[0]).toContain(message)
+  })
+
+  it('rejects a bad OBSERVE_APP_URL only when it is needed', async () => {
+    const h = harness({ OBSERVE_APP_URL: 'localhost:3000' })
+    expect(await run(['collector', '--port', '0', '--root', project({ 'observe.checks.mjs': `export default [{ name: 'a', url: '/a' }]` })], h.deps)).toBe(1)
+    expect(h.logs[0]).toContain('invalid OBSERVE_APP_URL "localhost:3000"')
+
+    const unusedIn: Record<string, string>[] = [{}, { 'observe.checks.mjs': `export default [{ name: 'docs', url: 'https://example.com/docs' }]` }]
+    for (const files of unusedIn) {
+      const unused = harness({ OBSERVE_APP_URL: 'localhost:3000' })
+      const exit = run(['collector', '--port', '0', '--root', project(files)], unused.deps)
+      await until(unused.collectorUrl)
+      unused.stop()
+      expect(await exit).toBe(0)
+    }
+  })
+})
+
+describe('appUrl', () => {
+  it.each([
+    [{}, [], 'http://localhost:3000'],
+    [{}, ['-p', '3100'], 'http://localhost:3100'],
+    [{}, ['--turbopack', '--port', '3200'], 'http://localhost:3200'],
+    [{}, ['--port=3300'], 'http://localhost:3300'],
+    [{ PORT: '3400' }, [], 'http://localhost:3400'],
+    [{ PORT: '3400' }, ['-p', '3100'], 'http://localhost:3100'],
+    [{}, ['-p'], 'http://localhost:3000'],
+    [{}, ['-p', 'abc'], 'http://localhost:3000'],
+    [{}, ['-p3500'], 'http://localhost:3500'],
+    [{}, ['-H', '192.168.1.5', '-p', '3100'], 'http://192.168.1.5:3100'],
+    [{}, ['--hostname=shop.local'], 'http://shop.local:3000'],
+    [{}, ['--hostname', '0.0.0.0'], 'http://localhost:3000'],
+    [{}, ['-H', '::'], 'http://localhost:3000'],
+    [{}, ['-H', '--turbo', '-p', '3100'], 'http://localhost:3100'],
+    [{ PORT: '4000' }, ['-p', '--turbo'], 'http://localhost:4000'],
+    [{ OBSERVE_APP_URL: 'HTTP://Shop.Example:8080' }, [], 'http://shop.example:8080'],
+    [{ OBSERVE_APP_URL: 'https://shop.example/' }, ['-p', '3100'], 'https://shop.example'],
+    [{ OBSERVE_APP_URL: 'https://shop.example/eu/' }, [], 'https://shop.example/eu'],
+  ])('%j %j → %s', (env, nextArgs, expected) => {
+    expect(appUrl(env, nextArgs)).toBe(expected)
+  })
+
+  it.each(['shop.example', 'http://host/?env=dev', 'http://host/#top', 'http://localhost:3000?', 'http://localhost:3000#', 'http://user:pass@host:3000'])('rejects %s', (value) => {
+    expect(() => appUrl({ OBSERVE_APP_URL: value })).toThrow(CliError)
   })
 })
 
