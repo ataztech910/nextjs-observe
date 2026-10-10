@@ -1,6 +1,11 @@
 // The question about a failing check — one wording for the anomaly the observer raises and for the Investigate button.
 // No Node code here: the UI imports it too.
 
+/** "http://localhost:3000" of a check's address — what is down when nothing there accepts a connection. */
+export function originOf(url: string): string {
+  return URL.canParse(url) ? new URL(url).origin : url
+}
+
 export interface CheckFailure {
   name: string
   method: string
@@ -15,6 +20,9 @@ export interface CheckFailure {
   /** No connection was made: there cannot be a trace. Neither flag: nobody knows whether the request arrived. */
   unreachable?: boolean
   traceId: string
+  /** Other checks that get no connection to the same address (`origin`) either: the app is down, not one route. */
+  alsoUnreachable?: string[]
+  origin?: string
 }
 
 /** Where to look after a failed run: its trace, when there can be one. */
@@ -27,5 +35,9 @@ export function whereToLook(f: Pick<CheckFailure, 'answered' | 'unreachable' | '
 
 export function checkFailureQuestion(f: CheckFailure): string {
   const how = f.rule === 'in_row' ? `failed ${f.count} ${f.count === 1 ? 'time' : 'times'} in a row` : `failed ${f.count} of its last ${f.runs} runs`
-  return `the scheduled check "${f.name}" (${f.method} ${f.url}) ${how}. Last failure: ${f.reason}. ${whereToLook(f)}`
+  const question = `the scheduled check "${f.name}" (${f.method} ${f.url}) ${how}. Last failure: ${f.reason}. ${whereToLook(f)}`
+  const also = f.alsoUnreachable ?? []
+  if (also.length === 0) return question
+  const others = also.length === 1 ? `Another check gets no connection either (${also[0]})` : `${also.length} other checks get no connection either (${also.join(', ')})`
+  return `${question} ${others}: ${f.origin ?? 'the app'} looks down as a whole, not one route.`
 }

@@ -198,6 +198,17 @@ describe('checkQuestion', () => {
     expect(checkQuestion(facts('xxx' + '.'.repeat(9) + 'x'))).toContain('failed 1 of its last 10 runs.')
     expect(checkQuestion(facts('xxx' + '.'.repeat(10)))).toContain('is passing.')
   })
+  it('names the other checks of an address that is down, as the observer does', () => {
+    const at = (name: string, url: string, series: string) => facts(series, { name, url })
+    const all = [at('a', 'http://localhost:3000/a', '.!!'), at('b', 'http://localhost:3000/b', '.!!'), at('c', 'http://localhost:3000/c', '..!'), at('d', 'http://localhost:3000/d', '.xx'), at('partner', 'https://partner.example/x', '.!!')]
+    // b is down the same way; c failed once, d got answers, the partner is another address.
+    expect(checkQuestion(all[0], undefined, all)).toMatch(/there is no trace of it — check whether the service is receiving any traffic at all\. Another check gets no connection either \(b\): http:\/\/localhost:3000 looks down as a whole, not one route\.$/)
+    expect(checkQuestion(all[3], undefined, all)).not.toContain('looks down')
+    expect(checkQuestion(all[2], undefined, all)).not.toContain('looks down')
+    expect(checkQuestion(all[4], undefined, all)).not.toContain('looks down')
+    expect(checkQuestion(all[0])).not.toContain('looks down')
+  })
+
   it('says the same as the anomaly the observer raises on its own', () => {
     const check = validateCheck({ name: 'stock is known', url: '/api/inventory/1' })
     for (const series of ['.xx', 'x..x..x', '.!!', '.tt']) {

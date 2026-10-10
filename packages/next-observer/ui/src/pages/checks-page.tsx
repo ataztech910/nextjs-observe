@@ -62,7 +62,7 @@ export function ChecksPage() {
           </p>
           <div className="space-y-4">
             {list.map((c) => (
-              <CheckCard key={c.name} check={c} rule={rule} clock={{ nowMs: data.nowMs, receivedAtMs: checks.dataUpdatedAt }} />
+              <CheckCard key={c.name} check={c} all={list} rule={rule} clock={{ nowMs: data.nowMs, receivedAtMs: checks.dataUpdatedAt }} />
             ))}
           </div>
         </>
@@ -71,7 +71,7 @@ export function ChecksPage() {
   )
 }
 
-function CheckCard({ check: c, rule, clock }: { check: CheckStatus; rule: CheckRule | undefined; clock: { nowMs: number; receivedAtMs: number } }) {
+function CheckCard({ check: c, all, rule, clock }: { check: CheckStatus; all: CheckStatus[]; rule: CheckRule | undefined; clock: { nowMs: number; receivedAtMs: number } }) {
   const navigate = useNavigate()
   const state = checkState(c, rule)
   const tone = TONE[state]
@@ -139,7 +139,7 @@ function CheckCard({ check: c, rule, clock }: { check: CheckStatus; rule: CheckR
         ) : (
           <span>{c.last ? 'no trace — the failed request reached nobody' : 'no trace yet'}</span>
         )}
-        <Button type="button" size="sm" variant="outline" className="ml-auto font-sans" data-testid="check-investigate" onClick={() => void navigate({ to: '/chat', search: { ask: checkQuestion(c, rule) } })}>
+        <Button type="button" size="sm" variant="outline" className="ml-auto font-sans" data-testid="check-investigate" onClick={() => void navigate({ to: '/chat', search: { ask: checkQuestion(c, rule, all) } })}>
           Investigate
         </Button>
       </div>

@@ -15,6 +15,7 @@ export function anomalyHeadline(a: Anomaly): string {
       return `No traffic · silent for ${a.value}s`
     case 'check_failed':
       if (!a.check) return 'Check failing'
+      if (a.check.alsoUnreachable?.length) return `App unreachable · ${a.check.alsoUnreachable.length + 1} checks get no connection to ${a.check.origin}`
       return a.check.rule === 'in_row' ? `Check failing · "${a.check.name}" failed ${a.value} times in a row` : `Check unreliable · "${a.check.name}" failed ${a.value} of its last ${a.sampleSize} runs`
     case 'data_integrity':
       return `Wrong data · ${a.value} response${a.value === 1 ? '' : 's'} to ${of} came back wrong in ${seconds}s`
