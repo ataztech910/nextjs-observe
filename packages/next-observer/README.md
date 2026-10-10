@@ -190,10 +190,10 @@ traffic: it appears in the chat, and the investigation starts from the trace of 
 
 - twice in a row → `critical` (it is down now);
 - 3 of the last 10 runs → `warning` (it is unreliable — a check failing every third time never fails twice in a row);
-- no connection at all counts only in a row, and an app that is down is **one** anomaly naming every check that cannot
-  reach it — not one investigation per check;
+- an app that is down is **one** anomaly naming every check that cannot reach it — not one investigation per check;
 - one failure is not an anomaly: the first answer after a restart is often just slow;
-- the same check is reported once in 5 minutes; `OBSERVE_DETECTOR=off` switches this off too.
+- after an anomaly the same check — and, when nothing accepted the connection, the same address — is quiet for
+  5 minutes, whatever happens meanwhile; `OBSERVE_DETECTOR=off` switches this off too.
 
 ## Configuration
 

@@ -198,15 +198,25 @@ describe('checkQuestion', () => {
     expect(checkQuestion(facts('xxx' + '.'.repeat(9) + 'x'))).toContain('failed 1 of its last 10 runs.')
     expect(checkQuestion(facts('xxx' + '.'.repeat(10)))).toContain('is passing.')
   })
-  it('names the other checks of an address that is down, as the observer does', () => {
+  it('names the other checks that cannot reach the address, as the observer does', () => {
     const at = (name: string, url: string, series: string) => facts(series, { name, url })
-    const all = [at('a', 'http://localhost:3000/a', '.!!'), at('b', 'http://localhost:3000/b', '.!!'), at('c', 'http://localhost:3000/c', '..!'), at('d', 'http://localhost:3000/d', '.xx'), at('partner', 'https://partner.example/x', '.!!')]
-    // b is down the same way; c failed once, d got answers, the partner is another address.
-    expect(checkQuestion(all[0], undefined, all)).toMatch(/there is no trace of it — check whether the service is receiving any traffic at all\. Another check gets no connection either \(b\): http:\/\/localhost:3000 looks down as a whole, not one route\.$/)
-    expect(checkQuestion(all[3], undefined, all)).not.toContain('looks down')
+    const all = [at('a', 'http://localhost:3000/a', '.!!'), at('b', 'http://localhost:3000/b', '.!!'), at('c', 'http://localhost:3000/c', '..!'), at('d', 'http://localhost:3000/d', '.xx'), at('e', 'http://localhost:3000/e', '!!.'), at('partner', 'https://partner.example/x', '.!!')]
+    // b and c got no connection on their latest run; d got answers, e is back, the partner is another address.
+    expect(checkQuestion(all[0], undefined, all)).toMatch(/there is no trace of it — check whether the service is receiving any traffic at all\. 2 other checks get no connection either \(b, c\): http:\/\/localhost:3000 looks down as a whole, not one route\.$/)
+    // Asked about a check that is not itself down in a row, or got answers: no such claim.
     expect(checkQuestion(all[2], undefined, all)).not.toContain('looks down')
-    expect(checkQuestion(all[4], undefined, all)).not.toContain('looks down')
+    expect(checkQuestion(all[3], undefined, all)).not.toContain('looks down')
+    expect(checkQuestion(all[5], undefined, all)).not.toContain('looks down')
     expect(checkQuestion(all[0])).not.toContain('looks down')
+  })
+
+  it('and in the same words as the anomaly about that outage', () => {
+    const paths = ['/a', '/b', '/c']
+    const all = paths.map((path, i) => facts('.!!', { name: `check ${i + 1}`, url: `http://localhost:3000${path}` }))
+    const watch = new CheckWatch()
+    for (let run = 0; run < 3; run++) all.forEach((c, i) => watch.observe(validateCheck({ name: c.name, url: paths[i] }), c.history[run], run, c.url)) // '.!!': 0, 1, 2 failures in a row
+    const [anomaly] = watch.take()
+    expect(`Anomaly detected: t${checkQuestion(all[0], undefined, all).slice(1)}`).toBe(questionFor(anomaly))
   })
 
   it('says the same as the anomaly the observer raises on its own', () => {

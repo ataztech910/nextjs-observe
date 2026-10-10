@@ -9,19 +9,20 @@ import { originOf } from './words.js'
 
 /** The rule's numbers default to CHECK_RULE: two in a row, or three of the last ten — a check failing every third time never fails twice in a row. */
 export interface CheckWatchOptions extends Partial<CheckRule> {
-  /** The same check is not reported again within this time. Default 5 min, like the detector. */
+  /**
+   * After an anomaly the same check — and, when nothing accepted the connection, the same address — is quiet for this
+   * long, whatever happens meanwhile. Default 5 min, like the detector.
+   */
   cooldownMs?: number
 }
 
 const DEFAULTS = { ...CHECK_RULE, cooldownMs: 300_000 }
+const addressKey = (origin: string) => `\u0000${origin}`
 
 export class CheckWatch {
   readonly options: Required<CheckWatchOptions>
-  /** The latest runs per check: did it pass, and if not — was there no connection. */
-  private readonly recent = new Map<string, ('ok' | 'wrong' | 'no connection')[]>()
+  private readonly recent = new Map<string, boolean[]>()
   private readonly lastReportedMs = new Map<string, number>()
-  /** Failed runs in a row of one kind — no connection, or a wrong answer — per check. */
-  private readonly streak = new Map<string, { unreachable: boolean; n: number }>()
   /** Checks whose latest run got no connection, with the address they could not reach. */
   private readonly down = new Map<string, string>()
   private pending: Anomaly[] = []
@@ -37,48 +38,35 @@ export class CheckWatch {
     return { failuresInRow, shareWindow, shareFailures }
   }
 
-  /** The runner's `onResult`. */
-  observe = (check: Check, result: CheckResult, _failures?: number, url: string = check.url): void => {
+  /** The runner's `onResult`; `failures` is its count of failed runs in a row — the same number the Checks page shows. */
+  observe = (check: Check, result: CheckResult, failures: number, url: string = check.url): void => {
     const o = this.options
-    // Counted here, by kind, and not taken from the runner: after an outage the first slow answer of a restarted app
-    // would otherwise be "the fifth failure in a row" — it is the first of its kind.
-    const before = this.streak.get(check.name)
-    const unreachable = result.unreachable === true
-    const failures = result.ok ? 0 : before?.unreachable === unreachable ? before.n + 1 : 1
-    this.streak.set(check.name, { unreachable, n: failures })
     const recent = this.recent.get(check.name) ?? []
-    recent.push(result.ok ? 'ok' : result.unreachable ? 'no connection' : 'wrong')
+    recent.push(result.ok)
     if (recent.length > o.shareWindow) recent.shift()
     this.recent.set(check.name, recent)
     const origin = originOf(url)
-    // "Down" by the same rule as an anomaly: one refused connection is a blip, not an outage.
-    if (result.unreachable && failures >= o.failuresInRow) this.down.set(check.name, origin)
+    if (result.unreachable) this.down.set(check.name, origin)
     else this.down.delete(check.name)
-    // Somebody answered at this address: whatever outage was reported is over, the next one is news again.
-    if (result.status !== undefined) this.lastReportedMs.delete(addressKey(origin))
     if (result.ok) return
 
-    const failed = recent.filter((run) => run === 'wrong').length
+    const failed = recent.filter((ok) => !ok).length
     const inRow = failures >= o.failuresInRow
-    // The share rule is about answers that are wrong now and then. A connection refused once is a restart or a blip,
-    // and after an outage it would be "3 of the last 10" for every check at once — no connection counts only in a row,
-    // and is not counted towards the share either.
-    if (!inRow && (failed < o.shareFailures || result.unreachable)) return
-    // "No connection" and "a wrong answer" are different problems of one check: the app being down a minute ago must
-    // not hide the 500 it gives now that it is back.
-    const own = `${check.name}\u0000${result.unreachable ? 'no connection' : 'answer'}`
-    const last = this.lastReportedMs.get(own)
-    if (last !== undefined && result.atMs - last < o.cooldownMs) return
-    // An app that is down fails every check of it the same way: one anomaly says so, the rest would only queue the
-    // same investigation again. Checks with other intervals reach the rule later — the address is on cooldown by then.
-    const outage = result.unreachable === true
-    if (outage) {
-      const lastDown = this.lastReportedMs.get(addressKey(origin))
-      // The check's own cooldown is left alone: only what was really reported starts one.
-      if (lastDown !== undefined && result.atMs - lastDown < o.cooldownMs) return
+    if (!inRow && failed < o.shareFailures) return
+    const quiet = (key: string) => {
+      const last = this.lastReportedMs.get(key)
+      return last !== undefined && result.atMs - last < o.cooldownMs
+    }
+    if (quiet(check.name)) return
+    // Set even when the address turns out to be quiet below: this failure is part of the outage already reported,
+    // and the first slow answer of the restarted app is not worth an anomaly of its own either.
+    this.lastReportedMs.set(check.name, result.atMs)
+    if (result.unreachable) {
+      // An app that is down fails every check of it the same way: one anomaly says so, the rest would only queue the
+      // same investigation again. Checks with other intervals reach the rule later — the address is quiet by then.
+      if (quiet(addressKey(origin))) return
       this.lastReportedMs.set(addressKey(origin), result.atMs)
     }
-    this.lastReportedMs.set(own, result.atMs)
 
     this.pending.push({
       id: `check_failed-${result.atMs}-${++this.seq}`,
@@ -101,8 +89,8 @@ export class CheckWatch {
         ...(result.status === undefined ? {} : { status: result.status }),
         ...(result.unreachable ? { unreachable: true as const } : {}),
         traceId: result.traceId,
-        // An outage: take() adds the other checks of this address that are down too.
-        ...(outage ? { origin } : {}),
+        // No connection, repeatedly: maybe the whole app — take() adds the other checks that cannot reach it either.
+        ...(result.unreachable && inRow ? { origin } : {}),
       },
     })
   }
@@ -122,5 +110,3 @@ export class CheckWatch {
     return found
   }
 }
-
-const addressKey = (origin: string) => `\u0000${origin}`

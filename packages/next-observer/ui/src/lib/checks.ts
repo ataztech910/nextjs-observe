@@ -100,7 +100,7 @@ export function finishedAtMs(run: CheckResult): number {
   return run.atMs + Math.max(0, run.durationMs)
 }
 
-/** No connection, often enough in a row to count: the observer's own test for "this address is down". */
+/** Failing in a row, the latest run without a connection: when the observer asks whether the whole address is down. */
 const isDown = (c: CheckStatus, rule: CheckRule) => c.failures >= rule.failuresInRow && c.last?.unreachable === true
 
 /** The question the Investigate button sends to the AI agents — the same wording as the anomaly the observer raises. */
@@ -130,7 +130,7 @@ export function checkQuestion(c: CheckStatus, rule: CheckRule = CHECK_RULE, all:
     unreachable: failed.unreachable,
     traceId: failed.traceId,
     // The app as a whole is down when the other checks of this address are down the same way — as the observer says it.
-    ...(isDown(c, rule) ? { origin: originOf(c.url), alsoUnreachable: all.filter((o) => o.name !== c.name && isDown(o, rule) && originOf(o.url) === originOf(c.url)).map((o) => o.name) } : {}),
+    ...(isDown(c, rule) ? { origin: originOf(c.url), alsoUnreachable: all.filter((o) => o.name !== c.name && o.last?.unreachable === true && originOf(o.url) === originOf(c.url)).map((o) => o.name) } : {}),
   })
   return question.charAt(0).toUpperCase() + question.slice(1)
 }
