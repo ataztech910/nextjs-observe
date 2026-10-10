@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto'
 import type { Check } from './spec.js'
 import type { CheckResult, CheckStatus } from './types.js'
 
-export type { CheckResult, CheckStatus } from './types.js'
+export type { CheckResult, CheckRule, ChecksReport, CheckStatus } from './types.js'
 
 export interface CheckRunnerOptions {
   checks: Check[]
@@ -177,7 +177,7 @@ export class CheckRunner {
       const starting = own && cause?.code === 'ECONNREFUSED' && !this.appAnswered && this.startedAt !== null && started - this.startedAt < this.startupGraceMs
       if (starting) return generation === this.generation ? STARTING : undefined
       const reason = timedOut ? `no answer within ${check.timeoutMs} ms` : `request failed: ${cause?.code ?? cause?.message ?? (error as Error)?.message ?? String(error)}`
-      result = { atMs, ok: false, durationMs, traceId, reason }
+      result = { atMs, ok: false, durationMs, traceId, reason, ...(timedOut ? {} : { unreachable: true as const }) }
     } finally {
       clearTimeout(timer)
       this.inFlight.delete(controller)

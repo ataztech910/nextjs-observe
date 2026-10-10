@@ -11,6 +11,35 @@ export interface CheckResult {
   traceId: string
   /** Why it failed, in words; absent when ok. */
   reason?: string
+  /**
+   * The request never got to anyone (connection refused, unknown host): the app has no trace of it. A timeout is not
+   * this — the request arrived, and its trace shows where the time went.
+   */
+  unreachable?: true
+}
+
+/**
+ * When a failing check counts as an incident. One set of numbers for the rule that sends the AI agents (watch.ts)
+ * and for the colours on the Checks page.
+ */
+export interface CheckRule {
+  /** Failed runs in a row. */
+  failuresInRow: number
+  /** How many of the latest runs the share is taken from. */
+  shareWindow: number
+  /** Failed runs among them. */
+  shareFailures: number
+}
+export const CHECK_RULE: CheckRule = { failuresInRow: 2, shareWindow: 10, shareFailures: 3 }
+
+/** What GET /api/checks answers. */
+export interface ChecksReport {
+  checks: CheckStatus[]
+  /** The observer's clock, so "5 s ago" does not depend on the browser's. */
+  nowMs: number
+  rule: CheckRule
+  /** Whether a check that breaks the rule is handed to the AI agents (a detector and a chat are both on). */
+  investigates: boolean
 }
 
 export interface CheckStatus {

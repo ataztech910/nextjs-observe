@@ -188,6 +188,8 @@ describe('CheckRunner against a real HTTP server', () => {
     const result = await run(r, list[0])
     expect(result).toMatchObject({ ok: false, reason: 'no answer within 100 ms' })
     expect(result.status).toBeUndefined()
+    // The request did arrive: the app has a trace of it.
+    expect('unreachable' in result).toBe(false)
   })
 
   it('reports an app that is not there', async () => {
@@ -197,7 +199,7 @@ describe('CheckRunner against a real HTTP server', () => {
     await new Promise((resolve) => dead.close(resolve))
     const list = validateChecks([{ name: 'a', url: '/ok' }])
     const result = await new CheckRunner({ checks: list, baseUrl: `http://127.0.0.1:${port}` }).run(list[0])
-    expect(result).toMatchObject({ ok: false, reason: 'request failed: ECONNREFUSED' })
+    expect(result).toMatchObject({ ok: false, reason: 'request failed: ECONNREFUSED', unreachable: true })
   })
 
   it('a full URL ignores the base', async () => {

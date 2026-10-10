@@ -4,6 +4,7 @@
 import type { Anomaly } from '../debug/detector.js'
 import type { CheckResult } from './runner.js'
 import type { Check } from './spec.js'
+import { CHECK_RULE } from './types.js'
 
 export interface CheckWatchOptions {
   /** Failed runs in a row that make an anomaly. Default 2. */
@@ -16,7 +17,7 @@ export interface CheckWatchOptions {
   cooldownMs?: number
 }
 
-const DEFAULTS = { failuresInRow: 2, shareWindow: 10, shareFailures: 3, cooldownMs: 300_000 }
+const DEFAULTS = { ...CHECK_RULE, cooldownMs: 300_000 }
 
 export class CheckWatch {
   readonly options: Required<CheckWatchOptions>
@@ -64,6 +65,7 @@ export class CheckWatch {
         rule: inRow ? 'in_row' : 'share',
         reason: result.reason ?? 'failed',
         ...(result.status === undefined ? {} : { status: result.status }),
+        ...(result.unreachable ? { unreachable: true as const } : {}),
         traceId: result.traceId,
       },
     })

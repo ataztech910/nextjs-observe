@@ -40,13 +40,29 @@ describe('collector: ingest from the real OTLP exporter + query API', () => {
   })
 
   it('has no checks unless a runner is given', async () => {
-    expect(await get('/api/checks')).toEqual({ status: 200, body: { checks: [] } })
-    const status = { name: 'home', method: 'GET', url: 'http://app/', everySeconds: 60, expect: {}, failures: 0, history: [] }
-    const withChecks = await startCollector({ port: 0, checks: { list: () => [status] } })
-    try {
-      expect(await (await fetch(`${withChecks.url}/api/checks`)).json()).toEqual({ checks: [status] })
-    } finally {
-      await withChecks.close()
+    const rule = { failuresInRow: 2, shareWindow: 10, shareFailures: 3 }
+    const before = Date.now()
+    const { status, body } = await get('/api/checks')
+    expect({ status, body }).toEqual({ status: 200, body: { checks: [], nowMs: expect.any(Number), rule, investigates: false } })
+    expect(body.nowMs).toBeGreaterThanOrEqual(before)
+    expect(body.nowMs).toBeLessThanOrEqual(Date.now())
+
+    const check = { name: 'home', method: 'GET', url: 'http://app/', everySeconds: 60, expect: {}, failures: 0, history: [] }
+    const own = { failuresInRow: 3, shareWindow: 5, shareFailures: 2 }
+    const chat = { mode: 'mock' as const, handle: async () => {} }
+    // Investigations need both someone to raise the anomaly and someone to answer it.
+    for (const [options, expected] of [
+      [{ checks: { list: () => [check] } }, { rule, investigates: false }],
+      [{ checks: { list: () => [check], anomalies: () => [], rule: own } }, { rule: own, investigates: false }],
+      [{ chat, checks: { list: () => [check] } }, { rule, investigates: false }],
+      [{ chat, checks: { list: () => [check], anomalies: () => [], rule: own } }, { rule: own, investigates: true }],
+    ] as const) {
+      const withChecks = await startCollector({ port: 0, uiDir: false, ...options })
+      try {
+        expect(await (await fetch(`${withChecks.url}/api/checks`)).json()).toEqual({ checks: [check], nowMs: expect.any(Number), ...expected })
+      } finally {
+        await withChecks.close()
+      }
     }
   })
 

@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { api, type CheckStatus } from '@/api'
+import { api, type CheckRule, type CheckStatus } from '@/api'
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { checkQuestion, checkState, everyWords, expectWords, passedWords, sortChecks, traceWorthOpening, type CheckState } from '@/lib/checks'
+import { agoWords, checkQuestion, checkState, everyWords, expectWords, passedWords, sortChecks, summaryWords, traceWorthOpening, type CheckState } from '@/lib/checks'
 
 const REFRESH_MS = 2000
 
@@ -21,16 +22,21 @@ const TONE: Record<CheckState, { label: string; badge: string }> = {
   waiting: { label: 'waiting', badge: 'bg-muted text-muted-foreground' },
 }
 
-function ago(ms: number): string {
-  const s = Math.max(0, Math.round((Date.now() - ms) / 1000))
-  if (s < 60) return `${s}s ago`
-  return s < 3600 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`
+/** The observer's clock, ticking: its last answer plus the time since — so ages keep counting between runs and do not depend on this machine's clock. */
+function useObserverNow(nowMs: number | undefined, receivedAtMs: number): number {
+  const [, tick] = useState(0)
+  useEffect(() => {
+    const timer = setInterval(() => tick((n) => n + 1), 1000)
+    return () => clearInterval(timer)
+  }, [])
+  return (nowMs ?? Date.now()) + (nowMs === undefined ? 0 : Date.now() - receivedAtMs)
 }
 
 export function ChecksPage() {
   const checks = useQuery({ queryKey: ['checks'], queryFn: api.checks, refetchInterval: REFRESH_MS })
-  const list = checks.data ? sortChecks(checks.data.checks) : undefined
-  const notPassing = list?.filter((c) => ['failing', 'unreliable'].includes(checkState(c))).length ?? 0
+  const rule = checks.data?.rule
+  const list = checks.data ? sortChecks(checks.data.checks, rule) : undefined
+  const now = useObserverNow(checks.data?.nowMs, checks.dataUpdatedAt)
 
   return (
     <div className="space-y-6">
@@ -49,11 +55,11 @@ export function ChecksPage() {
       ) : (
         <>
           <p className="font-mono text-sm text-muted-foreground" data-testid="checks-summary">
-            {notPassing === 0 ? 'All passing.' : `${notPassing} of ${list.length} not passing — the AI agents look into a check that fails twice in a row.`}
+            {summaryWords(list, rule, checks.data?.investigates)}
           </p>
           <div className="space-y-4">
             {list.map((c) => (
-              <CheckCard key={c.name} check={c} />
+              <CheckCard key={c.name} check={c} rule={rule} now={now} />
             ))}
           </div>
         </>
@@ -62,12 +68,12 @@ export function ChecksPage() {
   )
 }
 
-function CheckCard({ check: c }: { check: CheckStatus }) {
+function CheckCard({ check: c, rule, now }: { check: CheckStatus; rule: CheckRule | undefined; now: number }) {
   const navigate = useNavigate()
-  const state = checkState(c)
+  const state = checkState(c, rule)
   const tone = TONE[state]
   const peak = Math.max(1, ...c.history.map((r) => r.durationMs))
-  const trace = traceWorthOpening(c.history)
+  const trace = traceWorthOpening(c, rule)
   return (
     <Card className="gap-0 py-0" data-testid="check" data-state={state}>
       <div className="grid gap-x-6 gap-y-4 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
@@ -89,11 +95,11 @@ function CheckCard({ check: c }: { check: CheckStatus }) {
           {c.last &&
             (c.last.ok ? (
               <p className="font-mono text-sm text-muted-foreground" data-testid="check-last">
-                {c.last.status} · {Math.round(c.last.durationMs)} ms · {ago(c.last.atMs)}
+                {c.last.status} · {Math.round(c.last.durationMs)} ms · {agoWords(now - c.last.atMs)}
               </p>
             ) : (
               <p className="font-mono text-sm break-words text-destructive" data-testid="check-last">
-                {c.last.reason} · {ago(c.last.atMs)}
+                {c.last.reason} · {agoWords(now - c.last.atMs)}
               </p>
             ))}
           {!c.last && <p className="font-mono text-sm text-muted-foreground">no run yet — the first one comes a few seconds after the app starts answering</p>}
@@ -128,9 +134,9 @@ function CheckCard({ check: c }: { check: CheckStatus }) {
             </Link>
           </span>
         ) : (
-          <span>no trace — nothing has answered yet</span>
+          <span>{c.last ? 'no trace — the request reached nobody' : 'no trace yet'}</span>
         )}
-        <Button type="button" size="sm" variant="outline" className="ml-auto font-sans" data-testid="check-investigate" onClick={() => void navigate({ to: '/chat', search: { ask: checkQuestion(c) } })}>
+        <Button type="button" size="sm" variant="outline" className="ml-auto font-sans" data-testid="check-investigate" onClick={() => void navigate({ to: '/chat', search: { ask: checkQuestion(c, rule) } })}>
           Investigate
         </Button>
       </div>
