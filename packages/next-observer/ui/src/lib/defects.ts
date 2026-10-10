@@ -8,7 +8,17 @@ export interface DefectFacts {
   affected: { operation: string }[]
   /** Default 'code' — an operation that is a piece of code. */
   category?: 'browser-error' | 'request' | 'code'
+  /** Who made the request or hit the error. Default 'server'. */
+  source?: 'browser' | 'server'
   pages?: { path: string }[]
+}
+
+/** "The browser's request" or, for a call a server made to another service, "The outgoing request". */
+export const requestWords = (source: DefectFacts['source']) => (source === 'browser' ? "The browser's request" : 'The outgoing request')
+
+/** The requests that failed because of a defect, without the one that is just the same route seen from the caller. */
+export function affectedBy<T extends { operation: string }>(d: { operation: string; affected: T[] }): T[] {
+  return d.affected.filter((a) => !sameRoute(a.operation, d.operation))
 }
 
 /**
@@ -18,8 +28,9 @@ export interface DefectFacts {
 export function describeDefect(d: DefectFacts): string {
   const pages = d.pages?.length ? ` on ${d.pages.map((p) => p.path).join(', ')}` : ''
   if (d.category === 'browser-error') return `In the browser${pages}: ${d.operation} "${d.message}"`
-  if (d.category === 'request') return `The browser's request ${d.operation} fails with "${d.message}"`
-  const where = d.affected.length ? ` (requests to ${d.affected[0].operation} fail because of it)` : ''
+  if (d.category === 'request') return `${requestWords(d.source)} ${d.operation} fails with "${d.message}"`
+  const affected = affectedBy(d)
+  const where = affected.length ? ` (requests to ${affected[0].operation} fail because of it)` : ''
   return `${d.operation} fails with "${d.message}"${where}`
 }
 

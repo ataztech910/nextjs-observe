@@ -46,12 +46,18 @@ describe('spanOperation', () => {
     expect(get('http://localhost:3000/api/products')).toBe('GET /api/products')
     expect(get('http://localhost:3000/api/v2/checkout')).toBe('GET /api/v2/checkout')
     expect(get('http://localhost:3000/')).toBe('GET /')
-    // "deadbeef" is hex and 8 long — an id by this rule; "feedback" is not hex.
+    // Words made of hex letters are words: a hex id has a digit in it.
     expect(get('http://localhost:3000/api/feedback')).toBe('GET /api/feedback')
+    expect(get('http://localhost:3000/api/deadbeef')).toBe('GET /api/deadbeef')
+    expect(get('http://localhost:3000/api/cafebabe/9f86d081')).toBe('GET /api/cafebabe/:id')
     // A long route name is still a name: only a long token WITH a digit is an opaque id.
     expect(get('http://localhost:3000/api/recently-viewed-products')).toBe('GET /api/recently-viewed-products')
     expect(get('http://localhost:3000/api/recommended_products_for_you')).toBe('GET /api/recommended_products_for_you')
     expect(get('http://localhost:3000/s/V1StGXR8_Z5jdHi6B-myT')).toBe('GET /s/:id')
+    // …and a long lower-case name with separators and a digit is still a name; without separators it is a token.
+    expect(get('http://localhost:3000/api/recently-viewed-products-v2')).toBe('GET /api/recently-viewed-products-v2')
+    expect(get('http://localhost:3000/api/oauth2-authorization-callback')).toBe('GET /api/oauth2-authorization-callback')
+    expect(get('http://localhost:3000/s/k3j4h5g6f7d8s9a0q1w2e3')).toBe('GET /s/:id')
   })
 
   it('anything that is not a method-only client span keeps its name', () => {

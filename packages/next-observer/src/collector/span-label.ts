@@ -18,22 +18,35 @@ export function requestParts(span: Labelled): { method: string; pathname: string
   }
 }
 
+/** The HTTP status of a span, under either the old or the stable attribute name; undefined when there is none. */
+export function statusCode(span: Pick<NormalizedSpan, 'attributes'>): number | undefined {
+  const code = span.attributes['http.status_code'] ?? span.attributes['http.response.status_code']
+  const n = typeof code === 'string' ? Number(code) : code
+  return typeof n === 'number' && Number.isFinite(n) ? n : undefined
+}
+
 export function spanLabel(span: Labelled): string {
   const request = requestParts(span)
   return request ? `${request.method} ${request.pathname}` : span.name
 }
 
-// A path segment that names one thing rather than a kind of thing: a number, a UUID, a long hex run.
-const ID_SEGMENT = /^(\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{8,})$/i
-// …or a long opaque token (nanoid, a signed id). It must contain a digit: `recently-viewed-products` is 24
-// characters of route name, not an id.
-const isToken = (segment: string) => segment.length >= 20 && /^[A-Za-z0-9_-]+$/.test(segment) && /\d/.test(segment)
+// A path segment that names one thing rather than a kind of thing: a number, a UUID, a long hex run with a digit in
+// it ("deadbeef" and "cafebabe" are words someone may well name a route).
+const ID_SEGMENT = /^(\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|(?=[a-f]*\d)[0-9a-f]{8,})$/i
+// …or a long opaque token (nanoid, a signed id): 20+ characters with a digit, and either mixed case or no separators.
+// Route names are long too — `recently-viewed-products-v2`, `oauth2-authorization-callback` — but they are lower-case
+// words joined by separators.
+const isToken = (segment: string) =>
+  segment.length >= 20 && /^[A-Za-z0-9_-]+$/.test(segment) && /\d/.test(segment) && ((/[a-z]/.test(segment) && /[A-Z]/.test(segment)) || !/[-_]/.test(segment))
 
 /**
  * What a span is grouped by. For everything but a browser/HTTP client request that is its name. A client request is
  * named by its method only, so all failing GETs would be one "GET": here it gets its path, with id-like segments
  * replaced — `/api/inventory/1` and `/api/inventory/2` are the same operation, `GET /api/inventory/:id`. (The server
  * span knows the real route pattern; the browser only ever sees the URL.)
+ *
+ * Known limit: an id that is a word (`/api/products/blue-shirt` for `/api/products/[slug]`) cannot be told from a
+ * route name, so such requests stay one operation per URL.
  */
 export function spanOperation(span: Labelled): string {
   const request = requestParts(span)

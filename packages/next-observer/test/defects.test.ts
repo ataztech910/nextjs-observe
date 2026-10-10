@@ -49,6 +49,16 @@ describe('messageShape', () => {
     expect(messageShape('Inventory service timeout: upstream not responding')).toBe('Inventory service timeout: upstream not responding')
   })
 
+  it('a status code inside the text is part of what the message says: 404 and 500 stay different', () => {
+    expect(messageShape('Request failed with status code 404')).toBe('Request failed with status code 404')
+    expect(messageShape('Request failed with status code 500')).toBe('Request failed with status code 500')
+    expect(messageShape('HTTP 503 from upstream after 3 retries, order 4127')).toBe('HTTP 503 from upstream after <n> retries, order <n>')
+    expect(messageShape('status 404 then HTTP 500')).toBe('status 404 then HTTP 500')
+    // Not a status: a number that merely follows other words, or more than three digits.
+    expect(messageShape('Order 404 not found')).toBe('Order <n> not found')
+    expect(messageShape('status code 40412')).toBe('status code <n>')
+  })
+
   it('a UUID is one id, whatever letters its short groups contain', () => {
     expect(messageShape('User 550e8400-e29b-41d4-a716-446655440000 not found')).toBe('User <id> not found')
     expect(messageShape('User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 not found')).toBe('User <id> not found')
@@ -185,11 +195,34 @@ describe('computeDefects', () => {
       expect(asked).toEqual([])
       // With the whole history at hand it can be: nothing was dropped, so "first seen in v2" is a fact.
       expect(compute([request], { ...options, historyComplete: true })[0].isNew).toBe(true)
-      // A piece of code is still checked by its name.
+      // The same for a browser error: its span is named after the kind ("uncaught error"), and some uncaught error
+      // happened in every version.
       const thrown = caught('uncaught error', MIN, 'x is undefined', '/cart')
       thrown.serviceVersion = 'v2'
-      expect(compute([thrown], options)[0].isNew).toBe(true)
-      expect(asked).toEqual(['shop-browser/uncaught error@v1'])
+      expect(compute([thrown], options)[0].isNew).toBe(false)
+      expect(asked).toEqual([])
+      // A piece of code is still checked by its name.
+      const code = browser('applyCoupon', MIN, { message: 'coupon is undefined', serviceVersion: 'v2' })
+      expect(compute([code], options)[0].isNew).toBe(true)
+      expect(asked).toEqual(['shop-browser/applyCoupon@v1'])
+    })
+
+    it('what a defect is comes from its most recent occurrence, like its message', () => {
+      // An older span of the same name without the APM agent's marker, then the marked ones.
+      const old = browser('uncaught error', 30 * MIN, { message: 'x is undefined' })
+      const fresh = caught('uncaught error', MIN, 'x is undefined', '/cart')
+      expect(compute([old, fresh])[0]).toMatchObject({ category: 'browser-error', count: 1, pages: [{ path: '/cart', count: 1 }] })
+    })
+
+    it('affected rows keep a request and a span literally named like its label apart', () => {
+      const viaRequest = browser('GET', 2 * MIN, { kind: 'client', attributes: { 'url.full': 'http://localhost:3000/api/x', 'http.status_code': 500 } })
+      const origin1 = span('loadX', 2 * MIN, { traceId: viaRequest.traceId, parentSpanId: viaRequest.spanId, message: 'boom' })
+      const viaCode = browser('GET /api/x', MIN, {})
+      const origin2 = span('loadX', MIN, { traceId: viaCode.traceId, parentSpanId: viaCode.spanId, message: 'boom' })
+      const [defect] = compute([viaRequest, origin1, viaCode, origin2])
+      expect(defect.affected).toHaveLength(2)
+      expect(defect.affected.find((a) => a.spanName === 'GET')).toMatchObject({ operation: 'GET /api/x', count: 1 })
+      expect(defect.affected.find((a) => a.spanName === 'GET /api/x')).toMatchObject({ operation: 'GET /api/x', count: 1 })
     })
   })
 
@@ -337,6 +370,7 @@ describe('sameRoute', () => {
     expect(sameRoute('GET /api/inventory/[id]', 'GET /api/products/:id')).toBe(false)
     expect(sameRoute('GET /api/inventory/[id]', 'POST /api/inventory/:id')).toBe(false)
     expect(sameRoute('checkInventory', 'GET /api/inventory/:id')).toBe(false)
+    expect(sameRoute('GET /api/users/[id]', 'GET /api/users/:identity')).toBe(false)
   })
 })
 
@@ -349,8 +383,13 @@ describe('describeDefect', () => {
   })
 
   it('a request is named as a request; code as before', () => {
-    expect(describeDefect({ ...base, operation: 'GET /api/coupons/:id', message: 'HTTP 404', category: 'request' })).toBe('The browser\'s request GET /api/coupons/:id fails with "HTTP 404"')
+    expect(describeDefect({ ...base, operation: 'GET /api/coupons/:id', message: 'HTTP 404', category: 'request', source: 'browser' })).toBe('The browser\'s request GET /api/coupons/:id fails with "HTTP 404"')
+    // A call the server made to another service is not the browser's.
+    expect(describeDefect({ ...base, operation: 'GET /api/charge/:id', message: 'HTTP 503', category: 'request', source: 'server' })).toBe('The outgoing request GET /api/charge/:id fails with "HTTP 503"')
+    expect(describeDefect({ ...base, operation: 'GET /api/charge/:id', message: 'HTTP 503', category: 'request' })).toBe('The outgoing request GET /api/charge/:id fails with "HTTP 503"')
     expect(describeDefect({ ...base, operation: 'checkInventory', category: 'code', affected: [{ operation: 'GET /api/inventory/[id]' }] })).toBe('checkInventory fails with "x is undefined" (requests to GET /api/inventory/[id] fail because of it)')
+    // The browser's request to the failing route itself is not "another request failing because of it".
+    expect(describeDefect({ ...base, operation: 'GET /api/inventory/[id]', category: 'code', affected: [{ operation: 'GET /api/inventory/:id' }] })).toBe('GET /api/inventory/[id] fails with "x is undefined"')
     // No category given (older callers): treated as code.
     expect(describeDefect({ ...base, operation: 'checkInventory' })).toBe('checkInventory fails with "x is undefined"')
   })

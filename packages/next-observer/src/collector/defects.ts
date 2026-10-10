@@ -2,8 +2,7 @@
 // A failing function also marks every span above it as failed, so a defect is counted where the error ORIGINATED —
 // the deepest failed span — and the route that returned 500 because of it is listed as affected.
 import { isFrameworkSpan } from './framework.js'
-import { statusCode } from './overview.js'
-import { requestParts, spanOperation } from './span-label.js'
+import { requestParts, spanOperation, statusCode } from './span-label.js'
 import type { NormalizedSpan } from './types.js'
 
 export interface DefectsOptions {
@@ -127,6 +126,14 @@ function categoryOf(span: NormalizedSpan): Defect['category'] {
  * hashes), then any remaining digits.
  */
 export function messageShape(message: string): string {
+  // A status code inside the text ("Request failed with status code 404", "HTTP 500") is what the message says, not
+  // an id: 404 and 500 must stay different defects. It is fenced off before the digits are replaced.
+  const statuses: string[] = []
+  const fenced = message.replace(/\b(HTTP|status(?: code)?)(\s+)(\d{3})\b/gi, (_all, word: string, space: string, code: string) => (statuses.push(code), `${word}${space}\u00010\u0001`))
+  return shapeIds(fenced).replace(/\u0001<n>\u0001/g, () => statuses.shift()!)
+}
+
+function shapeIds(message: string): string {
   return message
     .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '<id>')
     .replace(/\b[0-9a-f]{8,}\b/gi, '<id>')
@@ -198,7 +205,8 @@ export function computeDefects(spans: NormalizedSpan[], options: DefectsOptions)
       const top = topOf.get(s)!
       if (top === s) continue
       const operation = operationOf(top)
-      const key = `${top.service}\u0000${operation}`
+      // Like the defect's own key: a request and a span literally named like its label are different rows.
+      const key = `${top.service}\u0000${top.name}\u0000${operation}`
       const row = affected.get(key) ?? { service: top.service, operation, spanName: top.name, count: 0 }
       row.count++
       affected.set(key, row)
@@ -206,7 +214,8 @@ export function computeDefects(spans: NormalizedSpan[], options: DefectsOptions)
     const latest = order[order.length - 1]
     const previous = order[order.length - 2]
     const firstInLatest = order.length > 1 && first.serviceVersion === latest
-    const category = categoryOf(first)
+    // What kind of thing this is comes from its most recent occurrence — the one the card's message is taken from too.
+    const category = categoryOf(last)
     // `url.path` means "the page" only on the APM agent's browser-error spans; on a server HTTP span the same standard
     // attribute is the request path.
     const pages = new Map<string, number>()
@@ -216,15 +225,17 @@ export function computeDefects(spans: NormalizedSpan[], options: DefectsOptions)
         if (typeof path === 'string' && path) pages.set(path, (pages.get(path) ?? 0) + 1)
       }
     }
-    // "Did this operation run in the previous version?" can be asked by span name only. For a request the name is the
-    // bare method — some GET ran in every version — so there is no evidence either way.
-    const ranBefore = category === 'request' ? false : (options.ranIn?.(first.service, first.name, previous) ?? false)
+    // "Did this operation run in the previous version?" can be asked by span name only. That is evidence for a piece
+    // of code. For a request the name is the bare method, for a browser error the kind of error — some GET ran and
+    // some console.error was written in every version, which says nothing about this one. So once old spans were
+    // dropped, those two are not called new: a missing badge is cheaper than a false "first appeared in v2".
+    const ranBefore = category === 'code' ? (options.ranIn?.(first.service, first.name, previous) ?? false) : false
     defects.push({
       id,
       service: first.service,
-      operation: operationOf(first),
-      spanName: first.name,
-      source: isBrowser(first) ? 'browser' : 'server',
+      operation: operationOf(last),
+      spanName: last.name,
+      source: isBrowser(last) ? 'browser' : 'server',
       category,
       pages: [...pages].map(([path, count]) => ({ path, count })).sort((a, b) => b.count - a.count).slice(0, PAGES),
       message: errorMessage(last),

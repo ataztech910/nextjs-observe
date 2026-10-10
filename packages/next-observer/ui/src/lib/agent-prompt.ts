@@ -4,6 +4,7 @@ import { isFrameworkSpan } from '../../../src/collector/framework.js'
 import type { EvidenceCard } from '../../../src/collector/chat.js'
 import type { Defect } from '../../../src/collector/defects.js'
 import type { NormalizedSpan } from '../../../src/collector/types.js'
+import { affectedBy, requestWords } from './defects.js'
 import { rootSpan, timeByOperation } from './trace-analysis.js'
 import { formatDuration } from './waterfall.js'
 
@@ -116,14 +117,15 @@ export function defectPrompt(d: Defect): string {
     d.category === 'browser-error'
       ? `In the browser (service ${d.service}), ${d.pages.length ? `on ${d.pages.map((p) => `\`${p.path}\``).join(', ')}, ` : ''}this was recorded as "${d.operation}":`
       : d.category === 'request'
-        ? `The browser's request \`${d.operation}\` (service ${d.service}) fails with:`
+        ? `${requestWords(d.source)} \`${d.operation}\` (service ${d.service}) fails with:`
         : `\`${d.operation}\` (service ${d.service}) fails with:`,
     '```',
     `${d.type ? `${d.type}: ` : ''}${d.message}`,
     '```',
     `${d.count} ${d.count === 1 ? 'occurrence' : 'occurrences'} in the selected window.`,
   ]
-  if (d.affected.length > 0) lines.push(`Requests failing because of it: ${d.affected.map((a) => `\`${a.operation}\` (${a.count})`).join(', ')}.`)
+  const affected = affectedBy(d)
+  if (affected.length > 0) lines.push(`Requests failing because of it: ${affected.map((a) => `\`${a.operation}\` (${a.count})`).join(', ')}.`)
   if (d.isNew) lines.push(`It first appeared in version ${d.firstSeenVersion}; it was not seen in earlier versions.`)
   else if (d.versions.length > 0) lines.push(`Seen in ${d.versions.length === 1 ? 'version' : 'versions'} ${d.versions.join(', ')}; first seen in ${d.firstSeenVersion ?? 'an unknown version'}.`)
   if (d.exampleTraceIds.length > 0) lines.push(`Example traces: ${d.exampleTraceIds.map((id) => `\`${id}\``).join(', ')}.`)

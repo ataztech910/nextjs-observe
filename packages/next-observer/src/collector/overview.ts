@@ -1,6 +1,7 @@
 // The dashboard's numbers, computed in one pass over a time window: request volume by status class, latency, errors,
 // the slowest and the busiest routes — each compared with the window just before it ("−13% since last period").
 import { percentile } from './memory-storage.js'
+import { statusCode } from './span-label.js'
 import type { NormalizedSpan } from './types.js'
 
 export interface OverviewOptions {
@@ -57,11 +58,7 @@ const TOP = 5
 /** A request is a server span — the same definition the anomaly detector uses. */
 export const isRequest = (span: NormalizedSpan) => span.kind === 'server'
 
-export function statusCode(span: NormalizedSpan): number | undefined {
-  const code = span.attributes['http.status_code'] ?? span.attributes['http.response.status_code']
-  const n = typeof code === 'string' ? Number(code) : code
-  return typeof n === 'number' && Number.isFinite(n) ? n : undefined
-}
+export { statusCode }
 
 /** 5xx, or an error status without a code: the server failed. 4xx: the client asked for something wrong. */
 export function statusClass(span: NormalizedSpan): 'ok' | 'client' | 'server' {
