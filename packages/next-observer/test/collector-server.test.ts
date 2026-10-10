@@ -50,6 +50,27 @@ describe('collector: ingest from the real OTLP exporter + query API', () => {
     }
   })
 
+  it('keeps the spans of its own check requests away from the detector, but stores them', async () => {
+    const observed: string[][] = []
+    const mine = 'c'.repeat(32)
+    const real = 'd'.repeat(32)
+    const own = await startCollector({
+      port: 0,
+      uiDir: false,
+      detector: { observe: (spans) => void observed.push(spans.map((s) => s.traceId)), check: () => [] },
+      checks: { list: () => [], isCheckTrace: (traceId) => traceId === mine },
+    })
+    try {
+      const span = (traceId: string) => ({ traceId, spanId: 'e'.repeat(16), name: 'GET /', kind: 2, startTimeUnixNano: '1000000000', endTimeUnixNano: '1020000000' })
+      const res = await post(JSON.stringify({ resourceSpans: [{ resource: { attributes: [{ key: 'service.name', value: { stringValue: 'shop' } }] }, scopeSpans: [{ spans: [span(mine), span(real)] }] }] }), undefined, own.url)
+      expect(res.status).toBe(200)
+      expect(observed).toEqual([[real]])
+      expect(((await (await fetch(`${own.url}/api/traces/${mine}`)).json()) as { spans: unknown[] }).spans).toHaveLength(1)
+    } finally {
+      await own.close()
+    }
+  })
+
   it('lists services with versions', async () => {
     const { body } = await get('/api/services')
     expect(body).toEqual([{ name: 'shop', versions: ['v2'], spanCount: 2, lastSeenMs: expect.any(Number), versionLastSeenMs: { v2: expect.any(Number) } }])

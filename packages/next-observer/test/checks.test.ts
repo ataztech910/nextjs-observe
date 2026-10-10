@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { CHECK_HEADER, CheckRunner } from '../src/checks/runner.js'
+import { CHECK_HEADER, CheckRunner, MAX_BODY_BYTES, type CheckResult } from '../src/checks/runner.js'
 import { validateCheck, validateChecks } from '../src/checks/spec.js'
 
 describe('observe.checks: validation', () => {
@@ -26,6 +26,10 @@ describe('observe.checks: validation', () => {
   it('sends a string body as is and keeps the content type the check set', () => {
     expect(validateCheck({ name: 'a', url: '/a', method: 'PUT', body: 'x=1' })).toMatchObject({ body: 'x=1', headers: {} })
     expect(validateCheck({ name: 'a', url: '/a', method: 'PUT', headers: { 'Content-Type': 'application/vnd.api+json' }, body: {} }).headers).toEqual({ 'content-type': 'application/vnd.api+json' })
+  })
+
+  it('a body text may be expected when at least one good status has a body', () => {
+    expect(validateCheck({ name: 'a', url: '/a', expect: { status: [200, 204], bodyIncludes: 'x' } }).expect).toEqual({ status: [200, 204], bodyIncludes: 'x' })
   })
 
   it('accepts several good statuses', () => {
@@ -57,8 +61,16 @@ describe('observe.checks: validation', () => {
     [{ name: 'a', url: '/a', expect: { status: [] } }, 'check "a": `expect.status`'],
     [{ name: 'a', url: '/a', expect: { maxMs: 0 } }, 'check "a": `expect.maxMs` must be a number from 1 to 120000'],
     [{ name: 'a', url: '/a', expect: { bodyIncludes: '' } }, 'check "a": `expect.bodyIncludes` must be a non-empty string'],
+    [{ name: 'a', url: '/a', method: 'HEAD', expect: { bodyIncludes: 'x' } }, 'check "a": `expect.bodyIncludes` cannot be used with HEAD'],
+    [{ name: 'a', url: '/a', expect: { status: 204, bodyIncludes: 'x' } }, 'check "a": `expect.bodyIncludes` cannot be used with status 204'],
+    [{ name: 'a', url: '/a', expect: { status: [204, 304], bodyIncludes: 'x' } }, 'check "a": `expect.bodyIncludes` cannot be used with status 204 or 304'],
+
   ])('rejects %j', (raw, message) => {
     expect(() => validateCheck(raw)).toThrow(message)
+  })
+
+  it.each([['a function', () => ({})], ['a symbol', Symbol('x')], ['a BigInt inside', { n: 1n }]])('rejects a body that is not data: %s', (_what, body) => {
+    expect(() => validateCheck({ name: 'a', url: '/a', method: 'POST', body })).toThrow('check "a": `body` cannot be sent as JSON')
   })
 
   it('wants an array with unique names', () => {
@@ -83,6 +95,9 @@ describe('CheckRunner against a real HTTP server', () => {
       if (req.url === '/login-wall') return void res.writeHead(302, { location: '/ok' }).end()
       if (req.url === '/refuse') return void res.writeHead(400).end('{"error":"quantity must be an integer from 1 to 10"}')
       if (req.url === '/hang') return // never answers
+      if (req.url === '/events') return void res.writeHead(200, { 'content-type': 'text/event-stream' }).write('data: hello\n\n') // stays open
+      if (req.url === '/endless') return void res.writeHead(200).write('x'.repeat(MAX_BODY_BYTES + 10)) // a megabyte, then stays open
+      if (req.url === '/big') return void res.writeHead(200).end(`${'x'.repeat(MAX_BODY_BYTES - 3)}needle-across-the-limit${'y'.repeat(2 * MAX_BODY_BYTES)}tail`)
       res.writeHead(404).end()
     })
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -96,6 +111,12 @@ describe('CheckRunner against a real HTTP server', () => {
     seen.length = 0
   })
 
+  const run = async (r: CheckRunner, check: Parameters<CheckRunner['run']>[0]): Promise<CheckResult> => {
+    const result = await r.run(check)
+    if (!result) throw new Error('no result')
+    return result
+  }
+
   const runner = (checks: unknown[], extra: Partial<ConstructorParameters<typeof CheckRunner>[0]> = {}) => {
     const list = validateChecks(checks)
     return { list, runner: new CheckRunner({ checks: list, baseUrl: `${base}/`, ...extra }) }
@@ -103,7 +124,7 @@ describe('CheckRunner against a real HTTP server', () => {
 
   it('passes on a 2xx and sends its own trace id and mark', async () => {
     const { list, runner: r } = runner([{ name: 'catálogo', url: '/ok', headers: { traceparent: 'mine', 'x-observe-check': 'mine', 'x-team': 'web' } }])
-    const result = await r.run(list[0])
+    const result = await run(r, list[0])
     expect(result).toEqual({ atMs: expect.any(Number), ok: true, durationMs: expect.any(Number), status: 200, traceId: expect.stringMatching(/^[0-9a-f]{32}$/) })
     expect(seen[0]).toMatchObject({ method: 'GET', url: '/ok' })
     expect(seen[0].headers.traceparent).toMatch(new RegExp(`^00-${result.traceId}-[0-9a-f]{16}-01$`))
@@ -113,7 +134,7 @@ describe('CheckRunner against a real HTTP server', () => {
 
   it('uses a fresh trace id for every run', async () => {
     const { list, runner: r } = runner([{ name: 'a', url: '/ok' }])
-    expect((await r.run(list[0])).traceId).not.toBe((await r.run(list[0])).traceId)
+    expect((await run(r, list[0])).traceId).not.toBe((await run(r, list[0])).traceId)
   })
 
   it('fails on a status outside 2xx when none is expected', async () => {
@@ -142,14 +163,16 @@ describe('CheckRunner against a real HTTP server', () => {
   it('judges the time of the whole answer', async () => {
     let t = 1000
     const clock = () => (t += 400) // every reading is 400 ms later: start, then end
-    const { list, runner: r } = runner([{ name: 'fast enough', url: '/ok', expect: { maxMs: 400 } }, { name: 'too slow', url: '/ok', expect: { maxMs: 399 } }], { now: clock })
-    expect(await r.run(list[0])).toMatchObject({ ok: true, durationMs: 400 })
+    // The wall clock jumping back (NTP, sleep) must not change the verdict: durations come from `elapsed`.
+    let wall = 5000
+    const { list, runner: r } = runner([{ name: 'fast enough', url: '/ok', expect: { maxMs: 400 } }, { name: 'too slow', url: '/ok', expect: { maxMs: 399 } }], { elapsed: clock, now: () => (wall -= 3000) })
+    expect(await r.run(list[0])).toMatchObject({ ok: true, durationMs: 400, atMs: 2000 })
     expect(await r.run(list[1])).toMatchObject({ ok: false, durationMs: 400, reason: 'took 400 ms, limit 399 ms' })
   })
 
   it('gives up after the timeout', async () => {
     const { list, runner: r } = runner([{ name: 'a', url: '/hang', timeoutMs: 100 }])
-    const result = await r.run(list[0])
+    const result = await run(r, list[0])
     expect(result).toMatchObject({ ok: false, reason: 'no answer within 100 ms' })
     expect(result.status).toBeUndefined()
   })
@@ -187,8 +210,69 @@ describe('CheckRunner against a real HTTP server', () => {
     expect(onResult.mock.calls.map((c) => c[2])).toEqual([0, 1, 2])
     await r.run(failing)
     expect(r.list()[0].history.map((h) => h.ok)).toEqual([false, false, false]) // only the last 3 kept
+    await r.run(failing)
+    // The streak is counted, not read off the 3 results that are kept.
+    expect(r.list()[0].failures).toBe(4)
+    expect(onResult.mock.calls.at(-1)?.[2]).toBe(4)
     await r.run(list[0])
     expect(r.list()[0]).toMatchObject({ failures: 0, last: { ok: true } })
+  })
+
+  it('remembers its own trace ids — their spans are not real traffic', async () => {
+    const { list, runner: r } = runner([{ name: 'a', url: '/ok' }, { name: 'gone', url: '/hang', timeoutMs: 100 }])
+    const ok = await run(r, list[0])
+    const failed = await run(r, list[1])
+    expect(r.isCheckTrace(ok.traceId)).toBe(true)
+    expect(r.isCheckTrace(failed.traceId)).toBe(true)
+    expect(r.isCheckTrace('0'.repeat(32))).toBe(false)
+  })
+
+  it('does not wait for an event stream to end', async () => {
+    const { list, runner: r } = runner([{ name: 'events', url: '/events', timeoutMs: 1000 }])
+    expect(await r.run(list[0])).toMatchObject({ ok: true, status: 200 })
+  })
+
+  it('reads only the first megabyte of a body', async () => {
+    const { list, runner: r } = runner([
+      { name: 'start', url: '/big', expect: { bodyIncludes: 'xxxx' } },
+      { name: 'cut', url: '/big', expect: { bodyIncludes: 'needle-across-the-limit' } },
+      { name: 'end', url: '/big', expect: { bodyIncludes: 'tail' } },
+    ])
+    expect(await r.run(list[0])).toMatchObject({ ok: true })
+    expect(await r.run(list[1])).toMatchObject({ ok: false, reason: 'body does not contain "needle-across-the-limit"' })
+    expect(await r.run(list[2])).toMatchObject({ ok: false })
+  })
+
+  it('stops reading at the limit instead of waiting for the end of the body', async () => {
+    const { list, runner: r } = runner([{ name: 'endless', url: '/endless', timeoutMs: 2000 }])
+    expect(await r.run(list[0])).toMatchObject({ ok: true, status: 200 })
+  })
+
+  it('stop drops the requests on their way: nothing recorded, nobody told', async () => {
+    const onResult = vi.fn()
+    const { list, runner: r } = runner([{ name: 'a', url: '/hang', timeoutMs: 5000 }], { onResult })
+    const pending = r.run(list[0])
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    const before = Date.now()
+    r.stop()
+    expect(await pending).toBeUndefined()
+    expect(Date.now() - before).toBeLessThan(1000) // aborted, not waited out
+    expect(r.list()[0]).toMatchObject({ failures: 0, history: [] })
+    expect(onResult).not.toHaveBeenCalled()
+  })
+
+  it('a run that answers after stop is not recorded either', async () => {
+    const onResult = vi.fn()
+    let release!: () => void
+    const slow = vi.fn(() => new Promise<Response>((resolve) => (release = () => resolve(new Response('ok')))))
+    const list = validateChecks([{ name: 'a', url: '/a' }])
+    const r = new CheckRunner({ checks: list, baseUrl: 'http://app', fetch: slow as unknown as typeof fetch, onResult })
+    const pending = r.run(list[0])
+    r.stop()
+    release()
+    expect(await pending).toBeUndefined()
+    expect(r.list()[0].history).toEqual([])
+    expect(onResult).not.toHaveBeenCalled()
   })
 
   it('a throwing listener does not break the run', async () => {
@@ -247,6 +331,73 @@ describe('CheckRunner: timers', () => {
     await vi.advanceTimersByTimeAsync(5000)
     expect(fetchMock).toHaveBeenCalledTimes(2)
     r.stop()
+  })
+
+  it('a restart is not held back by a run left from before it', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn((_url: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => init.signal?.addEventListener('abort', () => reject(new Error('aborted')))))
+    const r = new CheckRunner({ checks: validateChecks([{ name: 'a', url: '/a', everySeconds: 5, timeoutMs: 60_000 }]), baseUrl: 'http://app', fetch: fetchMock as unknown as typeof fetch, firstDelayMs: 0 })
+    r.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    r.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    r.stop()
+  })
+
+  it('nor by one whose request cannot be cancelled', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn(() => new Promise<Response>(() => {})) // ignores the abort signal
+    const r = new CheckRunner({ checks: validateChecks([{ name: 'a', url: '/a', everySeconds: 5, timeoutMs: 60_000 }]), baseUrl: 'http://app', fetch: fetchMock as unknown as typeof fetch, firstDelayMs: 0 })
+    r.start()
+    await vi.advanceTimersByTimeAsync(0)
+    r.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    r.stop()
+  })
+
+  describe('while the app is still starting', () => {
+    const refused = () => Promise.reject(Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } }))
+
+    it('a refused connection is not a result until the grace time is over', async () => {
+      vi.useFakeTimers()
+      const onResult = vi.fn()
+      const fetchMock = vi.fn(refused)
+      const r = new CheckRunner({ checks: validateChecks([{ name: 'a', url: '/a', everySeconds: 10 }]), baseUrl: 'http://app', fetch: fetchMock as unknown as typeof fetch, firstDelayMs: 0, startupGraceMs: 25_000, onResult })
+      r.start()
+      await vi.advanceTimersByTimeAsync(20_000) // runs at 0, 10 and 20 s
+      expect(fetchMock).toHaveBeenCalledTimes(3)
+      expect(r.list()[0]).toMatchObject({ failures: 0, history: [] })
+      expect(onResult).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(10_000) // 30 s: nobody is listening, and that is the news
+      expect(r.list()[0]).toMatchObject({ failures: 1, last: { ok: false, reason: 'request failed: ECONNREFUSED' } })
+      r.stop()
+    })
+
+    it('once the app has answered, a refused connection counts at once', async () => {
+      vi.useFakeTimers()
+      let up = true
+      const fetchMock = vi.fn(() => (up ? Promise.resolve(response()) : refused()))
+      const r = new CheckRunner({ checks: validateChecks([{ name: 'a', url: '/a', everySeconds: 10 }]), baseUrl: 'http://app', fetch: fetchMock as unknown as typeof fetch, firstDelayMs: 0 })
+      r.start()
+      await vi.advanceTimersByTimeAsync(0)
+      up = false
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(r.list()[0].history.map((h) => h.ok)).toEqual([true, false])
+      r.stop()
+    })
+
+    it('a timeout counts even during the grace time: something is listening and not answering', async () => {
+      vi.useFakeTimers()
+      const fetchMock = vi.fn((_url: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => init.signal?.addEventListener('abort', () => reject(new Error('aborted')))))
+      const r = new CheckRunner({ checks: validateChecks([{ name: 'a', url: '/a', everySeconds: 10, timeoutMs: 1000 }]), baseUrl: 'http://app', fetch: fetchMock as unknown as typeof fetch, firstDelayMs: 0 })
+      r.start()
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(r.list()[0]).toMatchObject({ failures: 1, last: { reason: 'no answer within 1000 ms' } })
+      r.stop()
+    })
   })
 
   it('start twice keeps one set of timers', async () => {

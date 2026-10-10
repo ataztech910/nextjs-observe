@@ -59,7 +59,7 @@ export interface CollectorOptions {
   /** How often the detector window is checked. Default 5 s. */
   detectorIntervalMs?: number
   /** Scheduled checks (observe.checks.ts) whose results /api/checks reports; absent → none configured. */
-  checks?: Pick<CheckRunner, 'list'>
+  checks?: Pick<CheckRunner, 'list'> & Partial<Pick<CheckRunner, 'isCheckTrace'>>
 }
 
 const REPLAY_EVENTS = 200
@@ -173,7 +173,9 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     const spans = decodeOtlpJson(payload)
     await storage.insertSpans(spans)
     // A restart of next dev compiles each route on its first request — not an anomaly to investigate.
-    options.detector?.observe(spans.filter((s) => !storage.isColdStart(s)))
+    // The observer's own check requests are not traffic: counted, they would keep the "silence" rule from ever
+    // firing and put expected refusals into the error rate.
+    options.detector?.observe(spans.filter((s) => !storage.isColdStart(s) && !options.checks?.isCheckTrace?.(s.traceId)))
     // OTLP answers in the request's format; an empty ExportTraceServiceResponse is zero bytes in protobuf.
     if (protobuf) res.writeHead(200, { ...CORS, 'content-type': 'application/x-protobuf' }).end()
     else send(res, 200, {})

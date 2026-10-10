@@ -352,11 +352,14 @@ describe('project checks (observe.checks.*)', () => {
     expect(await run(['collector', '--port', '0', '--root', project({ 'observe.checks.mjs': `export default [{ name: 'a', url: '/a' }]` })], h.deps)).toBe(1)
     expect(h.logs[0]).toContain('invalid OBSERVE_APP_URL "localhost:3000"')
 
-    const without = harness({ OBSERVE_APP_URL: 'localhost:3000' })
-    const exit = run(['collector', '--port', '0', '--root', project({})], without.deps)
-    await until(without.collectorUrl)
-    without.stop()
-    expect(await exit).toBe(0)
+    const unusedIn: Record<string, string>[] = [{}, { 'observe.checks.mjs': `export default [{ name: 'docs', url: 'https://example.com/docs' }]` }]
+    for (const files of unusedIn) {
+      const unused = harness({ OBSERVE_APP_URL: 'localhost:3000' })
+      const exit = run(['collector', '--port', '0', '--root', project(files)], unused.deps)
+      await until(unused.collectorUrl)
+      unused.stop()
+      expect(await exit).toBe(0)
+    }
   })
 })
 
@@ -370,13 +373,19 @@ describe('appUrl', () => {
     [{ PORT: '3400' }, ['-p', '3100'], 'http://localhost:3100'],
     [{}, ['-p'], 'http://localhost:3000'],
     [{}, ['-p', 'abc'], 'http://localhost:3000'],
+    [{}, ['-p3500'], 'http://localhost:3500'],
+    [{}, ['-H', '192.168.1.5', '-p', '3100'], 'http://192.168.1.5:3100'],
+    [{}, ['--hostname=shop.local'], 'http://shop.local:3000'],
+    [{}, ['--hostname', '0.0.0.0'], 'http://localhost:3000'],
+    [{}, ['-H', '::'], 'http://localhost:3000'],
     [{ OBSERVE_APP_URL: 'https://shop.example/' }, ['-p', '3100'], 'https://shop.example'],
+    [{ OBSERVE_APP_URL: 'https://shop.example/eu/' }, [], 'https://shop.example/eu'],
   ])('%j %j → %s', (env, nextArgs, expected) => {
     expect(appUrl(env, nextArgs)).toBe(expected)
   })
 
-  it('rejects an address without a scheme', () => {
-    expect(() => appUrl({ OBSERVE_APP_URL: 'shop.example' })).toThrow(CliError)
+  it.each(['shop.example', 'http://host/?env=dev', 'http://host/#top'])('rejects %s', (value) => {
+    expect(() => appUrl({ OBSERVE_APP_URL: value })).toThrow(CliError)
   })
 })
 

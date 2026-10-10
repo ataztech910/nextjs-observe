@@ -88,7 +88,13 @@ export function validateCheck(raw: unknown): Check {
     if (method === 'GET' || method === 'HEAD') fail(`a ${method} request cannot have a \`body\``)
     if (typeof raw.body === 'string') body = raw.body
     else {
-      body = JSON.stringify(raw.body)
+      // A function or a symbol gives undefined, a BigInt or a cycle throws — neither is a body anyone meant to send.
+      try {
+        body = JSON.stringify(raw.body)
+      } catch {
+        body = undefined
+      }
+      if (body === undefined) fail('`body` cannot be sent as JSON — use plain data or a string')
       headers['content-type'] ??= 'application/json'
     }
   }
@@ -115,6 +121,9 @@ export function validateCheck(raw: unknown): Check {
     }
     if (e.bodyIncludes !== undefined) {
       if (typeof e.bodyIncludes !== 'string' || e.bodyIncludes === '') fail('`expect.bodyIncludes` must be a non-empty string')
+      // An answer without a body can never contain it: the check would fail forever.
+      if (method === 'HEAD') fail('`expect.bodyIncludes` cannot be used with HEAD — the answer has no body')
+      if (expect.status?.every((s) => s === 204 || s === 304)) fail(`\`expect.bodyIncludes\` cannot be used with status ${expect.status.join(' or ')} — the answer has no body`)
       expect.bodyIncludes = e.bodyIncludes as string
     }
   }

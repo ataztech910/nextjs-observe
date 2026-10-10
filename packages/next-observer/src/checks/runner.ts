@@ -34,47 +34,111 @@ export interface CheckRunnerOptions {
   /** Where checks with a path go, e.g. http://localhost:3000. */
   baseUrl: string
   fetch?: typeof fetch
+  /** Wall clock, for `atMs`. */
   now?: () => number
+  /** A clock that never jumps (NTP, sleep), for durations. Default performance.now. */
+  elapsed?: () => number
   /** Results kept per check. Default 50. */
   history?: number
   /** The first run of every check waits this long (the app may still be starting). Default 3 s. */
   firstDelayMs?: number
+  /**
+   * While nothing has answered yet, a refused connection within this time of start() is not a result: `next dev` is
+   * still starting. After it, "nobody is listening" is exactly what a check is for. Default 60 s.
+   */
+  startupGraceMs?: number
   onResult?: (check: Check, result: CheckResult, failures: number) => void
 }
 
-/** Marks the request as the observer's own, so the app (or a later step) can tell it from real visitors. */
+/** Marks the request as the observer's own (the value is the check's name, URL-encoded: header values are ASCII). */
 export const CHECK_HEADER = 'x-observe-check'
+/** As much of a body as is read: enough for `bodyIncludes`, and a large download is not buffered every minute. */
+export const MAX_BODY_BYTES = 1_000_000
+/** Trace ids of recent check requests that are remembered, to tell their spans from real traffic. */
+const REMEMBERED_TRACES = 5000
+
+/** The body as text, up to MAX_BODY_BYTES; an event stream never ends, so it is not read at all. */
+async function readBody(response: Response): Promise<string> {
+  if (!response.body) return ''
+  if ((response.headers.get('content-type') ?? '').includes('text/event-stream')) {
+    await response.body.cancel().catch(() => {})
+    return ''
+  }
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    chunks.push(value)
+    size += value.byteLength
+    if (size >= MAX_BODY_BYTES) {
+      await reader.cancel().catch(() => {})
+      break
+    }
+  }
+  return Buffer.concat(chunks).subarray(0, MAX_BODY_BYTES).toString('utf8')
+}
 
 export class CheckRunner {
   readonly baseUrl: string
   private readonly checks: Check[]
   private readonly fetch: typeof fetch
   private readonly now: () => number
+  private readonly elapsed: () => number
   private readonly keep: number
   private readonly firstDelayMs: number
+  private readonly startupGraceMs: number
   private readonly results = new Map<string, CheckResult[]>()
-  private readonly running = new Set<string>()
+  /** Failed runs in a row per check — counted, not derived from the kept history, which is cut at `keep`. */
+  private readonly streak = new Map<string, number>()
+  private readonly traces = new Set<string>()
+  private running = new Set<string>()
+  private inFlight = new Set<AbortController>()
   private timers: ReturnType<typeof setTimeout>[] = []
+  /** Changes on every start()/stop(): a run from an earlier one must not report into this one. */
+  private generation = 0
+  private startedAt: number | null = null
+  private answered = false
 
   constructor(private readonly options: CheckRunnerOptions) {
     this.checks = options.checks
     this.baseUrl = options.baseUrl.replace(/\/+$/, '')
     this.fetch = options.fetch ?? globalThis.fetch
     this.now = options.now ?? Date.now
+    this.elapsed = options.elapsed ?? (() => performance.now())
     this.keep = Math.max(1, options.history ?? 50)
     this.firstDelayMs = options.firstDelayMs ?? 3000
+    this.startupGraceMs = options.startupGraceMs ?? 60_000
+  }
+
+  /** Was this trace started by one of our own requests? Their spans are not real traffic. */
+  isCheckTrace(traceId: string): boolean {
+    return this.traces.has(traceId)
   }
 
   urlOf(check: Check): string {
     return check.url.startsWith('/') ? `${this.baseUrl}${check.url}` : check.url
   }
 
-  /** One request, judged. Never throws: a failed request is a result. */
-  async run(check: Check): Promise<CheckResult> {
+  /**
+   * One request, judged. Never throws: a failed request is a result. Resolves with `undefined` when there is nothing
+   * to report — the runner was stopped meanwhile, or the app has not started listening yet (see startupGraceMs).
+   */
+  async run(check: Check): Promise<CheckResult | undefined> {
+    const generation = this.generation
     const traceId = randomBytes(16).toString('hex')
+    this.traces.add(traceId)
+    if (this.traces.size > REMEMBERED_TRACES) this.traces.delete(this.traces.values().next().value as string)
     const atMs = this.now()
+    const started = this.elapsed()
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), check.timeoutMs)
+    this.inFlight.add(controller)
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      controller.abort()
+    }, check.timeoutMs)
     let result: CheckResult
     try {
       const response = await this.fetch(this.urlOf(check), {
@@ -86,8 +150,9 @@ export class CheckRunner {
         redirect: 'manual',
         signal: controller.signal,
       })
-      const text = await response.text()
-      const durationMs = this.now() - atMs
+      this.answered = true
+      const text = await readBody(response)
+      const durationMs = this.elapsed() - started
       const reasons: string[] = []
       const e = check.expect
       if (e.status ? !e.status.includes(response.status) : response.status < 200 || response.status > 299) {
@@ -97,19 +162,25 @@ export class CheckRunner {
       if (e.bodyIncludes !== undefined && !text.includes(e.bodyIncludes)) reasons.push(`body does not contain ${JSON.stringify(e.bodyIncludes)}`)
       result = { atMs, ok: reasons.length === 0, durationMs, status: response.status, traceId, ...(reasons.length ? { reason: reasons.join('; ') } : {}) }
     } catch (error) {
-      const durationMs = this.now() - atMs
+      const durationMs = this.elapsed() - started
       const cause = (error as { cause?: { code?: string; message?: string } })?.cause
-      const reason = controller.signal.aborted ? `no answer within ${check.timeoutMs} ms` : `request failed: ${cause?.code ?? cause?.message ?? (error as Error)?.message ?? String(error)}`
+      const starting = !timedOut && !this.answered && this.startedAt !== null && atMs - this.startedAt < this.startupGraceMs
+      if (starting) return undefined
+      const reason = timedOut ? `no answer within ${check.timeoutMs} ms` : `request failed: ${cause?.code ?? cause?.message ?? (error as Error)?.message ?? String(error)}`
       result = { atMs, ok: false, durationMs, traceId, reason }
     } finally {
       clearTimeout(timer)
+      this.inFlight.delete(controller)
     }
+    if (generation !== this.generation) return undefined
     const list = this.results.get(check.name) ?? []
     list.push(result)
     if (list.length > this.keep) list.splice(0, list.length - this.keep)
     this.results.set(check.name, list)
+    const failures = result.ok ? 0 : (this.streak.get(check.name) ?? 0) + 1
+    this.streak.set(check.name, failures)
     try {
-      this.options.onResult?.(check, result, failuresIn(list))
+      this.options.onResult?.(check, result, failures)
     } catch {
       // A listener's problem must not stop the checks.
     }
@@ -119,11 +190,14 @@ export class CheckRunner {
   /** Starts the timers. A check whose previous run is still waiting for its answer is skipped, not stacked. */
   start(): void {
     this.stop()
+    this.startedAt = this.now()
+    // This start's own set: a run left over from an earlier start must not hold back the first tick of this one.
+    const running = this.running
     for (const check of this.checks) {
       const tick = () => {
-        if (this.running.has(check.name)) return
-        this.running.add(check.name)
-        void this.run(check).finally(() => this.running.delete(check.name))
+        if (running.has(check.name)) return
+        running.add(check.name)
+        void this.run(check).finally(() => running.delete(check.name))
       }
       const first = setTimeout(() => {
         tick()
@@ -136,23 +210,23 @@ export class CheckRunner {
     }
   }
 
+  /** Stops the timers and drops the requests on their way: nothing is recorded or reported after this. */
   stop(): void {
+    this.generation++
     // clearTimeout also clears an interval.
     for (const timer of this.timers) clearTimeout(timer)
     this.timers = []
+    for (const controller of this.inFlight) controller.abort()
+    this.inFlight = new Set()
+    this.running = new Set()
+    this.startedAt = null
   }
 
   list(): CheckStatus[] {
     return this.checks.map((check) => {
       const history = this.results.get(check.name) ?? []
       const last = history.at(-1)
-      return { name: check.name, method: check.method, url: this.urlOf(check), everySeconds: check.everyMs / 1000, expect: check.expect, failures: failuresIn(history), ...(last ? { last } : {}), history: [...history] }
+      return { name: check.name, method: check.method, url: this.urlOf(check), everySeconds: check.everyMs / 1000, expect: check.expect, failures: this.streak.get(check.name) ?? 0, ...(last ? { last } : {}), history: [...history] }
     })
   }
-}
-
-function failuresIn(history: CheckResult[]): number {
-  let n = 0
-  for (let i = history.length - 1; i >= 0 && !history[i].ok; i--) n++
-  return n
 }

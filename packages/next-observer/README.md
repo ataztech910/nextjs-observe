@@ -167,10 +167,18 @@ export default [
 | `expect.maxMs` | — | the whole answer, body included |
 | `expect.bodyIncludes` | — | text the body must contain |
 
-Paths go to `OBSERVE_APP_URL`; without it, to `http://localhost:<port>` — the port `next dev` was given (`-p`, `PORT`),
-else 3000. Every request carries the header `x-observe-check: <name>` and a trace id of its own, so each result links to
-the trace the app recorded for it. Results: `GET /api/checks` — the last 50 per check and how many failed in a row.
-A misspelled field is an error on start, not a check that passes forever.
+Paths go to `OBSERVE_APP_URL`; without it, to the host and port `next dev` was given (`-H`, `-p`, `PORT`), else
+`http://localhost:3000`. That is a guess: when the port is busy, `next dev` moves to the next free one — compare the
+address in the observer's banner with the one Next prints, and set `OBSERVE_APP_URL` if they differ.
+
+- Every request carries the header `x-observe-check` (the check's name, URL-encoded) and a trace id of its own, so each
+  result links to the trace the app recorded for it.
+- These requests are not traffic for the anomaly detector: an expected refusal is not an error, and a quiet app stays quiet.
+- While the app is still starting (nothing answered yet, first minute), a refused connection is not a failure.
+- Only the first megabyte of a body is read; an event stream is not read at all.
+- A field that is misspelled, or an expectation that can never hold (a body text on `HEAD`), is an error on start.
+
+Results: `GET /api/checks` — the last 50 per check and how many failed in a row.
 
 ## Configuration
 

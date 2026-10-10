@@ -147,25 +147,36 @@ async function importProjectFile(root: string, names: string[]): Promise<{ file?
   }
 }
 
-/** Where checks with a path go: OBSERVE_APP_URL, else the port `next dev` was given (-p/--port, PORT), else 3000. */
+/**
+ * Where checks with a path go: OBSERVE_APP_URL, else the host and port `next dev` was given (-H, -p, PORT), else
+ * localhost:3000. A guess: when that port is busy `next dev` moves to the next free one without telling us — the banner
+ * names the address so it can be compared with the one Next prints.
+ */
 export function appUrl(env: Env, nextArgs: string[] = []): string {
-  if (env.OBSERVE_APP_URL) {
-    if (!/^https?:\/\//i.test(env.OBSERVE_APP_URL) || !URL.canParse(env.OBSERVE_APP_URL)) throw new CliError(`invalid OBSERVE_APP_URL "${env.OBSERVE_APP_URL}" — expected something like http://localhost:3000`)
-    return env.OBSERVE_APP_URL.replace(/\/+$/, '')
+  const given = env.OBSERVE_APP_URL
+  if (given) {
+    const url = /^https?:\/\//i.test(given) && URL.canParse(given) ? new URL(given) : undefined
+    if (!url || url.search || url.hash) throw new CliError(`invalid OBSERVE_APP_URL "${given}" — expected something like http://localhost:3000`)
+    return given.replace(/\/+$/, '')
   }
   let port = env.PORT
+  let host = 'localhost'
   nextArgs.forEach((arg, i) => {
     if (arg === '-p' || arg === '--port') port = nextArgs[i + 1] ?? port
     else if (arg.startsWith('--port=')) port = arg.slice('--port='.length)
+    else if (/^-p\d+$/.test(arg)) port = arg.slice(2)
+    else if (arg === '-H' || arg === '--hostname') host = nextArgs[i + 1] ?? host
+    else if (arg.startsWith('--hostname=')) host = arg.slice('--hostname='.length)
   })
-  return `http://localhost:${port && /^\d+$/.test(port) ? port : '3000'}`
+  // "All interfaces" is not an address to call.
+  if (host === '0.0.0.0' || host === '::' || !/^[\w.-]+$/.test(host)) host = 'localhost'
+  return `http://${host}:${port && /^\d+$/.test(port) ? port : '3000'}`
 }
 
 /** The checks from observe.checks.* in the app root (`export default [{ name, url, expect }]`), ready to run. */
 async function loadChecks(root: string, env: Env, nextArgs: string[]): Promise<{ runner?: CheckRunner; line?: string }> {
   const { file, exported } = await importProjectFile(root, CHECKS_FILES)
   if (!file) return {}
-  const baseUrl = appUrl(env, nextArgs)
   let checks
   try {
     checks = validateChecks(exported)
@@ -173,8 +184,10 @@ async function loadChecks(root: string, env: Env, nextArgs: string[]): Promise<{
     throw new CliError(`${file}: ${(error as Error).message}`)
   }
   if (checks.length === 0) return {}
-  const runner = new CheckRunner({ checks, baseUrl })
   const own = checks.some((c) => c.url.startsWith('/'))
+  // Asked for only when a check needs it: a wrong OBSERVE_APP_URL nobody uses is not a reason to refuse to start.
+  const baseUrl = own ? appUrl(env, nextArgs) : ''
+  const runner = new CheckRunner({ checks, baseUrl })
   return { runner, line: `  checks     ${file}: ${checks.length} ${checks.length === 1 ? 'check' : 'checks'}${own ? ` against ${baseUrl}` : ''}` }
 }
 
