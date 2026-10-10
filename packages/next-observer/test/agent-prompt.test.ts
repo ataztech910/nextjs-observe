@@ -100,6 +100,10 @@ describe('defectPrompt', () => {
     id: 'x',
     service: 'shop',
     operation: 'applyCoupon',
+    spanName: 'applyCoupon',
+    source: 'server',
+    category: 'code',
+    pages: [],
     message: "Cannot read properties of undefined (reading 'discount')",
     type: 'TypeError',
     count: 7,
@@ -109,7 +113,7 @@ describe('defectPrompt', () => {
     firstSeenVersion: 'v2',
     versions: ['v2'],
     isNew: true,
-    affected: [{ service: 'shop', operation: 'POST /api/checkout', count: 7 }],
+    affected: [{ service: 'shop', operation: 'POST /api/checkout', spanName: 'POST /api/checkout', count: 7 }],
     exampleTraceIds: ['aaa', 'bbb'],
   }
 

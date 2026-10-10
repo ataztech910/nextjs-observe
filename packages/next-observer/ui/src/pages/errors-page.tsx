@@ -50,6 +50,8 @@ export function ErrorsPage() {
 function DefectCard({ defect: d }: { defect: Defect }) {
   const navigate = useNavigate()
   const peak = Math.max(1, ...d.series)
+  // The browser's request to a failing route reads the same as the route: "in GET /api/x · fails GET /api/x" says nothing.
+  const affected = d.affected.filter((a) => a.operation !== d.operation)
   return (
     <Card className="gap-0 py-0" data-testid="defect" data-new={d.isNew ? 'true' : undefined}>
       <div className="grid gap-x-6 gap-y-4 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_14rem]">
@@ -62,26 +64,55 @@ function DefectCard({ defect: d }: { defect: Defect }) {
             ) : (
               d.versions.length > 0 && <span className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] tracking-wider text-muted-foreground uppercase">seen in {d.versions.join(', ')}</span>
             )}
+            <span
+              className={`rounded-md border px-1.5 py-0.5 font-mono text-[11px] tracking-wider uppercase ${d.source === 'browser' ? 'border-signal/40 text-signal' : 'text-muted-foreground'}`}
+              data-testid="defect-source"
+            >
+              {d.source}
+            </span>
             {d.type && <span className="font-mono text-xs text-muted-foreground">{d.type}</span>}
           </div>
           <p className="font-mono text-sm break-words text-destructive" data-testid="defect-message">
             {d.message}
           </p>
-          <p className="text-sm text-muted-foreground">
-            in{' '}
-            <Link to="/operation" search={{ name: d.operation, service: d.service }} className="font-mono text-foreground underline decoration-dotted underline-offset-4 hover:text-signal">
-              {d.operation}
-            </Link>
-            {d.affected.length > 0 && (
+          <p className="text-sm text-muted-foreground" data-testid="defect-where">
+            {d.category === 'code' ? (
+              <>
+                in{' '}
+                <Link to="/operation" search={{ name: d.spanName, service: d.service }} className="font-mono text-foreground underline decoration-dotted underline-offset-4 hover:text-signal">
+                  {d.operation}
+                </Link>
+              </>
+            ) : (
+              // A kind of browser error or a request path is not an operation with a page of its own.
+              <span className="font-mono text-foreground">{d.operation}</span>
+            )}
+            {d.pages.length > 0 && (
+              <>
+                {' '}
+                · on{' '}
+                {d.pages.map((p, i) => (
+                  <span key={p.path}>
+                    {i > 0 && ', '}
+                    <span className="font-mono text-foreground">{p.path}</span>
+                  </span>
+                ))}
+              </>
+            )}
+            {affected.length > 0 && (
               <>
                 {' '}
                 · fails{' '}
-                {d.affected.map((a, i) => (
+                {affected.map((a, i) => (
                   <span key={`${a.service}:${a.operation}`}>
                     {i > 0 && ', '}
-                    <Link to="/operation" search={{ name: a.operation, service: a.service }} className="font-mono text-foreground hover:text-signal">
-                      {a.operation}
-                    </Link>
+                    {a.spanName === a.operation ? (
+                      <Link to="/operation" search={{ name: a.spanName, service: a.service }} className="font-mono text-foreground hover:text-signal">
+                        {a.operation}
+                      </Link>
+                    ) : (
+                      <span className="font-mono text-foreground">{a.operation}</span>
+                    )}
                   </span>
                 ))}
               </>

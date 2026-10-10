@@ -2,6 +2,8 @@
 // A failing function also marks every span above it as failed, so a defect is counted where the error ORIGINATED —
 // the deepest failed span — and the route that returned 500 because of it is listed as affected.
 import { isFrameworkSpan } from './framework.js'
+import { statusCode } from './overview.js'
+import { spanOperation } from './span-label.js'
 import type { NormalizedSpan } from './types.js'
 
 export interface DefectsOptions {
@@ -25,8 +27,22 @@ export interface Defect {
   /** Stable for the same service + operation + message shape. */
   id: string
   service: string
-  /** Where the error originated. */
+  /**
+   * Where the error originated, as a person reads it: the span's name — for a browser request the method and the path
+   * (`GET /api/inventory/:id`), since the span itself is named just "GET".
+   */
   operation: string
+  /** The span's exact name: what the operation page and the trace search look up. */
+  spanName: string
+  /** Where it happened: in the visitor's browser or on the server. */
+  source: 'browser' | 'server'
+  /**
+   * `browser-error`: something the APM agent caught in the page (an uncaught error, a console.error, a failed resource…)
+   * — `operation` is then the kind of error, not a piece of code. `request`: an outgoing HTTP call. `code`: the rest.
+   */
+  category: 'browser-error' | 'request' | 'code'
+  /** Pages it happened on (browser errors), most frequent first. */
+  pages: { path: string; count: number }[]
   /** The most recent message, as thrown. */
   message: string
   /** exception.type of the most recent occurrence, when recorded. */
@@ -47,7 +63,7 @@ export interface Defect {
    */
   isNew: boolean
   /** Requests that failed because of it (the topmost failed span), most frequent first. Empty when it is the origin itself. */
-  affected: { service: string; operation: string; count: number }[]
+  affected: { service: string; operation: string; spanName: string; count: number }[]
   /** Most recent first. */
   exampleTraceIds: string[]
 }
@@ -63,7 +79,20 @@ function exceptionType(span: NormalizedSpan): string | null {
 export function errorMessage(span: NormalizedSpan): string {
   const event = span.events.find((e) => e.name === 'exception')
   const message = event?.attributes['exception.message']
-  return (typeof message === 'string' && message) || span.statusMessage || '(no message)'
+  if (typeof message === 'string' && message) return message
+  if (span.statusMessage) return span.statusMessage
+  // A request that failed by its status alone (a 404 seen from the browser, a 500 without an exception) says at
+  // least which status.
+  const code = statusCode(span)
+  return code !== undefined && code >= 400 ? `HTTP ${code}` : '(no message)'
+}
+
+/** The APM agent's browser SDK names itself in the resource; its service name ends in "-browser" by convention. */
+const isBrowser = (span: NormalizedSpan) => span.resource['telemetry.sdk.language'] === 'webjs' || span.service.endsWith('-browser')
+
+function categoryOf(span: NormalizedSpan): Defect['category'] {
+  if (span.attributes['observe.kind'] === 'browser-error') return 'browser-error'
+  return span.kind === 'client' && spanOperation(span) !== span.name ? 'request' : 'code'
 }
 
 /**
@@ -109,7 +138,7 @@ export function computeDefects(spans: NormalizedSpan[], options: DefectsOptions)
   const groups = new Map<string, NormalizedSpan[]>()
   for (const s of visible) {
     if (hasFailedDescendant.has(s)) continue
-    const id = `${s.service}\u0000${s.name}\u0000${messageShape(errorMessage(s))}`
+    const id = `${s.service}\u0000${spanOperation(s)}\u0000${messageShape(errorMessage(s))}`
     const list = groups.get(id)
     if (list) list.push(s)
     else groups.set(id, [s])
@@ -128,14 +157,20 @@ export function computeDefects(spans: NormalizedSpan[], options: DefectsOptions)
     const series = Array.from({ length: buckets }, () => 0)
     for (const s of recent) series[Math.min(Math.floor((s.startTimeMs - fromMs) / bucketMs), buckets - 1)]++
     // The failed request may belong to another service than the origin (browser → server): keep its own service.
-    const affected = new Map<string, { service: string; operation: string; count: number }>()
+    const affected = new Map<string, { service: string; operation: string; spanName: string; count: number }>()
     for (const s of recent) {
       const top = topOf.get(s)!
       if (top === s) continue
-      const key = `${top.service}\u0000${top.name}`
-      const row = affected.get(key) ?? { service: top.service, operation: top.name, count: 0 }
+      const operation = spanOperation(top)
+      const key = `${top.service}\u0000${operation}`
+      const row = affected.get(key) ?? { service: top.service, operation, spanName: top.name, count: 0 }
       row.count++
       affected.set(key, row)
+    }
+    const pages = new Map<string, number>()
+    for (const s of recent) {
+      const path = s.attributes['url.path']
+      if (typeof path === 'string' && path) pages.set(path, (pages.get(path) ?? 0) + 1)
     }
     const latest = order[order.length - 1]
     const previous = order[order.length - 2]
@@ -143,7 +178,11 @@ export function computeDefects(spans: NormalizedSpan[], options: DefectsOptions)
     defects.push({
       id,
       service: first.service,
-      operation: first.name,
+      operation: spanOperation(first),
+      spanName: first.name,
+      source: isBrowser(first) ? 'browser' : 'server',
+      category: categoryOf(first),
+      pages: [...pages].map(([path, count]) => ({ path, count })).sort((a, b) => b.count - a.count).slice(0, AFFECTED),
       message: errorMessage(last),
       type: exceptionType(last),
       count: recent.length,
