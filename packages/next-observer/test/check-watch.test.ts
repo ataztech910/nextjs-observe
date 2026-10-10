@@ -85,6 +85,91 @@ describe('CheckWatch: when a failing check becomes an anomaly', () => {
   })
 })
 
+describe('CheckWatch: an app that is down is one anomaly, not one per check', () => {
+  const APP = 'http://localhost:3000'
+  const checks = ['/a', '/b', '/c'].map((url, i) => validateCheck({ name: `check ${i + 1}`, url, everySeconds: 30 }))
+  const partner = validateCheck({ name: 'partner', url: 'https://partner.example/health' })
+  const refused = (atMs: number): CheckResult => ({ atMs, ok: false, durationMs: 2, traceId: 'c'.repeat(32), reason: 'request failed: ECONNREFUSED', unreachable: true })
+  const failed500 = (atMs: number): CheckResult => ({ atMs, ok: false, durationMs: 2, status: 500, traceId: 'd'.repeat(32), reason: 'expected status 2xx, got 500' })
+  const passed = (atMs: number): CheckResult => ({ atMs, ok: true, durationMs: 2, status: 200, traceId: 'e'.repeat(32) })
+  /** Every check of the app gets the same result, one round after another. */
+  const rounds = (watch: CheckWatch, n: number, result: (atMs: number) => CheckResult, from = T0, streak = 0) => {
+    for (let round = 0; round < n; round++) for (const check of checks) watch.observe(check, result(from + round * 30_000), streak + round + 1, `${APP}${check.url}`)
+  }
+
+  it('reports the first check and names the others', () => {
+    const watch = new CheckWatch()
+    rounds(watch, 2, refused)
+    const found = watch.take()
+    expect(found).toHaveLength(1)
+    expect(found[0].check).toMatchObject({ name: 'check 1', unreachable: true, origin: APP, alsoUnreachable: ['check 2', 'check 3'] })
+    expect(questionFor(found[0])).toContain('The request reached nobody, so there is no trace of it — check whether the service is receiving any traffic at all. 2 other checks get no connection either (check 2, check 3): http://localhost:3000 looks down as a whole, not one route.')
+  })
+
+  it('stays quiet about the address for the cooldown, then says it again', () => {
+    const watch = new CheckWatch()
+    rounds(watch, 9, refused)
+    expect(watch.take()).toHaveLength(1)
+    rounds(watch, 2, refused, T0 + 300_000, 9)
+    expect(watch.take().map((a) => a.check?.name)).toEqual(['check 1'])
+  })
+
+  it('checks that fail with an answer are still each their own anomaly', () => {
+    const watch = new CheckWatch()
+    rounds(watch, 2, failed500)
+    const found = watch.take()
+    expect(found.map((a) => a.check?.name)).toEqual(['check 1', 'check 2', 'check 3'])
+    expect(found.every((a) => !('alsoUnreachable' in a.check!))).toBe(true)
+  })
+
+  it('a check that got an answer is not told about its neighbours without a connection', () => {
+    const watch = new CheckWatch()
+    for (const atMs of [T0, T0 + 30_000]) {
+      const n = atMs === T0 ? 1 : 2
+      watch.observe(checks[0], failed500(atMs), n, `${APP}/a`)
+      watch.observe(checks[1], refused(atMs), n, `${APP}/b`)
+      watch.observe(checks[2], refused(atMs), n, `${APP}/c`)
+    }
+    expect(watch.take().map((a) => [a.check?.name, a.check?.alsoUnreachable])).toEqual([['check 1', undefined], ['check 2', ['check 3']]])
+  })
+
+  it('another address is another matter', () => {
+    const watch = new CheckWatch()
+    rounds(watch, 2, refused)
+    watch.observe(partner, refused(T0), 1)
+    watch.observe(partner, refused(T0 + 30_000), 2)
+    const found = watch.take()
+    expect(found.map((a) => [a.check?.name, a.check?.alsoUnreachable])).toEqual([['check 1', ['check 2', 'check 3']], ['partner', undefined]])
+  })
+
+  it('a single check without a connection is told as before', () => {
+    const watch = new CheckWatch()
+    watch.observe(checks[0], refused(T0), 1, `${APP}/a`)
+    watch.observe(checks[0], refused(T0 + 1), 2, `${APP}/a`)
+    const [anomaly] = watch.take()
+    expect('alsoUnreachable' in anomaly.check!).toBe(false)
+    expect(questionFor(anomaly)).not.toContain('looks down as a whole')
+  })
+
+  it('a check that answers again is no longer counted among the unreachable', () => {
+    const watch = new CheckWatch()
+    for (const check of checks) watch.observe(check, refused(T0), 1, `${APP}${check.url}`)
+    watch.observe(checks[2], passed(T0 + 10), 0, `${APP}/c`) // came back
+    for (const check of checks.slice(0, 2)) watch.observe(check, refused(T0 + 30_000), 2, `${APP}${check.url}`)
+    expect(watch.take()[0].check).toMatchObject({ name: 'check 1', alsoUnreachable: ['check 2'] })
+    expect(questionFor((() => { const w = new CheckWatch(); rounds(w, 2, refused); const a = w.take()[0]; a.check!.alsoUnreachable = ['check 2']; return a })())).toContain('Another check gets no connection either (check 2): http://localhost:3000 looks down')
+  })
+
+  it('an answered failure of the same check is reported even while the address is on cooldown', () => {
+    const watch = new CheckWatch({ cooldownMs: 300_000 })
+    rounds(watch, 2, refused)
+    watch.take()
+    // The app is back but check 2 now gets a 500, twice: a different problem, said at once.
+    watch.observe(checks[1], failed500(T0 + 60_000), 3, `${APP}/b`)
+    expect(watch.take().map((a) => [a.check?.name, a.check?.reason])).toEqual([['check 2', 'expected status 2xx, got 500']])
+  })
+})
+
 describe('questionFor a failing check', () => {
   const anomaly = (series: string, result?: Partial<CheckResult>) => feed(new CheckWatch(), series, { result }).flat()[0]
 

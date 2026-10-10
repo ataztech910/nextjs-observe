@@ -18,6 +18,8 @@ export class CheckWatch {
   readonly options: Required<CheckWatchOptions>
   private readonly recent = new Map<string, boolean[]>()
   private readonly lastReportedMs = new Map<string, number>()
+  /** Checks whose latest run got no connection, with the address they could not reach. */
+  private readonly down = new Map<string, string>()
   private pending: Anomaly[] = []
   private seq = 0
 
@@ -38,6 +40,9 @@ export class CheckWatch {
     recent.push(result.ok)
     if (recent.length > o.shareWindow) recent.shift()
     this.recent.set(check.name, recent)
+    const origin = originOf(url)
+    if (result.unreachable) this.down.set(check.name, origin)
+    else this.down.delete(check.name)
     if (result.ok) return
 
     const failed = recent.filter((ok) => !ok).length
@@ -45,6 +50,15 @@ export class CheckWatch {
     if (!inRow && failed < o.shareFailures) return
     const last = this.lastReportedMs.get(check.name)
     if (last !== undefined && result.atMs - last < o.cooldownMs) return
+    // An app that is down fails every check of it the same way: one anomaly says so, the rest would only queue the
+    // same investigation again. Checks with other intervals reach the rule later — the address is on cooldown by then.
+    if (result.unreachable) {
+      const key = `\u0000${origin}`
+      const lastDown = this.lastReportedMs.get(key)
+      // The check's own cooldown is left alone: once the app is back, a failure of its own is news at once.
+      if (lastDown !== undefined && result.atMs - lastDown < o.cooldownMs) return
+      this.lastReportedMs.set(key, result.atMs)
+    }
     this.lastReportedMs.set(check.name, result.atMs)
 
     this.pending.push({
@@ -76,6 +90,19 @@ export class CheckWatch {
   take(): Anomaly[] {
     const found = this.pending
     this.pending = []
+    // Filled in only now: the other checks of a dead app report their own failures a moment after the first one.
+    for (const anomaly of found) {
+      const c = anomaly.check
+      if (!c?.unreachable) continue
+      const origin = originOf(c.url)
+      const also = [...this.down].filter(([name, at]) => at === origin && name !== c.name).map(([name]) => name)
+      if (also.length > 0) Object.assign(c, { origin, alsoUnreachable: also })
+    }
     return found
   }
+}
+
+/** "http://localhost:3000" of a check's address — what is down when nothing there accepts a connection. */
+function originOf(url: string): string {
+  return URL.canParse(url) ? new URL(url).origin : url
 }

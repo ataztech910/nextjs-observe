@@ -15,6 +15,9 @@ export interface CheckFailure {
   /** No connection was made: there cannot be a trace. Neither flag: nobody knows whether the request arrived. */
   unreachable?: boolean
   traceId: string
+  /** Other checks that get no connection to the same address (`origin`) either. */
+  also?: string[]
+  origin?: string
 }
 
 /** Where to look after a failed run: its trace, when there can be one. */
@@ -27,5 +30,8 @@ export function whereToLook(f: Pick<CheckFailure, 'answered' | 'unreachable' | '
 
 export function checkFailureQuestion(f: CheckFailure): string {
   const how = f.rule === 'in_row' ? `failed ${f.count} ${f.count === 1 ? 'time' : 'times'} in a row` : `failed ${f.count} of its last ${f.runs} runs`
-  return `the scheduled check "${f.name}" (${f.method} ${f.url}) ${how}. Last failure: ${f.reason}. ${whereToLook(f)}`
+  const question = `the scheduled check "${f.name}" (${f.method} ${f.url}) ${how}. Last failure: ${f.reason}. ${whereToLook(f)}`
+  if (!f.also?.length) return question
+  const others = f.also.length === 1 ? `Another check gets no connection either (${f.also[0]})` : `${f.also.length} other checks get no connection either (${f.also.join(', ')})`
+  return `${question} ${others}: ${f.origin ?? 'the app'} looks down as a whole, not one route.`
 }

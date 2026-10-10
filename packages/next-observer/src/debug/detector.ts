@@ -30,7 +30,7 @@ export interface Anomaly {
    * `check_failed` only (raised by checks/watch.ts, not by this detector): the scheduled check that keeps failing.
    * `value` is then the failures in a row (`rule: 'in_row'`) or the failures among the latest `sampleSize` runs (`'share'`).
    */
-  check?: { name: string; method: string; url: string; rule: 'in_row' | 'share'; reason: string; status?: number; unreachable?: true; traceId: string }
+  check?: { name: string; method: string; url: string; rule: 'in_row' | 'share'; reason: string; status?: number; unreachable?: true; traceId: string; /** Set when other checks get no connection to the same address either: the app is down, not one route. */ origin?: string; alsoUnreachable?: string[] }
 }
 
 export interface DetectorOptions {
@@ -272,7 +272,7 @@ export function questionFor(anomaly: Anomaly): string {
     case 'check_failed': {
       const c = anomaly.check
       if (!c) return 'Anomaly detected: a scheduled check keeps failing.'
-      return `Anomaly detected: ${checkFailureQuestion({ ...c, answered: c.status !== undefined, count: anomaly.value, runs: anomaly.sampleSize })}`
+      return `Anomaly detected: ${checkFailureQuestion({ ...c, answered: c.status !== undefined, count: anomaly.value, runs: anomaly.sampleSize, also: c.alsoUnreachable })}`
     }
     case 'no_traffic':
       return `Anomaly detected: no spans received for ${anomaly.value}s after traffic was flowing. Check which services went silent.`
