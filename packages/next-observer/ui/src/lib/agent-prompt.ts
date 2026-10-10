@@ -113,7 +113,11 @@ export function defectPrompt(d: Defect): string {
     INTRO,
     '',
     '## Problem',
-    `\`${d.operation}\` (service ${d.service}) fails with:`,
+    d.category === 'browser-error'
+      ? `In the browser (service ${d.service}), ${d.pages.length ? `on ${d.pages.map((p) => `\`${p.path}\``).join(', ')}, ` : ''}this was recorded as "${d.operation}":`
+      : d.category === 'request'
+        ? `The browser's request \`${d.operation}\` (service ${d.service}) fails with:`
+        : `\`${d.operation}\` (service ${d.service}) fails with:`,
     '```',
     `${d.type ? `${d.type}: ` : ''}${d.message}`,
     '```',
@@ -126,7 +130,11 @@ export function defectPrompt(d: Defect): string {
   lines.push(
     '',
     '## Task',
-    `1. Find where \`${d.operation}\` is implemented and which line can throw this.`,
+    d.category === 'browser-error'
+      ? '1. Find the client code on that page that can produce this error (the message and the component named in it are the leads).'
+      : d.category === 'request'
+        ? `1. Find where the app makes this request and the route that should answer it; say which side is wrong (the URL, the route, or what the route does).`
+        : `1. Find where \`${d.operation}\` is implemented and which line can throw this.`,
     d.isNew ? `2. Look at what changed in ${d.firstSeenVersion} around it (git log / diff) and explain the cause.` : '2. Explain under which inputs or conditions it throws.',
     '3. Propose the smallest change that fixes it, and say how to verify the fix.',
     OUTRO,

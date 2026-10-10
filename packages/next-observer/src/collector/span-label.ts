@@ -4,19 +4,30 @@ import type { NormalizedSpan } from './types.js'
 
 const METHOD_ONLY = /^(GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS)$/
 
-export function spanLabel(span: Pick<NormalizedSpan, 'name' | 'kind' | 'attributes'>): string {
-  if (span.kind !== 'client' || !METHOD_ONLY.test(span.name)) return span.name
+type Labelled = Pick<NormalizedSpan, 'name' | 'kind' | 'attributes'>
+
+/** The method and path of a client request span that is named by its method only; undefined for any other span. */
+export function requestParts(span: Labelled): { method: string; pathname: string } | undefined {
+  if (span.kind !== 'client' || !METHOD_ONLY.test(span.name)) return undefined
   const url = span.attributes['url.full'] ?? span.attributes['http.url']
-  if (typeof url !== 'string') return span.name
+  if (typeof url !== 'string') return undefined
   try {
-    return `${span.name} ${new URL(url).pathname}`
+    return { method: span.name, pathname: new URL(url).pathname }
   } catch {
-    return span.name
+    return undefined
   }
 }
 
-// A path segment that names one thing rather than a kind of thing: a number, a UUID, a long hex or a long opaque token.
-const ID_SEGMENT = /^(\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{8,}|[A-Za-z0-9_-]{20,})$/i
+export function spanLabel(span: Labelled): string {
+  const request = requestParts(span)
+  return request ? `${request.method} ${request.pathname}` : span.name
+}
+
+// A path segment that names one thing rather than a kind of thing: a number, a UUID, a long hex run.
+const ID_SEGMENT = /^(\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{8,})$/i
+// …or a long opaque token (nanoid, a signed id). It must contain a digit: `recently-viewed-products` is 24
+// characters of route name, not an id.
+const isToken = (segment: string) => segment.length >= 20 && /^[A-Za-z0-9_-]+$/.test(segment) && /\d/.test(segment)
 
 /**
  * What a span is grouped by. For everything but a browser/HTTP client request that is its name. A client request is
@@ -24,9 +35,9 @@ const ID_SEGMENT = /^(\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
  * replaced — `/api/inventory/1` and `/api/inventory/2` are the same operation, `GET /api/inventory/:id`. (The server
  * span knows the real route pattern; the browser only ever sees the URL.)
  */
-export function spanOperation(span: Pick<NormalizedSpan, 'name' | 'kind' | 'attributes'>): string {
-  const label = spanLabel(span)
-  if (label === span.name) return label
-  const [method, path] = [label.slice(0, span.name.length), label.slice(span.name.length + 1)]
-  return `${method} ${path.split('/').map((segment) => (ID_SEGMENT.test(segment) ? ':id' : segment)).join('/')}`
+export function spanOperation(span: Labelled): string {
+  const request = requestParts(span)
+  if (!request) return span.name
+  const path = request.pathname.split('/').map((segment) => (ID_SEGMENT.test(segment) || isToken(segment) ? ':id' : segment)).join('/')
+  return `${request.method} ${path}`
 }

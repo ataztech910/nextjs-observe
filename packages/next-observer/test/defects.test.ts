@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { MemoryStorage, startCollector, type Collector, type NormalizedSpan } from '../src/collector/index.js'
 import { computeDefects, messageShape, type Defect, type DefectsOptions } from '../src/collector/defects.js'
-import { questionFor } from '../ui/src/lib/defects.js'
+import { describeDefect, questionFor, sameRoute } from '../ui/src/lib/defects.js'
 import { NOW, shopStorage } from './fixtures/shop.js'
 
 const MIN = 60_000
@@ -148,10 +148,48 @@ describe('computeDefects', () => {
       expect(defect.affected).toEqual([{ service: 'shop-browser', operation: 'GET /api/inventory/:id', spanName: 'GET', count: 1 }])
     })
 
-    it('the browser is recognised by the SDK in the resource or by the service name; the server by neither', () => {
+    it('the browser is recognised by the SDK in the resource; the service name decides only when the SDK does not say', () => {
       expect(compute([span('x', MIN, { message: 'm', resource: { 'telemetry.sdk.language': 'webjs' } })])[0].source).toBe('browser')
       expect(compute([span('x', MIN, { message: 'm', service: 'shop-browser' })])[0].source).toBe('browser')
       expect(compute([span('x', MIN, { message: 'm', resource: { 'telemetry.sdk.language': 'nodejs' } })])[0].source).toBe('server')
+      // A Node service that merely has "browser" in its name is a server.
+      expect(compute([span('x', MIN, { message: 'm', service: 'headless-browser', resource: { 'telemetry.sdk.language': 'nodejs' } })])[0].source).toBe('server')
+    })
+
+    it('a bare status is compared exactly: 404s and 500s on one route are two defects, each with its own count', () => {
+      const request = (code: number, agoMs: number) => browser('GET', agoMs, { kind: 'client', attributes: { 'url.full': 'http://localhost:3000/api/inventory/1', 'http.status_code': code } })
+      const defects = compute([request(404, 4 * MIN), request(404, 3 * MIN), request(500, MIN)])
+      expect(defects.map((d) => [d.message, d.count]).sort()).toEqual([['HTTP 404', 2], ['HTTP 500', 1]])
+    })
+
+    it('pages are the APM agent’s browser errors only: a server span’s url.path is a request path, not a page', () => {
+      const server = span('GET /api/orders/[id]', MIN, { kind: 'server', message: 'boom', attributes: { 'url.path': '/api/orders/17' } })
+      expect(compute([server])[0]).toMatchObject({ category: 'code', pages: [] })
+    })
+
+    it('a client request and a span literally named like its label are different defects', () => {
+      const request = browser('GET', MIN, { kind: 'client', attributes: { 'url.full': 'http://localhost:3000/api/x', 'http.status_code': 500 } })
+      const code = browser('GET /api/x', MIN, { attributes: { 'http.status_code': 500 } })
+      const defects = compute([request, code])
+      expect(defects).toHaveLength(2)
+      expect(defects.find((d) => d.category === 'request')).toMatchObject({ operation: 'GET /api/x', spanName: 'GET' })
+      expect(defects.find((d) => d.category === 'code')).toMatchObject({ operation: 'GET /api/x', spanName: 'GET /api/x' })
+    })
+
+    it('after old spans were dropped a request is never called new: "some GET ran in v1" is no evidence about this path', () => {
+      const asked: string[] = []
+      const ranIn = (service: string, operation: string, version: string) => (asked.push(`${service}/${operation}@${version}`), true)
+      const request = browser('GET', MIN, { kind: 'client', serviceVersion: 'v2', attributes: { 'url.full': 'http://localhost:3000/api/coupons', 'http.status_code': 404 } })
+      const options = { historyComplete: false, ranIn, deployOrder: new Map([['shop-browser', ['v1', 'v2']]]) }
+      expect(compute([request], options)[0].isNew).toBe(false)
+      expect(asked).toEqual([])
+      // With the whole history at hand it can be: nothing was dropped, so "first seen in v2" is a fact.
+      expect(compute([request], { ...options, historyComplete: true })[0].isNew).toBe(true)
+      // A piece of code is still checked by its name.
+      const thrown = caught('uncaught error', MIN, 'x is undefined', '/cart')
+      thrown.serviceVersion = 'v2'
+      expect(compute([thrown], options)[0].isNew).toBe(true)
+      expect(asked).toEqual(['shop-browser/uncaught error@v1'])
     })
   })
 
@@ -285,6 +323,42 @@ describe('GET /api/defects', () => {
       ['applyCoupon', true],
       ['sendEmail', false],
     ])
+  })
+})
+
+describe('sameRoute', () => {
+  it('the server’s pattern and the browser’s request to it are one route', () => {
+    expect(sameRoute('GET /api/inventory/[id]', 'GET /api/inventory/:id')).toBe(true)
+    expect(sameRoute('GET /api/orders/[orderId]/items/[itemId]', 'GET /api/orders/:id/items/:id')).toBe(true)
+    expect(sameRoute('GET /api/lab', 'GET /api/lab')).toBe(true)
+  })
+
+  it('different routes or methods stay different', () => {
+    expect(sameRoute('GET /api/inventory/[id]', 'GET /api/products/:id')).toBe(false)
+    expect(sameRoute('GET /api/inventory/[id]', 'POST /api/inventory/:id')).toBe(false)
+    expect(sameRoute('checkInventory', 'GET /api/inventory/:id')).toBe(false)
+  })
+})
+
+describe('describeDefect', () => {
+  const base = { message: 'x is undefined', isNew: false, firstSeenVersion: 'v1', versions: ['v1'], affected: [] }
+
+  it('a browser error is not "an operation that fails": it happened in the browser, on a page', () => {
+    expect(describeDefect({ ...base, operation: 'uncaught error', category: 'browser-error', pages: [{ path: '/product/3' }, { path: '/cart' }] })).toBe('In the browser on /product/3, /cart: uncaught error "x is undefined"')
+    expect(describeDefect({ ...base, operation: 'console.error', category: 'browser-error', pages: [] })).toBe('In the browser: console.error "x is undefined"')
+  })
+
+  it('a request is named as a request; code as before', () => {
+    expect(describeDefect({ ...base, operation: 'GET /api/coupons/:id', message: 'HTTP 404', category: 'request' })).toBe('The browser\'s request GET /api/coupons/:id fails with "HTTP 404"')
+    expect(describeDefect({ ...base, operation: 'checkInventory', category: 'code', affected: [{ operation: 'GET /api/inventory/[id]' }] })).toBe('checkInventory fails with "x is undefined" (requests to GET /api/inventory/[id] fail because of it)')
+    // No category given (older callers): treated as code.
+    expect(describeDefect({ ...base, operation: 'checkInventory' })).toBe('checkInventory fails with "x is undefined"')
+  })
+
+  it('the question for the AI agents starts from that description', () => {
+    expect(questionFor({ ...base, operation: 'uncaught error', category: 'browser-error', pages: [{ path: '/lab' }], isNew: true, firstSeenVersion: 'v2' })).toBe(
+      'In the browser on /lab: uncaught error "x is undefined". It first appeared in v2. Why does it fail, and is it new?',
+    )
   })
 })
 

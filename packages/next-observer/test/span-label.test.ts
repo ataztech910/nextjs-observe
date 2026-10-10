@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { MemoryStorage, spanLabel, spanOperation, type NormalizedSpan } from '../src/collector/index.js'
+import { requestParts } from '../src/collector/span-label.js'
 
 const span = (name: string, kind: NormalizedSpan['kind'], attributes: NormalizedSpan['attributes'] = {}) => ({ name, kind, attributes })
 
@@ -47,6 +48,10 @@ describe('spanOperation', () => {
     expect(get('http://localhost:3000/')).toBe('GET /')
     // "deadbeef" is hex and 8 long — an id by this rule; "feedback" is not hex.
     expect(get('http://localhost:3000/api/feedback')).toBe('GET /api/feedback')
+    // A long route name is still a name: only a long token WITH a digit is an opaque id.
+    expect(get('http://localhost:3000/api/recently-viewed-products')).toBe('GET /api/recently-viewed-products')
+    expect(get('http://localhost:3000/api/recommended_products_for_you')).toBe('GET /api/recommended_products_for_you')
+    expect(get('http://localhost:3000/s/V1StGXR8_Z5jdHi6B-myT')).toBe('GET /s/:id')
   })
 
   it('anything that is not a method-only client span keeps its name', () => {
@@ -54,5 +59,15 @@ describe('spanOperation', () => {
     expect(spanOperation(span('chargePayment', 'internal'))).toBe('chargePayment')
     expect(spanOperation(span('uncaught error', 'internal', { 'url.path': '/product/3' }))).toBe('uncaught error')
     expect(spanOperation(span('GET', 'client'))).toBe('GET')
+  })
+})
+
+describe('requestParts', () => {
+  it('method and path of a method-only client span; undefined for anything else or a broken URL', () => {
+    expect(requestParts(span('POST', 'client', { 'http.url': 'http://localhost:3000/api/checkout?x=1' }))).toEqual({ method: 'POST', pathname: '/api/checkout' })
+    expect(requestParts(span('POST', 'server', { 'http.url': 'http://localhost:3000/api/checkout' }))).toBeUndefined()
+    expect(requestParts(span('GET /api/x', 'client', { 'url.full': 'http://localhost:3000/api/x' }))).toBeUndefined()
+    expect(requestParts(span('GET', 'client', { 'url.full': 'not a url' }))).toBeUndefined()
+    expect(requestParts(span('GET', 'client'))).toBeUndefined()
   })
 })

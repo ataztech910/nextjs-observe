@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { DEFAULT_WINDOW, WINDOWS, WindowPicker } from '@/components/window-picker'
 import { defectPrompt } from '@/lib/agent-prompt'
-import { questionFor } from '@/lib/defects'
+import { questionFor, sameRoute } from '@/lib/defects'
 
 const REFRESH_MS = 2000
 const errorsRoute = getRouteApi('/errors')
@@ -51,7 +51,7 @@ function DefectCard({ defect: d }: { defect: Defect }) {
   const navigate = useNavigate()
   const peak = Math.max(1, ...d.series)
   // The browser's request to a failing route reads the same as the route: "in GET /api/x · fails GET /api/x" says nothing.
-  const affected = d.affected.filter((a) => a.operation !== d.operation)
+  const affected = d.affected.filter((a) => !sameRoute(a.operation, d.operation))
   return (
     <Card className="gap-0 py-0" data-testid="defect" data-new={d.isNew ? 'true' : undefined}>
       <div className="grid gap-x-6 gap-y-4 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_14rem]">

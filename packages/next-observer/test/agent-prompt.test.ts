@@ -127,6 +127,20 @@ describe('defectPrompt', () => {
     expect(section(prompt, 'Task')).toContain('what changed in v2')
   })
 
+  it('a browser error: where it happened and what kind, and a task about the client code — not "where is `uncaught error` implemented"', () => {
+    const prompt = defectPrompt({ ...defect, operation: 'uncaught error', spanName: 'uncaught error', source: 'browser', category: 'browser-error', pages: [{ path: '/product/3', count: 2 }], affected: [], isNew: false })
+    expect(section(prompt, 'Problem')).toContain('In the browser (service shop), on `/product/3`, this was recorded as "uncaught error":')
+    expect(section(prompt, 'Task')).toContain('1. Find the client code on that page that can produce this error')
+    expect(prompt).not.toContain('is implemented')
+  })
+
+  it('a failing request: named as a request, and the task looks at both the caller and the route', () => {
+    const prompt = defectPrompt({ ...defect, operation: 'GET /api/coupons/:id', spanName: 'GET', source: 'browser', category: 'request', message: 'HTTP 404', type: null, affected: [], isNew: false })
+    expect(section(prompt, 'Problem')).toContain("The browser's request `GET /api/coupons/:id` (service shop) fails with:")
+    expect(section(prompt, 'Task')).toContain('1. Find where the app makes this request and the route that should answer it')
+    expect(prompt).not.toContain('is implemented')
+  })
+
   it('an old defect: its versions, no deploy to blame', () => {
     const prompt = defectPrompt({ ...defect, isNew: false, firstSeenVersion: 'v1', versions: ['v1', 'v2'], type: null, count: 1, affected: [] })
     expect(prompt).toContain('Seen in versions v1, v2; first seen in v1.')
