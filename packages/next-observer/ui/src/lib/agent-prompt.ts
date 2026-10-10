@@ -4,6 +4,7 @@ import { isFrameworkSpan } from '../../../src/collector/framework.js'
 import type { EvidenceCard } from '../../../src/collector/chat.js'
 import type { Defect } from '../../../src/collector/defects.js'
 import type { NormalizedSpan } from '../../../src/collector/types.js'
+import { affectedBy, requestWords } from './defects.js'
 import { rootSpan, timeByOperation } from './trace-analysis.js'
 import { formatDuration } from './waterfall.js'
 
@@ -113,20 +114,29 @@ export function defectPrompt(d: Defect): string {
     INTRO,
     '',
     '## Problem',
-    `\`${d.operation}\` (service ${d.service}) fails with:`,
+    d.category === 'browser-error'
+      ? `In the browser (service ${d.service}), ${d.pages.length ? `on ${d.pages.map((p) => `\`${p.path}\``).join(', ')}, ` : ''}this was recorded as "${d.operation}":`
+      : d.category === 'request'
+        ? `${requestWords(d.source)} \`${d.operation}\` (service ${d.service}) fails with:`
+        : `\`${d.operation}\` (service ${d.service}) fails with:`,
     '```',
     `${d.type ? `${d.type}: ` : ''}${d.message}`,
     '```',
     `${d.count} ${d.count === 1 ? 'occurrence' : 'occurrences'} in the selected window.`,
   ]
-  if (d.affected.length > 0) lines.push(`Requests failing because of it: ${d.affected.map((a) => `\`${a.operation}\` (${a.count})`).join(', ')}.`)
+  const affected = affectedBy(d)
+  if (affected.length > 0) lines.push(`Requests failing because of it: ${affected.map((a) => `\`${a.operation}\` (${a.count})`).join(', ')}.`)
   if (d.isNew) lines.push(`It first appeared in version ${d.firstSeenVersion}; it was not seen in earlier versions.`)
   else if (d.versions.length > 0) lines.push(`Seen in ${d.versions.length === 1 ? 'version' : 'versions'} ${d.versions.join(', ')}; first seen in ${d.firstSeenVersion ?? 'an unknown version'}.`)
   if (d.exampleTraceIds.length > 0) lines.push(`Example traces: ${d.exampleTraceIds.map((id) => `\`${id}\``).join(', ')}.`)
   lines.push(
     '',
     '## Task',
-    `1. Find where \`${d.operation}\` is implemented and which line can throw this.`,
+    d.category === 'browser-error'
+      ? '1. Find the client code on that page that can produce this error (the message and the component named in it are the leads).'
+      : d.category === 'request'
+        ? `1. Find where the app makes this request and the route that should answer it; say which side is wrong (the URL, the route, or what the route does).`
+        : `1. Find where \`${d.operation}\` is implemented and which line can throw this.`,
     d.isNew ? `2. Look at what changed in ${d.firstSeenVersion} around it (git log / diff) and explain the cause.` : '2. Explain under which inputs or conditions it throws.',
     '3. Propose the smallest change that fixes it, and say how to verify the fix.',
     OUTRO,

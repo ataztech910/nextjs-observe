@@ -100,6 +100,10 @@ describe('defectPrompt', () => {
     id: 'x',
     service: 'shop',
     operation: 'applyCoupon',
+    spanName: 'applyCoupon',
+    source: 'server',
+    category: 'code',
+    pages: [],
     message: "Cannot read properties of undefined (reading 'discount')",
     type: 'TypeError',
     count: 7,
@@ -109,7 +113,7 @@ describe('defectPrompt', () => {
     firstSeenVersion: 'v2',
     versions: ['v2'],
     isNew: true,
-    affected: [{ service: 'shop', operation: 'POST /api/checkout', count: 7 }],
+    affected: [{ service: 'shop', operation: 'POST /api/checkout', spanName: 'POST /api/checkout', count: 7 }],
     exampleTraceIds: ['aaa', 'bbb'],
   }
 
@@ -121,6 +125,28 @@ describe('defectPrompt', () => {
     expect(prompt).toContain('It first appeared in version v2')
     expect(prompt).toContain('Example traces: `aaa`, `bbb`.')
     expect(section(prompt, 'Task')).toContain('what changed in v2')
+  })
+
+  it('a browser error: where it happened and what kind, and a task about the client code — not "where is `uncaught error` implemented"', () => {
+    const prompt = defectPrompt({ ...defect, operation: 'uncaught error', spanName: 'uncaught error', source: 'browser', category: 'browser-error', pages: [{ path: '/product/3', count: 2 }], affected: [], isNew: false })
+    expect(section(prompt, 'Problem')).toContain('In the browser (service shop), on `/product/3`, this was recorded as "uncaught error":')
+    expect(section(prompt, 'Task')).toContain('1. Find the client code on that page that can produce this error')
+    expect(prompt).not.toContain('is implemented')
+  })
+
+  it('a failing request: named as a request, and the task looks at both the caller and the route', () => {
+    const prompt = defectPrompt({ ...defect, operation: 'GET /api/coupons/:id', spanName: 'GET', source: 'browser', category: 'request', message: 'HTTP 404', type: null, affected: [], isNew: false })
+    expect(section(prompt, 'Problem')).toContain("The browser's request `GET /api/coupons/:id` (service shop) fails with:")
+    // A request made by a server is not called the browser's.
+    const outgoing = defectPrompt({ ...defect, operation: 'GET /api/charge/:id', spanName: 'GET', source: 'server', category: 'request', message: 'HTTP 503', type: null, affected: [], isNew: false })
+    expect(section(outgoing, 'Problem')).toContain('The outgoing request `GET /api/charge/:id` (service shop) fails with:')
+    expect(section(prompt, 'Task')).toContain('1. Find where the app makes this request and the route that should answer it')
+    expect(prompt).not.toContain('is implemented')
+  })
+
+  it('the browser’s request to the failing route itself is not listed as failing because of it', () => {
+    const prompt = defectPrompt({ ...defect, operation: 'GET /api/inventory/[id]', spanName: 'GET /api/inventory/[id]', affected: [{ service: 'shop-browser', operation: 'GET /api/inventory/:id', spanName: 'GET', count: 7 }, { service: 'shop-browser', operation: 'GET /product/:id', spanName: 'GET', count: 2 }] })
+    expect(prompt).toContain('Requests failing because of it: `GET /product/:id` (2).')
   })
 
   it('an old defect: its versions, no deploy to blame', () => {

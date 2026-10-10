@@ -4,13 +4,56 @@ import type { NormalizedSpan } from './types.js'
 
 const METHOD_ONLY = /^(GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS)$/
 
-export function spanLabel(span: Pick<NormalizedSpan, 'name' | 'kind' | 'attributes'>): string {
-  if (span.kind !== 'client' || !METHOD_ONLY.test(span.name)) return span.name
+type Labelled = Pick<NormalizedSpan, 'name' | 'kind' | 'attributes'>
+
+/** An outgoing HTTP call as OTel names it: a client span whose name is just the method — whether or not its URL is usable. */
+export const isRequestSpan = (span: Pick<NormalizedSpan, 'name' | 'kind'>) => span.kind === 'client' && METHOD_ONLY.test(span.name)
+
+/** The method and path of such a span; undefined for any other span, or when it carries no parseable absolute URL. */
+export function requestParts(span: Labelled): { method: string; pathname: string } | undefined {
+  if (!isRequestSpan(span)) return undefined
   const url = span.attributes['url.full'] ?? span.attributes['http.url']
-  if (typeof url !== 'string') return span.name
+  if (typeof url !== 'string') return undefined
   try {
-    return `${span.name} ${new URL(url).pathname}`
+    return { method: span.name, pathname: new URL(url).pathname }
   } catch {
-    return span.name
+    return undefined
   }
+}
+
+/** The HTTP status of a span, under either the old or the stable attribute name; undefined when there is none. */
+export function statusCode(span: Pick<NormalizedSpan, 'attributes'>): number | undefined {
+  const code = span.attributes['http.status_code'] ?? span.attributes['http.response.status_code']
+  const n = typeof code === 'string' ? Number(code) : code
+  return typeof n === 'number' && Number.isFinite(n) ? n : undefined
+}
+
+export function spanLabel(span: Labelled): string {
+  const request = requestParts(span)
+  return request ? `${request.method} ${request.pathname}` : span.name
+}
+
+// A path segment that names one thing rather than a kind of thing: a number, a UUID, a long hex run with a digit in
+// it ("deadbeef" and "cafebabe" are words someone may well name a route).
+const ID_SEGMENT = /^(\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|(?=[a-f]*\d)[0-9a-f]{8,})$/i
+// …or a long opaque token (nanoid, a signed id): 20+ characters with a digit, and either mixed case or no separators.
+// Route names are long too — `recently-viewed-products-v2`, `oauth2-authorization-callback` — but they are lower-case
+// words joined by separators.
+const isToken = (segment: string) =>
+  segment.length >= 20 && /^[A-Za-z0-9_-]+$/.test(segment) && /\d/.test(segment) && ((/[a-z]/.test(segment) && /[A-Z]/.test(segment)) || !/[-_]/.test(segment))
+
+/**
+ * What a span is grouped by. For everything but a browser/HTTP client request that is its name. A client request is
+ * named by its method only, so all failing GETs would be one "GET": here it gets its path, with id-like segments
+ * replaced — `/api/inventory/1` and `/api/inventory/2` are the same operation, `GET /api/inventory/:id`. (The server
+ * span knows the real route pattern; the browser only ever sees the URL.)
+ *
+ * Known limit: an id that is a word (`/api/products/blue-shirt` for `/api/products/[slug]`) cannot be told from a
+ * route name, so such requests stay one operation per URL.
+ */
+export function spanOperation(span: Labelled): string {
+  const request = requestParts(span)
+  if (!request) return span.name
+  const path = request.pathname.split('/').map((segment) => (ID_SEGMENT.test(segment) || isToken(segment) ? ':id' : segment)).join('/')
+  return `${request.method} ${path}`
 }

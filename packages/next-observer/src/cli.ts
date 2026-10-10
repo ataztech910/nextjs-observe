@@ -309,7 +309,7 @@ async function runInit(args: CliArgs, deps: CliDeps): Promise<number> {
   deps.log(
     manual
       ? `\n${manual} step(s) to do by hand (above). Then: ${start}`
-      : `\nDone. Start the app with the observer:  ${start}   — traces and the agents' chat at http://127.0.0.1:4318`,
+      : `\nDone. Start the app with the observer:  ${start}   — traces and the AI agents' chat at http://127.0.0.1:4318`,
   )
   return 0
 }

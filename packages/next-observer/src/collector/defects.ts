@@ -2,6 +2,7 @@
 // A failing function also marks every span above it as failed, so a defect is counted where the error ORIGINATED —
 // the deepest failed span — and the route that returned 500 because of it is listed as affected.
 import { isFrameworkSpan } from './framework.js'
+import { isRequestSpan, spanOperation, statusCode } from './span-label.js'
 import type { NormalizedSpan } from './types.js'
 
 export interface DefectsOptions {
@@ -25,8 +26,22 @@ export interface Defect {
   /** Stable for the same service + operation + message shape. */
   id: string
   service: string
-  /** Where the error originated. */
+  /**
+   * Where the error originated, as a person reads it: the span's name — for a browser request the method and the path
+   * (`GET /api/inventory/:id`), since the span itself is named just "GET".
+   */
   operation: string
+  /** The span's exact name: what the operation page and the trace search look up. */
+  spanName: string
+  /** Where it happened: in the visitor's browser or on the server. */
+  source: 'browser' | 'server'
+  /**
+   * `browser-error`: something the APM agent caught in the page (an uncaught error, a console.error, a failed resource…)
+   * — `operation` is then the kind of error, not a piece of code. `request`: an outgoing HTTP call. `code`: the rest.
+   */
+  category: 'browser-error' | 'request' | 'code'
+  /** Pages it happened on (browser errors), most frequent first. */
+  pages: { path: string; count: number }[]
   /** The most recent message, as thrown. */
   message: string
   /** exception.type of the most recent occurrence, when recorded. */
@@ -47,23 +62,64 @@ export interface Defect {
    */
   isNew: boolean
   /** Requests that failed because of it (the topmost failed span), most frequent first. Empty when it is the origin itself. */
-  affected: { service: string; operation: string; count: number }[]
+  affected: { service: string; operation: string; spanName: string; count: number }[]
   /** Most recent first. */
   exampleTraceIds: string[]
 }
 
 const EXAMPLES = 3
 const AFFECTED = 3
+const PAGES = 3
 
 function exceptionType(span: NormalizedSpan): string | null {
   const type = span.events.find((e) => e.name === 'exception')?.attributes['exception.type']
   return typeof type === 'string' && type ? type : null
 }
 
-export function errorMessage(span: NormalizedSpan): string {
+/** What the span itself says went wrong; undefined when it says nothing. */
+function ownMessage(span: NormalizedSpan): string | undefined {
   const event = span.events.find((e) => e.name === 'exception')
   const message = event?.attributes['exception.message']
-  return (typeof message === 'string' && message) || span.statusMessage || '(no message)'
+  if (typeof message === 'string' && message) return message
+  return span.statusMessage || undefined
+}
+
+/**
+ * A request that failed by its status alone (a 404 seen from the browser, a 500 without an exception) says at least
+ * which status.
+ */
+function statusMessage(span: NormalizedSpan): string | undefined {
+  const code = statusCode(span)
+  return code !== undefined && code >= 400 ? `HTTP ${code}` : undefined
+}
+
+export function errorMessage(span: NormalizedSpan): string {
+  return ownMessage(span) ?? statusMessage(span) ?? '(no message)'
+}
+
+/**
+ * What a defect is told apart by. A thrown message is compared by its shape (ids and numbers replaced); a bare status
+ * is compared exactly — 404 "not found" and 500 "the server crashed" on one route are two defects, not "HTTP <n>".
+ */
+function messageKey(span: NormalizedSpan): string {
+  const own = ownMessage(span)
+  return own !== undefined ? messageShape(own) : (statusMessage(span) ?? '(no message)')
+}
+
+/**
+ * The SDK names itself in the resource: `webjs` is a browser, anything else is not — whatever the service is called.
+ * Only without that attribute does the APM agent's naming convention (`…-browser`) decide.
+ */
+function isBrowser(span: NormalizedSpan): boolean {
+  const language = span.resource['telemetry.sdk.language']
+  return typeof language === 'string' && language ? language === 'webjs' : span.service.endsWith('-browser')
+}
+
+function categoryOf(span: NormalizedSpan): Defect['category'] {
+  if (span.attributes['observe.kind'] === 'browser-error') return 'browser-error'
+  // By what the span is, not by whether its URL could be parsed: a "GET" without a usable URL is still a request, and
+  // must not get the operation-page link or the name-based "new" evidence meant for code.
+  return isRequestSpan(span) ? 'request' : 'code'
 }
 
 /**
@@ -72,6 +128,16 @@ export function errorMessage(span: NormalizedSpan): string {
  * hashes), then any remaining digits.
  */
 export function messageShape(message: string): string {
+  // A status code inside the text ("Request failed with status code 404", "HTTP 500") is what the message says, not
+  // an id: 404 and 500 must stay different defects. It is fenced off before the digits are replaced.
+  const statuses: string[] = []
+  // Only in an HTTP context ("HTTP 404", "status code 404") and only a real status (100–599): "Order status 417" or
+  // "exited with status 137" carry a value, and such messages must keep collapsing into one defect.
+  const fenced = message.replace(/\b(HTTP|status code)(\s+)([1-5]\d{2})\b/gi, (_all, word: string, space: string, code: string) => (statuses.push(code), `${word}${space}\u00010\u0001`))
+  return shapeIds(fenced).replace(/\u0001<n>\u0001/g, () => statuses.shift()!)
+}
+
+function shapeIds(message: string): string {
   return message
     .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '<id>')
     .replace(/\b[0-9a-f]{8,}\b/gi, '<id>')
@@ -106,10 +172,22 @@ export function computeDefects(spans: NormalizedSpan[], options: DefectsOptions)
     topOf.set(s, top)
   }
 
+  // Parsed once per span: this runs on every poll over every failed span stored.
+  const operations = new Map<NormalizedSpan, string>()
+  const operationOf = (s: NormalizedSpan) => {
+    let operation = operations.get(s)
+    if (operation === undefined) operations.set(s, (operation = spanOperation(s)))
+    return operation
+  }
+
   const groups = new Map<string, NormalizedSpan[]>()
   for (const s of visible) {
     if (hasFailedDescendant.has(s)) continue
-    const id = `${s.service}\u0000${s.name}\u0000${messageShape(errorMessage(s))}`
+    // The span's own name is part of the key: a client request "GET" to /api/x and a span literally named
+    // "GET /api/x" read the same but are different things (a request and a piece of code).
+    // …and so is the category: an APM-agent "console.error" and an app span that happens to be named the same must
+    // not share a card whose kind flips with whichever came last.
+    const id = `${s.service}\u0000${categoryOf(s)}\u0000${s.name}\u0000${operationOf(s)}\u0000${messageKey(s)}`
     const list = groups.get(id)
     if (list) list.push(s)
     else groups.set(id, [s])
@@ -128,22 +206,44 @@ export function computeDefects(spans: NormalizedSpan[], options: DefectsOptions)
     const series = Array.from({ length: buckets }, () => 0)
     for (const s of recent) series[Math.min(Math.floor((s.startTimeMs - fromMs) / bucketMs), buckets - 1)]++
     // The failed request may belong to another service than the origin (browser → server): keep its own service.
-    const affected = new Map<string, { service: string; operation: string; count: number }>()
+    const affected = new Map<string, { service: string; operation: string; spanName: string; count: number }>()
     for (const s of recent) {
       const top = topOf.get(s)!
       if (top === s) continue
-      const key = `${top.service}\u0000${top.name}`
-      const row = affected.get(key) ?? { service: top.service, operation: top.name, count: 0 }
+      const operation = operationOf(top)
+      // Like the defect's own key: a request and a span literally named like its label are different rows.
+      const key = `${top.service}\u0000${top.name}\u0000${operation}`
+      const row = affected.get(key) ?? { service: top.service, operation, spanName: top.name, count: 0 }
       row.count++
       affected.set(key, row)
     }
     const latest = order[order.length - 1]
     const previous = order[order.length - 2]
     const firstInLatest = order.length > 1 && first.serviceVersion === latest
+    // What kind of thing this is comes from its most recent occurrence — the one the card's message is taken from too.
+    const category = categoryOf(last)
+    // `url.path` means "the page" only on the APM agent's browser-error spans; on a server HTTP span the same standard
+    // attribute is the request path.
+    const pages = new Map<string, number>()
+    if (category === 'browser-error') {
+      for (const s of recent) {
+        const path = s.attributes['url.path']
+        if (typeof path === 'string' && path) pages.set(path, (pages.get(path) ?? 0) + 1)
+      }
+    }
+    // "Did this operation run in the previous version?" can be asked by span name only. That is evidence for a piece
+    // of code. For a request the name is the bare method, for a browser error the kind of error — some GET ran and
+    // some console.error was written in every version, which says nothing about this one. So once old spans were
+    // dropped, those two are not called new: a missing badge is cheaper than a false "first appeared in v2".
+    const ranBefore = category === 'code' ? (options.ranIn?.(first.service, first.name, previous) ?? false) : false
     defects.push({
       id,
       service: first.service,
-      operation: first.name,
+      operation: operationOf(last),
+      spanName: last.name,
+      source: isBrowser(last) ? 'browser' : 'server',
+      category,
+      pages: [...pages].map(([path, count]) => ({ path, count })).sort((a, b) => b.count - a.count).slice(0, PAGES),
       message: errorMessage(last),
       type: exceptionType(last),
       count: recent.length,
@@ -152,7 +252,7 @@ export function computeDefects(spans: NormalizedSpan[], options: DefectsOptions)
       lastSeenMs: last.startTimeMs,
       firstSeenVersion: first.serviceVersion,
       versions,
-      isNew: firstInLatest && (options.historyComplete || (options.ranIn?.(first.service, first.name, previous) ?? false)),
+      isNew: firstInLatest && (options.historyComplete || ranBefore),
       affected: [...affected.values()].sort((a, b) => b.count - a.count).slice(0, AFFECTED),
       exampleTraceIds: [...new Set([...recent].sort((a, b) => b.startTimeMs - a.startTimeMs).map((s) => s.traceId))].slice(0, EXAMPLES),
     })
