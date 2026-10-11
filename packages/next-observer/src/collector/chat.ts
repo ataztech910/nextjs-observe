@@ -19,6 +19,8 @@ export type EvidenceCard =
   | { kind: 'n-plus-one'; traceId: string; parent: string; operation: string; count: number; totalMs: number }
   | { kind: 'hotspot'; traceId: string; operation: string; selfMs: number; traceMs: number; codeFile: string }
   | { kind: 'silent'; service: string; lastSpanSecondsAgo: number }
+  /** The app's own checks of its answers, per deployed version: where wrong data started and how often it happens. */
+  | { kind: 'wrong-data'; service: string; operation: string; versions: { version: string; checked: number; failed: number }[] }
   | { kind: 'traces'; label: string; traces: { traceId: string; root: string; durationMs: number; errors: number }[] }
 
 export type ChatEvent =

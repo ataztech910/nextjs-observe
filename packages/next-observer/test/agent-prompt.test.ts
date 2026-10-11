@@ -189,4 +189,12 @@ describe('reportPrompt', () => {
   it('without cards there is no Measured section', () => {
     expect(reportPrompt('q', 'r', [])).not.toContain('## Measured')
   })
+
+  it('reportPrompt carries the per-version integrity counts as a measured fact', () => {
+    const prompt = reportPrompt('Wrong data', 'the agents said something', [
+      { kind: 'wrong-data', service: 'shop', operation: 'getProductById', versions: [{ version: 'v2', checked: 31, failed: 0 }, { version: 'v3', checked: 191, failed: 11 }] },
+    ])
+    expect(prompt).toContain('## Measured')
+    expect(prompt).toContain('- `getProductById` (shop) returned answers that were not the ones asked for — its own check, per version: v2 0 of 31, v3 11 of 191. No error and no slowdown comes with it.')
+  })
 })

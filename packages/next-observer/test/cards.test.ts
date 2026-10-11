@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import { cardsFromResult, createChatHandler } from '../src/agents/index.js'
+import { cardKey, cardsFromResult, createChatHandler } from '../src/agents/index.js'
 import type { ChatEvent, EvidenceCard } from '../src/collector/index.js'
 import { createAgentQueries, type AgentQueries } from '../src/debug/queries.js'
 import { NOW, shopStorage } from './fixtures/shop.js'
@@ -12,6 +12,25 @@ beforeAll(async () => {
 const byKind = <K extends EvidenceCard['kind']>(cards: EvidenceCard[], kind: K) => cards.filter((c): c is Extract<EvidenceCard, { kind: K }> => c.kind === kind)
 
 describe('cardsFromResult', () => {
+  it('compare_versions → a wrong-data card for every operation whose own checks failed, before the regressions', () => {
+    const versions = [{ version: 'v2', checked: 40, failed: 0 }, { version: 'v3', checked: 30, failed: 3 }]
+    const result = {
+      changes: [],
+      integrity: [
+        { service: 'shop', operation: 'getProductById', versions },
+        { service: 'shop', operation: 'listOrders', versions: [{ version: 'v3', checked: 2, failed: 0 }] },
+      ],
+    }
+    expect(cardsFromResult('compare_versions', {}, result)).toEqual([{ kind: 'wrong-data', service: 'shop', operation: 'getProductById', versions }])
+    // Wrong data that the latest version no longer returns is history, not evidence for today.
+    const fixed = { changes: [], integrity: [{ service: 'shop', operation: 'x', versions: [{ version: 'v2', checked: 40, failed: 9 }, { version: 'v3', checked: 500, failed: 0 }] }] }
+    expect(cardsFromResult('compare_versions', {}, fixed)).toEqual([])
+    // One failed check is enough: there is no acceptable share of wrong answers.
+    const one = { changes: [], integrity: [{ service: 'shop', operation: 'x', versions: [{ version: 'v1', checked: 5000, failed: 1 }] }] }
+    expect(cardsFromResult('compare_versions', {}, one)).toHaveLength(1)
+    expect(cardKey({ kind: 'wrong-data', service: 'shop', operation: 'x', versions: [] })).toBe('wrong-data:shop:x')
+  })
+
   it('compare_versions → a regression card for chargePayment v1 → v2, nothing below threshold', async () => {
     const cards = cardsFromResult('compare_versions', {}, await q.compareVersions())
     const payment = byKind(cards, 'regression').find((c) => c.operation === 'chargePayment')!

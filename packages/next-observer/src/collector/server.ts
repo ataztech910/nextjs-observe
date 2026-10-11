@@ -380,7 +380,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
       return send(res, 200, defects)
     }
     if (url.pathname === '/api/regression') {
-      const { changes } = await createAgentQueries(storage).compareVersions({ service: stringParam(q, 'service'), sinceMinutes: numberParam(q, 'sinceMinutes') })
+      const { changes } = await createAgentQueries(storage).compareVersions({ service: stringParam(q, 'service'), sinceMinutes: numberParam(q, 'sinceMinutes'), integrity: false })
       return send(res, 200, { regression: findRegression(changes) })
     }
     if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/v1/')) throw new HttpError(404, 'not found')
