@@ -99,6 +99,22 @@ export function EvidenceCardView({ card }: { card: EvidenceCard }) {
           <TraceLink traceId={card.traceId}>open trace</TraceLink>
         </Frame>
       )
+    case 'wrong-data':
+      return (
+        <Frame testKind={card.kind} title={<>Wrong data · {card.operation}</>} badge={<Badge className="bg-warning/15 text-warning">checked by the app</Badge>}>
+          <ul className="space-y-1 font-mono text-xs">
+            {card.versions.map((v) => (
+              <li key={v.version} className="flex items-baseline gap-2">
+                <span className="text-foreground">{v.version}</span>
+                <span className={v.failed > 0 ? 'text-warning' : 'text-muted-foreground'}>
+                  {v.failed} of {v.checked} answers were not the ones asked for
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-xs text-muted-foreground">{card.service} · fast and without an error — only the app's own check shows it</p>
+        </Frame>
+      )
     case 'silent':
       return (
         <Frame testKind={card.kind} title={<>No traffic · {card.service}</>} badge={<Badge variant="destructive">silent</Badge>}>

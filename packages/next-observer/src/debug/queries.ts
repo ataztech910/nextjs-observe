@@ -3,7 +3,7 @@
 // Rules for every tool: compact, token-cheap output (aggregates, not raw spans), rounded numbers, and a `note`
 // instead of an empty result when a name filter matches nothing (users say "checkout", spans say "chargePayment").
 import { isFrameworkSpan } from '../collector/framework.js'
-import { integrityFailureEvent } from './detector.js'
+import { INTEGRITY_CHECK_EVENT, integrityFailureEvent } from './detector.js'
 import { errorRateChangeIsSignificant } from './stats.js'
 import type { NormalizedSpan, OperationStats, StorageAdapter } from '../collector/types.js'
 
@@ -75,6 +75,36 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
     return left > 0 ? `${left} cold-start request(s) left out — the first request of a route after a server start (in next dev it includes compiling the route)` : undefined
   }
 
+  /**
+   * The app's own "did I get what I asked for" checks (span event `integrity_check`), counted per version over everything
+   * stored — not the time window: the version before the deployment is exactly the one that stopped sending. Latency
+   * and error rate cannot answer "which deployment started returning wrong data"; these counts can.
+   */
+  async function integrityByVersion(service: string | undefined, deployOrder: Map<string, string[]>) {
+    const counts = new Map<string, { service: string; operation: string; versions: Map<string, { checked: number; failed: number }> }>()
+    for (const span of await storage.querySpans({ service, limit: Number.MAX_SAFE_INTEGER })) {
+      const checks = span.events.filter((e) => e.name === INTEGRITY_CHECK_EVENT)
+      if (checks.length === 0) continue
+      const key = `${span.service}\u0000${span.name}`
+      const entry = counts.get(key) ?? { service: span.service, operation: span.name, versions: new Map() }
+      const version = span.serviceVersion ?? 'unknown'
+      const count = entry.versions.get(version) ?? { checked: 0, failed: 0 }
+      count.checked += checks.length
+      count.failed += checks.filter((e) => e.attributes.ok === false).length
+      entry.versions.set(version, count)
+      counts.set(key, entry)
+    }
+    return [...counts.values()]
+      .map((entry) => {
+        const order = deployOrder.get(entry.service) ?? []
+        const versions = [...entry.versions].map(([version, count]) => ({ version, ...count })).sort((a, b) => order.indexOf(a.version) - order.indexOf(b.version))
+        return { service: entry.service, operation: entry.operation, versions }
+      })
+      // The ones with failures first; an operation whose checks all pass is still worth a line ("checked, never wrong").
+      .sort((a, b) => b.versions.reduce((n, v) => n + v.failed, 0) - a.versions.reduce((n, v) => n + v.failed, 0))
+      .slice(0, 10)
+  }
+
   const joinNotes = (...notes: (string | undefined)[]) => {
     const text = notes.filter(Boolean).join('; ')
     return text ? { note: text } : {}
@@ -85,7 +115,14 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
     async getServices() {
       const services = await storage.getServices()
       return {
-        services: services.map((s) => ({ name: s.name, versions: s.versions, spans: s.spanCount, lastSpanSecondsAgo: ago(now(), s.lastSeenMs) })),
+        services: services.map((s) => ({
+          name: s.name,
+          versions: s.versions,
+          // `versions` is every version ever seen: without this a model reads "v2, v3" as "both are running".
+          versionLastSpanSecondsAgo: Object.fromEntries(s.versions.map((v) => [v, ago(now(), s.versionLastSeenMs[v] ?? s.lastSeenMs)])),
+          spans: s.spanCount,
+          lastSpanSecondsAgo: ago(now(), s.lastSeenMs),
+        })),
       }
     },
 
@@ -168,7 +205,8 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
       }
       changes.sort((a, b) => (b.p95Ratio ?? 0) - (a.p95Ratio ?? 0) || b.errorRateDelta - a.errorRateDelta)
       const empty = changes.length === 0 ? 'only one version seen per operation — nothing to compare' : undefined
-      return { ...joinNotes(serviceNote, note, coldNote(items), ...olderNotes, empty), changes }
+      const integrity = await integrityByVersion(service, deployOrder)
+      return { ...joinNotes(serviceNote, note, coldNote(items), ...olderNotes, empty), changes, ...(integrity.length > 0 ? { integrity } : {}) }
     },
 
     /** Failing operations: error rate, most common exception messages and example traces. */

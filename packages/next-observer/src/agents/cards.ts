@@ -27,14 +27,19 @@ function describeFilters(args: Record<string, unknown>): string {
 export function cardsFromResult(tool: string, args: Record<string, unknown>, result: unknown): EvidenceCard[] {
   switch (tool) {
     case 'compare_versions': {
-      const { changes } = result as Result<'compareVersions'>
-      return changes
+      const { changes, integrity } = result as Result<'compareVersions'>
+      const regressions: EvidenceCard[] = changes
         .filter(
           (c) =>
             ((c.p95Ratio ?? 0) >= THRESHOLDS.regressionRatio && c.to.p95Ms - c.from.p95Ms >= THRESHOLDS.regressionMinMs) ||
             (c.errorRateDelta >= THRESHOLDS.regressionErrorDelta && c.errorRateChangeSignificant),
         )
         .map((c) => ({ kind: 'regression', service: c.service, operation: c.operation, from: c.from, to: c.to, p95Ratio: c.p95Ratio, errorRateDelta: c.errorRateDelta }))
+      // One wrong answer is worth a card — there is no acceptable share of them.
+      const wrong: EvidenceCard[] = (integrity ?? [])
+        .filter((i) => i.versions.some((v) => v.failed > 0))
+        .map((i) => ({ kind: 'wrong-data', service: i.service, operation: i.operation, versions: i.versions }))
+      return [...wrong, ...regressions]
     }
     case 'get_errors': {
       const { errors } = result as Result<'getErrors'>
@@ -89,6 +94,8 @@ export function cardKey(card: EvidenceCard): string {
       return `${card.kind}:${card.parent}:${card.operation}`
     case 'hotspot':
       return `${card.kind}:${card.operation}:${card.codeFile}`
+    case 'wrong-data':
+      return `${card.kind}:${card.service}:${card.operation}`
     case 'silent':
       return `${card.kind}:${card.service}`
     case 'traces':

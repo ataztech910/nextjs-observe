@@ -62,7 +62,8 @@ this call compares with the others of its kind.
 
 A span can be fast, without an error, and still carry the wrong answer. When the app records its own verdict as a span
 event — `integrity_check` with `ok`, `expected`, `actual` — the observer raises an anomaly on the first `ok: false` and the
-trace says so:
+trace says so. The AI agents get those checks counted per deployed version (`compare_versions`), so they can name the
+version that started returning wrong data and how often it happens:
 
 ![A trace with a Wrong data banner: getProductById asked for 1 and got back 3](https://raw.githubusercontent.com/ataztech910/nextjs-observe/master/docs/screenshots/wrong-data.png)
 

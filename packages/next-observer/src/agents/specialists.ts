@@ -51,7 +51,9 @@ tells whether the error rate changed with the latest deployment (errorRateChange
 A trace can look completely clean — no error, not slow — and still be wrong: get_trace's \`integrityCheck\` field on a
 span means that span's response did not match what was requested. get_errors will not find these (their status is not
 "error"); you only see them by opening the trace. Report this as a data-integrity problem, distinct from an exception,
-and name what the mismatched spans share (same operation? same deployment version?). Max 4 sentences.`,
+and name what the mismatched spans share (same operation? same deployment version?). compare_versions' \`integrity\`
+counts those checks per version: say which version started failing them and how often (failed of checked). Quote the
+expected/actual pairs as they are — two or three pairs are not a pattern, do not read one into them. Max 4 sentences.`,
     tools: ['get_errors', 'compare_versions', 'search_traces', 'get_trace'],
   },
   {

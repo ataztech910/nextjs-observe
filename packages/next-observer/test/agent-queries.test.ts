@@ -11,7 +11,14 @@ beforeAll(async () => {
 
 describe('getServices', () => {
   it('lists versions in deploy order and data freshness', async () => {
-    expect(await q.getServices()).toEqual({ services: [{ name: 'shop', versions: ['v0', 'v1', 'v2'], spans: expect.any(Number), lastSpanSecondsAgo: expect.any(Number) }] })
+    expect(await q.getServices()).toEqual({
+      services: [{ name: 'shop', versions: ['v0', 'v1', 'v2'], versionLastSpanSecondsAgo: { v0: expect.any(Number), v1: expect.any(Number), v2: expect.any(Number) }, spans: expect.any(Number), lastSpanSecondsAgo: expect.any(Number) }],
+    })
+    // The latest version is the one still sending; the ones before it stopped earlier.
+    const ages = (await q.getServices()).services[0].versionLastSpanSecondsAgo
+    expect(ages.v2).toBe((await q.getServices()).services[0].lastSpanSecondsAgo)
+    expect(ages.v1).toBeGreaterThan(ages.v2)
+    expect(ages.v0).toBeGreaterThanOrEqual(ages.v1)
     const [shop] = (await q.getServices()).services
     expect(shop.lastSpanSecondsAgo).toBeLessThan(3 * 60)
   })
@@ -235,6 +242,59 @@ describe('getTrace', () => {
       name: 'inventory.check',
       error: 'Inventory service timeout: upstream not responding',
       attributes: { 'code.filepath': 'app/api/inventory/[id]/route.ts' },
+    })
+  })
+
+  describe('compare_versions: the app\'s own integrity checks, per version', () => {
+    let n = 0
+    const span = (name: string, version: string, checks: boolean[], atMs = NOW - 1000, service = 'shop') => ({
+      traceId: (++n).toString(16).padStart(32, '0'),
+      spanId: n.toString(16).padStart(16, '0'),
+      parentSpanId: null,
+      kind: 'internal' as const,
+      service,
+      serviceVersion: version,
+      scope: null,
+      status: 'ok' as const,
+      statusMessage: null,
+      attributes: {},
+      resource: {},
+      name,
+      startTimeMs: atMs,
+      durationMs: 20,
+      events: checks.map((ok) => ({ name: 'integrity_check', timeMs: 0, attributes: { ok, expected: '1', actual: ok ? '1' : '5' } })),
+    })
+
+    it('counts checked and failed per version, in deploy order, over the whole history', async () => {
+      const storage = new MemoryStorage()
+      await storage.insertSpans([
+        // v2 stopped sending two hours ago — far outside any window, and exactly the version to compare with.
+        ...Array.from({ length: 40 }, () => span('getProductById', 'v2', [true], NOW - 7_200_000)),
+        ...Array.from({ length: 27 }, () => span('getProductById', 'v3', [true])),
+        ...Array.from({ length: 3 }, () => span('getProductById', 'v3', [false])),
+        span('getProductIds', 'v3', []), // no checks: not in the table
+        span('listOrders', 'v3', [true, true]), // two checks on one span, all fine
+      ])
+      const result = await createAgentQueries(storage, { now: () => NOW }).compareVersions({ sinceMinutes: 10 })
+      expect(result.integrity).toEqual([
+        { service: 'shop', operation: 'getProductById', versions: [{ version: 'v2', checked: 40, failed: 0 }, { version: 'v3', checked: 30, failed: 3 }] },
+        { service: 'shop', operation: 'listOrders', versions: [{ version: 'v3', checked: 2, failed: 0 }] },
+      ])
+    })
+
+    it('is absent when the app checks nothing; follows the service filter', async () => {
+      expect('integrity' in (await q.compareVersions())).toBe(false)
+      const storage = new MemoryStorage()
+      await storage.insertSpans([span('a', 'v1', [false]), span('b', 'v1', [false], NOW - 1000, 'billing')])
+      const queries = createAgentQueries(storage, { now: () => NOW })
+      expect((await queries.compareVersions({ service: 'billing' })).integrity?.map((i) => i.operation)).toEqual(['b'])
+      expect((await queries.compareVersions()).integrity?.map((i) => i.operation).sort()).toEqual(['a', 'b'])
+    })
+
+    it('puts the operations with wrong answers first', async () => {
+      const storage = new MemoryStorage()
+      await storage.insertSpans([span('fine', 'v1', [true]), span('bad', 'v1', [true, false]), span('worse', 'v1', [false, false])])
+      expect((await createAgentQueries(storage, { now: () => NOW }).compareVersions()).integrity?.map((i) => i.operation)).toEqual(['worse', 'bad', 'fine'])
     })
   })
 
