@@ -92,12 +92,14 @@ export function ChatPage() {
     asking.current.set(id, controller)
     setTurns((all) => [...all, { id, question, events: [], running: true }])
     setDraft('')
+    let answered = false
     try {
       await api.ask(
         question,
         sessionId,
         (event) => {
           if (event.type === 'status') setSessionId(event.sessionId)
+          if (event.type === 'report') answered = true
           update((t) => ({ ...t, events: [...t.events, event] }))
         },
         controller.signal,
@@ -106,10 +108,10 @@ export function ChatPage() {
       // Our own Stop closes the request; that is not a failure to report.
       const event: ChatEvent = controller.signal.aborted ? { type: 'stopped' } : { type: 'error', message: error instanceof Error ? error.message : String(error) }
       update((t) => ({ ...t, events: [...t.events, event] }))
-      // A stopped conversation is not continued: its history ends in the middle of a step, and the observer refuses
-      // it. The next question starts a new one.
-      if (controller.signal.aborted) setSessionId(undefined)
     } finally {
+      // A turn that did not end in a report was stopped, timed out or lost its connection: the observer does not
+      // continue such a conversation (its history ends in the middle of a step). The next question starts a new one.
+      if (!answered) setSessionId(undefined)
       asking.current.delete(id)
       update((t) => ({ ...t, running: false }))
     }
@@ -119,8 +121,8 @@ export function ChatPage() {
     if (!turn.proactive) return void asking.current.get(turn.id)?.abort()
     // The observer answers with a `stopped` event for everyone watching. When it has nothing to stop — the turn ended,
     // or the observer was restarted — the turn here is stale: mark it so, or it would look alive for ever.
-    void api.stopInvestigation(turn.id).then((ok) => {
-      if (!ok) setTurns((all) => all.map((t) => (t.id === turn.id && t.running ? { ...t, running: false, events: [...t.events, { type: 'stopped' }] } : t)))
+    void api.stopInvestigation(turn.id).then((result) => {
+      if (result === 'gone') setTurns((all) => all.map((t) => (t.id === turn.id && t.running ? { ...t, running: false, events: [...t.events, { type: 'stopped' }] } : t)))
     })
   }
 

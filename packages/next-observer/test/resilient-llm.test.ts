@@ -69,6 +69,17 @@ describe('ResilientLlm: a stopped investigation', () => {
     expect(inner.calls).toBe(1)
   })
 
+  it('a stop does not wait out the provider\'s "retry in N s"', async () => {
+    const inner = new FailsThenAnswers([rateLimited()])
+    const controller = new AbortController()
+    const llm = new ResilientLlm(inner, { sleep: () => new Promise((resolve) => setTimeout(resolve, 5000)) })
+    setTimeout(() => controller.abort(), 50)
+    const before = Date.now()
+    expect(await collect(llm, controller.signal)).toEqual([])
+    expect(Date.now() - before).toBeLessThan(1000)
+    expect(inner.calls).toBe(1)
+  })
+
   it('without a stop the same wait ends in the answer', async () => {
     const inner = new FailsThenAnswers([rateLimited()])
     expect(await collect(new ResilientLlm(inner, { sleep: async () => {} }), new AbortController().signal)).toEqual(['answer'])

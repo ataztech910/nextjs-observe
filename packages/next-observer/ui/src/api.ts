@@ -45,13 +45,14 @@ export const api = {
   chatInfo: () => get<ChatInfo>('/api/chat'),
 
   /**
-   * Stops an investigation the observer started on its own; false when there is none to stop (it has ended, or the
-   * observer was restarted). One the user asked for is stopped by aborting `ask`.
+   * Stops an investigation the observer started on its own. 'gone' when there is none to stop (it has ended, or the
+   * observer was restarted); 'failed' when the request did not get through — it may still be running. One the user
+   * asked for is stopped by aborting `ask`.
    */
-  stopInvestigation: (turnId: string) =>
+  stopInvestigation: (turnId: string): Promise<'stopped' | 'gone' | 'failed'> =>
     fetch('/api/chat/stop', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ turnId }) }).then(
-      (res) => res.ok,
-      () => false,
+      (res) => (res.ok ? 'stopped' : res.status === 404 ? 'gone' : 'failed'),
+      () => 'failed',
     ),
 
   /** Streams one chat turn: calls onEvent for every NDJSON line as the agents work. Aborting `signal` stops the investigation. */

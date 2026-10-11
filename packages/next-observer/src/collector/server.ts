@@ -213,7 +213,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
             // Already told to everyone by the stop request itself; and nothing of a stopped turn is news after that.
             if (!controller.signal.aborted) broadcast({ turnId, event })
           }).catch((error: unknown) => {
-            broadcast({ turnId, event: { type: 'error', message: error instanceof Error ? error.message : String(error) } })
+            if (!controller.signal.aborted) broadcast({ turnId, event: { type: 'error', message: error instanceof Error ? error.message : String(error) } })
           }),
         )
         .finally(() => proactive.delete(turnId))
