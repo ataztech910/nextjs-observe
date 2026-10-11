@@ -151,7 +151,9 @@ describe('collector passes sessions through', () => {
     const post = (body: object) => fetch(`${collector!.url}/api/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
     await (await post({ question: 'a' })).text()
     await (await post({ question: 'b', sessionId: 'abc-123_x' })).text()
-    expect(seen).toEqual([{ question: 'a' }, { question: 'b', sessionId: 'abc-123_x' }])
+    expect(seen).toEqual([{ question: 'a', signal: expect.any(AbortSignal) }, { question: 'b', sessionId: 'abc-123_x', signal: expect.any(AbortSignal) }])
+    // Answered in full and read to the end: nobody stopped anything.
+    expect(seen.map((r) => r.signal?.aborted)).toEqual([false, false])
     expect((await post({ question: 'c', sessionId: '../etc' })).status).toBe(400)
     expect((await post({ question: 'c', sessionId: 42 })).status).toBe(400)
   })

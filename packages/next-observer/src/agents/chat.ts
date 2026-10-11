@@ -61,7 +61,7 @@ export async function createChatHandler(options: ChatHandlerOptions): Promise<{ 
   // One question at a time per conversation: a second one would interleave with the first in the session history.
   const busy = new Set<string>()
 
-  const handle: ChatHandler = async ({ question, sessionId: requested }, emit) => {
+  const handle: ChatHandler = async ({ question, sessionId: requested, signal }, emit) => {
     // Reserve synchronously, before any await: two requests for the same session must not both get through.
     if (requested) {
       if (busy.has(requested)) {
@@ -73,12 +73,22 @@ export async function createChatHandler(options: ChatHandlerOptions): Promise<{ 
     let sessionId = requested
     let investigation: Promise<unknown> | undefined
     let timedOut = false
+    let stopped = false
     let finished = false
     const send = (event: ChatEvent) => {
       if (!finished) emit(event)
     }
     let timer: ReturnType<typeof setTimeout> | undefined
     const timeout = new Promise<'timeout'>((resolve) => (timer = setTimeout(() => resolve('timeout'), timeoutMs)))
+    // Resolves when somebody stops the investigation. The run itself is cancelled through the same signal, but a model
+    // that cannot be cancelled (a CLI) would keep us waiting — so the turn ends here, at once.
+    let onAbort: (() => void) | undefined
+    const stop = new Promise<'stopped'>((resolve) => {
+      if (!signal) return
+      if (signal.aborted) return resolve('stopped')
+      onAbort = () => resolve('stopped')
+      signal.addEventListener('abort', onAbort, { once: true })
+    })
     const shown = new Set<string>()
     const onResult = (step: { tool: string; args: Record<string, unknown> }, result: unknown) => {
       for (const card of cardsFromResult(step.tool, step.args, result)) {
@@ -92,10 +102,15 @@ export async function createChatHandler(options: ChatHandlerOptions): Promise<{ 
       sessionId = await investigator.startSession(requested)
       busy.add(sessionId)
       emit({ type: 'status', mode, sessionId, text: 'Investigating…' })
-      const running = investigator.ask(question, { sessionId, onStep: (s) => send({ type: 'step', ...s }), onResult })
+      const running = investigator.ask(question, { sessionId, onStep: (s) => send({ type: 'step', ...s }), onResult, signal })
       investigation = running
-      const result = await Promise.race([running, timeout])
-      if (result === 'timeout') {
+      // A cancelled run rejects or resolves on its own time; nobody is waiting for it any more.
+      running.catch(() => {})
+      const result = await Promise.race([running, timeout, stop])
+      if (result === 'stopped') {
+        stopped = true
+        send({ type: 'stopped' })
+      } else if (result === 'timeout') {
         timedOut = true
         send({ type: 'error', message: `investigation took longer than ${Math.round(timeoutMs / 1000)}s — try a narrower question` })
       } else if (result.error && !result.text) {
@@ -104,16 +119,21 @@ export async function createChatHandler(options: ChatHandlerOptions): Promise<{ 
         send({ type: 'report', text: result.text || '(the agents returned no report)' })
       }
     } catch (error) {
-      send({ type: 'error', message: error instanceof Error ? error.message : String(error) })
+      // The run was cancelled under us: that is the stop, not a failure.
+      if (signal?.aborted) {
+        stopped = true
+        send({ type: 'stopped' })
+      } else send({ type: 'error', message: error instanceof Error ? error.message : String(error) })
     } finally {
       // A timed-out investigation keeps running and writing to the session: its late steps must not leak into this
       // finished turn, and the session stays busy until it really ends.
       finished = true
       clearTimeout(timer)
+      if (onAbort) signal?.removeEventListener('abort', onAbort)
       const release = () => {
         if (sessionId) busy.delete(sessionId)
       }
-      if (timedOut && investigation) investigation.then(release, release)
+      if ((timedOut || stopped) && investigation) investigation.then(release, release)
       else release()
     }
   }

@@ -12,6 +12,7 @@
 //   GET  /api/regression?service&sinceMinutes   { regression }: the latest version vs the previous one, or null
 //   GET  /api/chat                  { enabled, mode }
 //   POST /api/chat                  { question, sessionId? } → NDJSON stream of ChatEvent (status, step…, card…, report | error)
+//   POST /api/chat/stop             { turnId } → stops an investigation the observer started on its own
 //   GET  /api/chat/events           SSE: proactive turns (detector anomaly → investigation), recent ones replayed on connect
 //   GET  /*                         the UI (dist/ui) with SPA fallback
 import { createHash, timingSafeEqual } from 'node:crypto'
@@ -195,18 +196,24 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     for (const res of subscribers) if (!res.writableEnded) res.write(line)
   }
   let investigations = Promise.resolve()
+  /** Investigations the observer started itself and that are queued or running — each can be stopped by its turn id. */
+  const proactive = new Map<string, AbortController>()
   const onAnomalies = () => {
     for (const anomaly of [...(options.detector?.check() ?? []), ...(options.checks?.anomalies?.() ?? [])]) {
       const turnId = anomaly.id
       broadcast({ turnId, event: { type: 'anomaly', anomaly } })
       if (!options.chat) continue
       const chat = options.chat
+      const controller = new AbortController()
+      proactive.set(turnId, controller)
       // Queued: two investigations at once would double the model load and interleave in the UI.
-      investigations = investigations.then(() =>
-        chat.handle({ question: questionFor(anomaly) }, (event) => broadcast({ turnId, event })).catch((error: unknown) => {
-          broadcast({ turnId, event: { type: 'error', message: error instanceof Error ? error.message : String(error) } })
-        }),
-      )
+      investigations = investigations
+        .then(() =>
+          chat.handle({ question: questionFor(anomaly), signal: controller.signal }, (event) => broadcast({ turnId, event })).catch((error: unknown) => {
+            broadcast({ turnId, event: { type: 'error', message: error instanceof Error ? error.message : String(error) } })
+          }),
+        )
+        .finally(() => proactive.delete(turnId))
     }
   }
 
@@ -240,12 +247,35 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     const emit = (event: ChatEvent) => {
       if (!res.writableEnded) res.write(JSON.stringify(event) + '\n')
     }
+    // The asker closing the connection (the Stop button, a closed tab) stops the investigation: nobody reads the answer.
+    const controller = new AbortController()
+    const onClose = () => {
+      if (!res.writableEnded) controller.abort()
+    }
+    res.on('close', onClose)
     try {
-      await options.chat.handle({ question, ...(sessionId ? { sessionId } : {}) }, emit)
+      await options.chat.handle({ question, ...(sessionId ? { sessionId } : {}), signal: controller.signal }, emit)
     } catch (error) {
       emit({ type: 'error', message: error instanceof Error ? error.message : String(error) })
+    } finally {
+      res.off('close', onClose)
     }
     res.end()
+  }
+
+  /** Stops an investigation the observer started on its own; one that is still queued never starts. */
+  async function stopProactive(req: IncomingMessage, res: ServerResponse) {
+    let body: { turnId?: unknown }
+    try {
+      body = JSON.parse((await readBody(req, 4096)).toString('utf8'))
+    } catch (error) {
+      if (error instanceof HttpError) throw error
+      throw new HttpError(400, 'body is not valid JSON')
+    }
+    const controller = typeof body?.turnId === 'string' ? proactive.get(body.turnId) : undefined
+    if (!controller) throw new HttpError(404, 'no such investigation is running')
+    controller.abort()
+    send(res, 200, { stopped: true })
   }
 
   async function route(req: IncomingMessage, res: ServerResponse) {
@@ -260,6 +290,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
         .end('next-observer: password required')
     }
     if (req.method === 'POST' && url.pathname === '/api/chat') return chat(req, res)
+    if (req.method === 'POST' && url.pathname === '/api/chat/stop') return stopProactive(req, res)
     if (req.method !== 'GET') throw new HttpError(404, 'not found')
 
     if (url.pathname === '/api/chat/events') return events(req, res)

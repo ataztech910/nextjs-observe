@@ -32,7 +32,7 @@ interface Turn {
 
 const chatRoute = getRouteApi('/chat')
 
-const isEnd = (e: ChatEvent) => e.type === 'report' || e.type === 'error'
+const isEnd = (e: ChatEvent) => e.type === 'report' || e.type === 'error' || e.type === 'stopped'
 
 export function ChatPage() {
   const info = useQuery({ queryKey: ['chat-info'], queryFn: api.chatInfo })
@@ -82,21 +82,42 @@ export function ChatPage() {
     return () => source.close()
   }, [])
 
+  // One way to stop per question asked here: closing its request is what tells the observer to stop.
+  const asking = useRef(new Map<string, AbortController>())
+
   async function ask(question: string) {
     const id = `q-${Date.now()}`
     const update = (fn: (turn: Turn) => Turn) => setTurns((all) => all.map((t) => (t.id === id ? fn(t) : t)))
+    const controller = new AbortController()
+    asking.current.set(id, controller)
     setTurns((all) => [...all, { id, question, events: [], running: true }])
     setDraft('')
     try {
-      await api.ask(question, sessionId, (event) => {
-        if (event.type === 'status') setSessionId(event.sessionId)
-        update((t) => ({ ...t, events: [...t.events, event] }))
-      })
+      await api.ask(
+        question,
+        sessionId,
+        (event) => {
+          if (event.type === 'status') setSessionId(event.sessionId)
+          update((t) => ({ ...t, events: [...t.events, event] }))
+        },
+        controller.signal,
+      )
     } catch (error) {
-      update((t) => ({ ...t, events: [...t.events, { type: 'error', message: error instanceof Error ? error.message : String(error) }] }))
+      // Our own Stop closes the request; that is not a failure to report.
+      const event: ChatEvent = controller.signal.aborted ? { type: 'stopped' } : { type: 'error', message: error instanceof Error ? error.message : String(error) }
+      update((t) => ({ ...t, events: [...t.events, event] }))
+      // A model that cannot be cancelled (a CLI) may still be finishing its call in that conversation, which stays busy
+      // until it does — the next question starts a new one instead of waiting for it.
+      if (controller.signal.aborted) setSessionId(undefined)
     } finally {
+      asking.current.delete(id)
       update((t) => ({ ...t, running: false }))
     }
+  }
+
+  function stop(turn: Turn) {
+    if (turn.proactive) void api.stopInvestigation(turn.id)
+    else asking.current.get(turn.id)?.abort()
   }
 
   // A question handed over in the URL (?ask=…, from the regression banner) is sent once, then removed from the URL so
@@ -121,7 +142,7 @@ export function ChatPage() {
     if (draft.trim() && !running) void ask(draft.trim())
   }
 
-  const feed = turns.map((turn) => <TurnView key={turn.id} turn={turn} />)
+  const feed = turns.map((turn) => <TurnView key={turn.id} turn={turn} onStop={() => stop(turn)} />)
 
   if (info.data && !info.data.enabled) {
     return (
@@ -174,13 +195,14 @@ export function ChatPage() {
   )
 }
 
-function TurnView({ turn }: { turn: Turn }) {
+function TurnView({ turn, onStop }: { turn: Turn; onStop: () => void }) {
   const anomaly = turn.events.find((e): e is Extract<ChatEvent, { type: 'anomaly' }> => e.type === 'anomaly')
   const steps = turn.events.filter((e): e is Extract<ChatEvent, { type: 'step' }> => e.type === 'step')
   const cards = turn.events.flatMap((e) => (e.type === 'card' ? [e.card] : []))
   const report = turn.events.find((e): e is Extract<ChatEvent, { type: 'report' }> => e.type === 'report')
   const error = turn.events.find((e): e is Extract<ChatEvent, { type: 'error' }> => e.type === 'error')
-  const hasBody = steps.length > 0 || cards.length > 0 || report || error || turn.running
+  const stopped = turn.events.some((e) => e.type === 'stopped')
+  const hasBody = steps.length > 0 || cards.length > 0 || report || error || stopped || turn.running
   return (
     <div className="space-y-2" data-testid="chat-turn" data-proactive={turn.proactive ? 'true' : undefined}>
       {anomaly ? (
@@ -200,7 +222,15 @@ function TurnView({ turn }: { turn: Turn }) {
                   {Object.keys(s.args).length > 0 && <span className="ml-1 opacity-70">{JSON.stringify(s.args).slice(0, 120)}</span>}
                 </li>
               ))}
-              {turn.running && <li className="animate-pulse">{turn.proactive ? 'agents are investigating on their own…' : 'working…'}</li>}
+              {turn.running && (
+                <li className="flex items-center gap-3">
+                  <span className="animate-pulse">{turn.proactive ? 'agents are investigating on their own…' : 'working…'}</span>
+                  <Button type="button" variant="outline" size="sm" className="h-6 px-2 font-sans text-xs" onClick={onStop} data-testid="chat-stop">
+                    Stop
+                  </Button>
+                </li>
+              )}
+              {stopped && <li data-testid="chat-stopped">stopped — what was found until then is above</li>}
             </ol>
             {cards.length > 0 && (
               <div className="grid gap-2 sm:grid-cols-2" data-testid="chat-cards">

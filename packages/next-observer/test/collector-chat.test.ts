@@ -22,6 +22,40 @@ describe('chat disabled (no agents)', () => {
   })
 })
 
+describe('stopping', () => {
+  const until = async (condition: () => unknown) => {
+    for (let i = 0; i < 200 && !condition(); i++) await new Promise((r) => setTimeout(r, 10))
+    if (!condition()) throw new Error('condition not met')
+  }
+
+  it('an asker who goes away stops the investigation', async () => {
+    let signal: AbortSignal | undefined
+    let ended = false
+    const handle: ChatHandler = async (request, emit) => {
+      signal = request.signal
+      emit({ type: 'status', mode: 'mock', sessionId: 's1', text: 'Investigating…' })
+      await new Promise<void>((resolve) => request.signal?.addEventListener('abort', () => resolve()))
+      ended = true
+    }
+    collector = await startCollector({ port: 0, uiDir: false, chat: { mode: 'mock', handle } })
+    const controller = new AbortController()
+    const res = await fetch(`${collector.url}/api/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question: 'q' }), signal: controller.signal })
+    await res.body!.getReader().read() // the first event arrived: the investigation is running
+    expect(signal?.aborted).toBe(false)
+    controller.abort() // the Stop button, or a closed tab
+    await until(() => ended)
+    expect(signal?.aborted).toBe(true)
+  })
+
+  it('POST /api/chat/stop knows only investigations the observer started itself', async () => {
+    collector = await startCollector({ port: 0, uiDir: false, chat: { mode: 'mock', handle: async () => {} } })
+    const stop = (body: string) => fetch(`${collector!.url}/api/chat/stop`, { method: 'POST', headers: { 'content-type': 'application/json' }, body })
+    expect((await stop(JSON.stringify({ turnId: 'nope' }))).status).toBe(404)
+    expect((await stop(JSON.stringify({}))).status).toBe(404)
+    expect((await stop('{')).status).toBe(400)
+  })
+})
+
 describe('chat enabled', () => {
   it('reports the mode and streams events as NDJSON in order, with the trimmed question', async () => {
     const received: string[] = []
