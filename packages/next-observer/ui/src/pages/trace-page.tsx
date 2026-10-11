@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Panel } from '@/components/dashboard/panel'
 import { tracePrompt } from '@/lib/agent-prompt'
-import { criticalPath, rootSpan, selfTimes, standing, timeByOperation } from '@/lib/trace-analysis'
+import { criticalPath, rootSpan, selfTimes, standing, timeByOperation, wrongData } from '@/lib/trace-analysis'
 import { layoutWaterfall, formatDuration } from '@/lib/waterfall'
 
 const traceRoute = getRouteApi('/traces/$traceId')
@@ -29,7 +29,9 @@ export function TracePage() {
 
   const layout = useMemo(() => layoutWaterfall(trace.data?.spans ?? []), [trace.data])
   const services = useMemo(() => [...new Set(layout.rows.map((r) => r.span.service))], [layout])
-  const selected = layout.rows.find((r) => r.span.spanId === selectedId)?.span ?? layout.rows[0]?.span
+  // Fast, no error, wrong answer: such a span is what this trace is about — it is opened first.
+  const wrong = useMemo(() => wrongData(trace.data?.spans ?? []), [trace.data])
+  const selected = layout.rows.find((r) => r.span.spanId === (selectedId ?? wrong[0]?.spanId))?.span ?? layout.rows[0]?.span
   const [showCritical, setShowCritical] = useState(false)
   const spans = trace.data?.spans
   const critical = useMemo(() => criticalPath(spans ?? []), [spans])
@@ -75,6 +77,21 @@ export function TracePage() {
         </PageHeader>
       </div>
 
+      {wrong.length > 0 && (
+        <div className="space-y-1 rounded-xl border border-warning/40 bg-warning/5 px-4 py-3 text-sm" data-testid="wrong-data">
+          <p className="font-medium text-warning">Wrong data · fast and without an error, so neither the status nor the duration shows it</p>
+          <ul className="font-mono text-xs text-muted-foreground">
+            {wrong.map((w) => (
+              <li key={w.spanId}>
+                <button type="button" className="text-left hover:text-foreground" onClick={() => setSelectedId(w.spanId)}>
+                  <span className="text-foreground">{w.name}</span> · asked for {JSON.stringify(w.expected)}, got back {JSON.stringify(w.actual)}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {root && others.data?.histogram && others.data.histogram.total >= MIN_CALLS_TO_COMPARE && (
         <ComparedToOthers durationMs={root.durationMs} histogram={others.data.histogram} operation={root.name} service={root.service} coldStart={root.coldStart === true} />
       )}
@@ -111,6 +128,11 @@ export function TracePage() {
                 <span className="truncate" style={{ paddingLeft: depth * 14 }}>
                   <span className={span.status === 'error' ? 'font-medium text-destructive' : ''}>{spanLabel(span)}</span>
                   {(span as TraceSpan).coldStart && <ColdStartBadge />}
+                  {wrong.some((w) => w.spanId === span.spanId) && (
+                    <span className="ml-2 rounded-md bg-warning/15 px-1.5 py-0.5 font-mono text-[10px] tracking-wider text-warning uppercase" data-testid="wrong-data-badge">
+                      wrong data
+                    </span>
+                  )}
                   <span className="ml-2 text-xs text-muted-foreground">{span.service}</span>
                 </span>
                 <span className="relative h-2.5">
@@ -254,7 +276,18 @@ function SpanDetails({ span, selfMs }: { span: NormalizedSpan; selfMs?: number }
         {span.events.map((event, i) => (
           <div key={i} className="rounded-md bg-muted p-2 text-xs">
             <div className="font-medium">{event.name}</div>
-            <pre className="whitespace-pre-wrap break-all">{String(event.attributes['exception.message'] ?? '')}</pre>
+            {/* An exception reads best as its message; any other event is its attributes — an event with only a name says nothing. */}
+            {event.attributes['exception.message'] !== undefined ? (
+              <pre className="whitespace-pre-wrap break-all">{String(event.attributes['exception.message'])}</pre>
+            ) : (
+              <dl className="font-mono text-muted-foreground" data-testid="event-attributes">
+                {Object.entries(event.attributes).map(([key, value]) => (
+                  <div key={key}>
+                    {key}: <span className="text-foreground">{typeof value === 'string' ? value : JSON.stringify(value)}</span>
+                  </div>
+                ))}
+              </dl>
+            )}
           </div>
         ))}
       </CardContent>
