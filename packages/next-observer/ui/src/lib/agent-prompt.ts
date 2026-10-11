@@ -156,6 +156,8 @@ function cardFact(card: EvidenceCard): string | undefined {
       return `\`${card.parent}\` calls \`${card.operation}\` ${card.count} times in one request (${formatDuration(card.totalMs)} in total, trace \`${card.traceId}\`).`
     case 'hotspot':
       return `\`${card.operation}\` spends ${formatDuration(card.selfMs)} of a ${formatDuration(card.traceMs)} request in its own code${card.codeFile ? ` — \`${card.codeFile}\`` : ''} (trace \`${card.traceId}\`).`
+    case 'wrong-data':
+      return `\`${card.operation}\` (${card.service}) returned answers that were not the ones asked for — its own check, per version: ${card.versions.map((v) => `${v.version} ${v.failed} of ${v.checked}`).join(', ')}. No error and no slowdown comes with it.`
     case 'silent':
       return `No spans from ${card.service} for ${card.lastSpanSecondsAgo} s.`
     case 'traces':

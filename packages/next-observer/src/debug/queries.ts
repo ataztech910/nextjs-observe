@@ -47,6 +47,9 @@ export interface TraceRow {
   attributes?: Record<string, unknown>
 }
 
+/** Rows of the per-version integrity table an agent gets; more would not be read. */
+const MAX_INTEGRITY_ROWS = 10
+
 export function createAgentQueries(storage: StorageAdapter, options: QueryOptions = {}) {
   const now = options.now ?? Date.now
   // The tool schema cannot say "positive" (see investigator.ts), so a model may send 0 or -5: treat it as not given.
@@ -79,30 +82,41 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
    * The app's own "did I get what I asked for" checks (span event `integrity_check`), counted per version over everything
    * stored — not the time window: the version before the deployment is exactly the one that stopped sending. Latency
    * and error rate cannot answer "which deployment started returning wrong data"; these counts can.
+   *
+   * Of the whole service, whatever operation was asked about: the check usually sits on a span deep inside the
+   * request (a database call), which nobody names in a question about "checkout".
    */
   async function integrityByVersion(service: string | undefined, deployOrder: Map<string, string[]>) {
     const counts = new Map<string, { service: string; operation: string; versions: Map<string, { checked: number; failed: number }> }>()
     for (const span of await storage.querySpans({ service, limit: Number.MAX_SAFE_INTEGER })) {
+      // A span without a version cannot be placed in the deploy order — counting it would only blur which one did it.
+      if (!span.serviceVersion) continue
       const checks = span.events.filter((e) => e.name === INTEGRITY_CHECK_EVENT)
       if (checks.length === 0) continue
       const key = `${span.service}\u0000${span.name}`
       const entry = counts.get(key) ?? { service: span.service, operation: span.name, versions: new Map() }
-      const version = span.serviceVersion ?? 'unknown'
-      const count = entry.versions.get(version) ?? { checked: 0, failed: 0 }
+      const count = entry.versions.get(span.serviceVersion) ?? { checked: 0, failed: 0 }
       count.checked += checks.length
       count.failed += checks.filter((e) => e.attributes.ok === false).length
-      entry.versions.set(version, count)
+      entry.versions.set(span.serviceVersion, count)
       counts.set(key, entry)
     }
-    return [...counts.values()]
+    const failedNow = (versions: { failed: number }[]) => versions.at(-1)?.failed ?? 0
+    const failedEver = (versions: { failed: number }[]) => versions.reduce((n, v) => n + v.failed, 0)
+    const all = [...counts.values()]
       .map((entry) => {
         const order = deployOrder.get(entry.service) ?? []
         const versions = [...entry.versions].map(([version, count]) => ({ version, ...count })).sort((a, b) => order.indexOf(a.version) - order.indexOf(b.version))
         return { service: entry.service, operation: entry.operation, versions }
       })
-      // The ones with failures first; an operation whose checks all pass is still worth a line ("checked, never wrong").
-      .sort((a, b) => b.versions.reduce((n, v) => n + v.failed, 0) - a.versions.reduce((n, v) => n + v.failed, 0))
-      .slice(0, 10)
+      // What is wrong in the latest version first, then what was wrong before; "checked, never wrong" last.
+      .sort((a, b) => failedNow(b.versions) - failedNow(a.versions) || failedEver(b.versions) - failedEver(a.versions))
+    const notes = [
+      all.length > MAX_INTEGRITY_ROWS ? `integrity: showing ${MAX_INTEGRITY_ROWS} of ${all.length} checked operations` : undefined,
+      // Counts of an earlier version shrink as its spans are dropped: "0 failed" there is then weaker evidence.
+      all.length > 0 && !storage.isHistoryComplete() ? 'integrity: old spans were dropped to make room — the counts for earlier versions are incomplete' : undefined,
+    ]
+    return { integrity: all.slice(0, MAX_INTEGRITY_ROWS), notes }
   }
 
   const joinNotes = (...notes: (string | undefined)[]) => {
@@ -119,7 +133,7 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
           name: s.name,
           versions: s.versions,
           // `versions` is every version ever seen: without this a model reads "v2, v3" as "both are running".
-          versionLastSpanSecondsAgo: Object.fromEntries(s.versions.map((v) => [v, ago(now(), s.versionLastSeenMs[v] ?? s.lastSeenMs)])),
+          versionLastSpanSecondsAgo: Object.fromEntries(s.versions.flatMap((v) => (s.versionLastSeenMs[v] === undefined ? [] : [[v, ago(now(), s.versionLastSeenMs[v])]]))),
           spans: s.spanCount,
           lastSpanSecondsAgo: ago(now(), s.lastSeenMs),
         })),
@@ -151,7 +165,7 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
      * Latest deployed version vs the one before it, per operation (versions ordered by first appearance = deploy order).
      * Biggest p95 increase first — the answer to "which deployment introduced the regression".
      */
-    async compareVersions(args: { service?: string; operation?: string } & Window = {}) {
+    async compareVersions(args: { service?: string; operation?: string; /** false skips the scan for the app's own checks — for callers that only want `changes`. */ integrity?: boolean } & Window = {}) {
       const services = await storage.getServices()
       const deployOrder = new Map(services.map((s) => [s.name, s.versions]))
       const order = (s: OperationStats) => deployOrder.get(s.service)?.indexOf(s.serviceVersion ?? '') ?? -1
@@ -204,9 +218,10 @@ export function createAgentQueries(storage: StorageAdapter, options: QueryOption
         })
       }
       changes.sort((a, b) => (b.p95Ratio ?? 0) - (a.p95Ratio ?? 0) || b.errorRateDelta - a.errorRateDelta)
-      const empty = changes.length === 0 ? 'only one version seen per operation — nothing to compare' : undefined
-      const integrity = await integrityByVersion(service, deployOrder)
-      return { ...joinNotes(serviceNote, note, coldNote(items), ...olderNotes, empty), changes, ...(integrity.length > 0 ? { integrity } : {}) }
+      const { integrity, notes: integrityNotes } = args.integrity === false ? { integrity: [], notes: [] } : await integrityByVersion(service, deployOrder)
+      // Said precisely — "nothing to compare" would talk the model out of reading the integrity table next to it.
+      const empty = changes.length === 0 ? 'only one version seen per operation — no latency or error-rate comparison' : undefined
+      return { ...joinNotes(serviceNote, note, coldNote(items), ...olderNotes, empty, ...integrityNotes), changes, ...(integrity.length > 0 ? { integrity } : {}) }
     },
 
     /** Failing operations: error rate, most common exception messages and example traces. */

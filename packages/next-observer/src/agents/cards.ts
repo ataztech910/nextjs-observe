@@ -35,9 +35,10 @@ export function cardsFromResult(tool: string, args: Record<string, unknown>, res
             (c.errorRateDelta >= THRESHOLDS.regressionErrorDelta && c.errorRateChangeSignificant),
         )
         .map((c) => ({ kind: 'regression', service: c.service, operation: c.operation, from: c.from, to: c.to, p95Ratio: c.p95Ratio, errorRateDelta: c.errorRateDelta }))
-      // One wrong answer is worth a card — there is no acceptable share of them.
+      // One wrong answer is worth a card — there is no acceptable share of them. In the version running now, that is:
+      // wrong data an earlier version returned and the next one fixed is history, not evidence.
       const wrong: EvidenceCard[] = (integrity ?? [])
-        .filter((i) => i.versions.some((v) => v.failed > 0))
+        .filter((i) => (i.versions.at(-1)?.failed ?? 0) > 0)
         .map((i) => ({ kind: 'wrong-data', service: i.service, operation: i.operation, versions: i.versions }))
       return [...wrong, ...regressions]
     }

@@ -291,6 +291,49 @@ describe('getTrace', () => {
       expect((await queries.compareVersions()).integrity?.map((i) => i.operation).sort()).toEqual(['a', 'b'])
     })
 
+    it('with one version says only what cannot be compared — not "nothing to compare"', async () => {
+      const single = new MemoryStorage()
+      await single.insertSpans([span('getProductById', 'v3', [false])])
+      const result = await createAgentQueries(single, { now: () => NOW }).compareVersions()
+      expect(result.note).toBe('only one version seen per operation — no latency or error-rate comparison')
+      expect(result.integrity).toHaveLength(1)
+    })
+
+    it('skips the scan for a caller that only wants the changes', async () => {
+      const storage = new MemoryStorage()
+      await storage.insertSpans([span('a', 'v1', [false])])
+      const result = await createAgentQueries(storage, { now: () => NOW }).compareVersions({ integrity: false })
+      expect('integrity' in result).toBe(false)
+    })
+
+    it('leaves out spans without a version: they have no place in the deploy order', async () => {
+      const storage = new MemoryStorage()
+      await storage.insertSpans([{ ...span('a', 'v1', [false]), serviceVersion: null }, span('a', 'v2', [true])])
+      expect((await createAgentQueries(storage, { now: () => NOW }).compareVersions()).integrity).toEqual([{ service: 'shop', operation: 'a', versions: [{ version: 'v2', checked: 1, failed: 0 }] }])
+    })
+
+    it('what fails in the latest version comes before what failed only earlier; a long table says it was cut', async () => {
+      const storage = new MemoryStorage()
+      await storage.insertSpans([
+        ...Array.from({ length: 9 }, () => span('fixed since', 'v1', [false], NOW - 7_200_000)),
+        span('fixed since', 'v2', [true]),
+        span('failing now', 'v1', [true], NOW - 7_200_000),
+        span('failing now', 'v2', [false]),
+        ...Array.from({ length: 10 }, (_, i) => span(`fine ${i}`, 'v2', [true])),
+      ])
+      const result = await createAgentQueries(storage, { now: () => NOW }).compareVersions()
+      expect(result.integrity?.slice(0, 2).map((i) => i.operation)).toEqual(['failing now', 'fixed since'])
+      expect(result.integrity).toHaveLength(10)
+      expect(result.note).toContain('integrity: showing 10 of 12 checked operations')
+    })
+
+    it('warns that earlier versions are undercounted once old spans were dropped', async () => {
+      const small = new MemoryStorage({ maxSpans: 3 })
+      await small.insertSpans([span('a', 'v1', [true], NOW - 7_200_000), span('a', 'v1', [true], NOW - 7_100_000), span('a', 'v2', [false]), span('a', 'v2', [true])])
+      expect(small.isHistoryComplete()).toBe(false)
+      expect((await createAgentQueries(small, { now: () => NOW }).compareVersions()).note).toContain('the counts for earlier versions are incomplete')
+    })
+
     it('puts the operations with wrong answers first', async () => {
       const storage = new MemoryStorage()
       await storage.insertSpans([span('fine', 'v1', [true]), span('bad', 'v1', [true, false]), span('worse', 'v1', [false, false])])

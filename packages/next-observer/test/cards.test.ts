@@ -22,6 +22,9 @@ describe('cardsFromResult', () => {
       ],
     }
     expect(cardsFromResult('compare_versions', {}, result)).toEqual([{ kind: 'wrong-data', service: 'shop', operation: 'getProductById', versions }])
+    // Wrong data that the latest version no longer returns is history, not evidence for today.
+    const fixed = { changes: [], integrity: [{ service: 'shop', operation: 'x', versions: [{ version: 'v2', checked: 40, failed: 9 }, { version: 'v3', checked: 500, failed: 0 }] }] }
+    expect(cardsFromResult('compare_versions', {}, fixed)).toEqual([])
     // One failed check is enough: there is no acceptable share of wrong answers.
     const one = { changes: [], integrity: [{ service: 'shop', operation: 'x', versions: [{ version: 'v1', checked: 5000, failed: 1 }] }] }
     expect(cardsFromResult('compare_versions', {}, one)).toHaveLength(1)
