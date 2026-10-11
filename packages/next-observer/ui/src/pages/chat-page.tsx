@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { api, type ChatEvent, type ProactiveEvent } from '@/api'
-import { AnomalyView, anomalyHeadline } from '@/components/chat/anomaly-view'
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
+import { api, type ChatEvent } from '@/api'
+import { AnomalyView } from '@/components/chat/anomaly-view'
 import { CopyPrompt } from '@/components/copy-prompt'
 import { EvidenceCardView } from '@/components/chat/evidence-cards'
 import { Badge } from '@/components/ui/badge'
@@ -11,6 +11,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/page-header'
 import { reportPrompt } from '@/lib/agent-prompt'
+import { chatStore } from '@/lib/chat-store'
+import { investigations, shownTurn, type Turn, type TurnState } from '@/lib/chat-turns'
 import { renderInline } from '@/lib/inline-markdown'
 
 // The three workshop scenarios, one click away.
@@ -20,115 +22,34 @@ const SUGGESTIONS = [
   'The product catalog is slower than expected but no single span stands out. What is wrong?',
 ]
 
-interface Turn {
-  id: string
-  /** The user's question, or the anomaly headline for a proactive turn. */
-  question: string
-  events: ChatEvent[]
-  running: boolean
-  /** Started by the detector, not by a question. */
-  proactive?: boolean
-}
-
 const chatRoute = getRouteApi('/chat')
 
-const isEnd = (e: ChatEvent) => e.type === 'report' || e.type === 'error' || e.type === 'stopped'
+// Red only for what failed; an anomaly being looked into is the signal colour, a warning amber — as everywhere else.
+const STATE: Record<TurnState, { label: string; tone: string }> = {
+  running: { label: 'investigating', tone: 'text-signal' },
+  answered: { label: 'report', tone: 'text-muted-foreground' },
+  stopped: { label: 'stopped', tone: 'text-muted-foreground' },
+  failed: { label: 'failed', tone: 'text-destructive' },
+  noted: { label: 'noted', tone: 'text-muted-foreground' },
+}
 
 export function ChatPage() {
   const info = useQuery({ queryKey: ['chat-info'], queryFn: api.chatInfo })
   const chatEnabled = info.data?.enabled ?? false
-  const [turns, setTurns] = useState<Turn[]>([])
+  const { turns, selectedId } = useSyncExternalStore(chatStore.subscribe, chatStore.get)
   const [draft, setDraft] = useState('')
-  // The agents remember the conversation per session; the id arrives with the first `status` event.
-  const [sessionId, setSessionId] = useState<string>()
   // Only the user's own questions block the input; a proactive investigation runs alongside.
   const running = turns.some((t) => t.running && !t.proactive)
-  const runningRef = useRef(running)
-  runningRef.current = running
-  const chatEnabledRef = useRef(chatEnabled)
-  chatEnabledRef.current = chatEnabled
 
-  // Proactive turns: the detector found an anomaly and the agents investigate without being asked.
   useEffect(() => {
-    let lastSeq = 0
-    const proactiveSessions = new Map<string, string>()
-    const source = new EventSource('/api/chat/events')
-    source.onmessage = (message) => {
-      const { seq, turnId, event } = JSON.parse(message.data) as ProactiveEvent
-      if (seq <= lastSeq) return // replayed after a reconnect
-      lastSeq = seq
-      if (event.type === 'status') proactiveSessions.set(turnId, event.sessionId)
-      setTurns((all) => {
-        const existing = all.find((t) => t.id === turnId)
-        const turn: Turn = existing ?? {
-          id: turnId,
-          question: event.type === 'anomaly' ? anomalyHeadline(event.anomaly) : 'Anomaly',
-          events: [],
-          // Without agents an anomaly is all there is — nothing keeps running.
-          running: chatEnabledRef.current,
-          proactive: true,
-        }
-        const updated: Turn = {
-          ...turn,
-          events: [...turn.events, event],
-          running: turn.running && !isEnd(event),
-        }
-        return existing ? all.map((t) => (t.id === turnId ? updated : t)) : [...all, updated]
-      })
-      // When a proactive investigation ends, the next question continues it ("why?", "since when?").
-      const finishedSession = proactiveSessions.get(turnId)
-      if (event.type === 'report' && finishedSession && !runningRef.current) setSessionId(finishedSession)
-    }
-    return () => source.close()
-  }, [])
+    chatStore.setEnabled(chatEnabled)
+  }, [chatEnabled])
+  // Proactive turns: the detector found an anomaly and the agents investigate without being asked.
+  useEffect(() => chatStore.listen(), [])
 
-  // One way to stop per question asked here: closing its request is what tells the observer to stop.
-  const asking = useRef(new Map<string, AbortController>())
-
-  async function ask(question: string) {
-    const id = `q-${Date.now()}`
-    const update = (fn: (turn: Turn) => Turn) => setTurns((all) => all.map((t) => (t.id === id ? fn(t) : t)))
-    const controller = new AbortController()
-    asking.current.set(id, controller)
-    setTurns((all) => [...all, { id, question, events: [], running: true }])
+  const ask = (question: string) => {
     setDraft('')
-    // The observer says when a conversation cannot be continued (stopped, timed out); our own Stop closes it too.
-    let closed = false
-    let lost = false
-    try {
-      await api.ask(
-        question,
-        sessionId,
-        (event) => {
-          if (event.type === 'status') setSessionId(event.sessionId)
-          if ((event.type === 'error' || event.type === 'stopped') && event.closed) closed = true
-          update((t) => ({ ...t, events: [...t.events, event] }))
-        },
-        controller.signal,
-      )
-    } catch (error) {
-      // Our own Stop closes the request; that is not a failure to report.
-      const event: ChatEvent = controller.signal.aborted ? { type: 'stopped' } : { type: 'error', message: error instanceof Error ? error.message : String(error) }
-      lost = !controller.signal.aborted
-      update((t) => ({ ...t, events: [...t.events, event] }))
-    } finally {
-      // A lost connection stops the investigation on the observer's side as well, so that closes it too.
-      if (closed || controller.signal.aborted || lost) setSessionId(undefined)
-      asking.current.delete(id)
-      update((t) => ({ ...t, running: false }))
-    }
-  }
-
-  function stop(turn: Turn) {
-    if (!turn.proactive) return void asking.current.get(turn.id)?.abort()
-    // The observer answers with a `stopped` event for everyone watching. When it has nothing to stop — the turn ended,
-    // or the observer was restarted — the turn here is stale: mark it so, or it would look alive for ever.
-    void api.stopInvestigation(turn.id).then((result) => {
-      if (result === 'stopped') return
-      // Nothing to stop, or nobody to ask: either way no event will ever end this turn — end it here, and say which.
-      const event: ChatEvent = result === 'gone' ? { type: 'stopped' } : { type: 'error', message: 'could not reach the observer to stop this — it may still be running' }
-      setTurns((all) => all.map((t) => (t.id === turn.id && t.running ? { ...t, running: false, events: [...t.events, event] } : t)))
-    })
+    void chatStore.ask(question)
   }
 
   // A question handed over in the URL (?ask=…, from the regression banner) is sent once, then removed from the URL so
@@ -140,68 +61,96 @@ export function ChatPage() {
     if (!handedOver || !chatEnabled || sentRef.current === handedOver) return
     sentRef.current = handedOver
     void navigate({ search: {}, replace: true })
-    void ask(handedOver)
+    ask(handedOver)
   }, [handedOver, chatEnabled])
-
-  function newChat() {
-    setTurns([])
-    setSessionId(undefined)
-  }
 
   function submit(e: FormEvent) {
     e.preventDefault()
-    if (draft.trim() && !running) void ask(draft.trim())
+    if (draft.trim() && !running) ask(draft.trim())
   }
 
-  const feed = turns.map((turn) => <TurnView key={turn.id} turn={turn} onStop={() => stop(turn)} />)
+  const list = investigations(turns)
+  const shown = shownTurn(turns, selectedId)
+
+  const sidebar = list.length > 0 && (
+    <nav aria-label="Investigations" className="space-y-1 lg:sticky lg:top-20 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto" data-testid="investigations">
+      <p className="px-2 pb-1 font-mono text-[11px] tracking-wider text-muted-foreground uppercase">Investigations · {list.length}</p>
+      {list.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          aria-current={item.id === shown?.id ? 'true' : undefined}
+          onClick={() => chatStore.select(item.id)}
+          className="block w-full rounded-lg border border-transparent px-2 py-1.5 text-left hover:bg-muted/50 aria-[current=true]:border-border aria-[current=true]:bg-muted"
+          data-testid="investigation"
+          data-state={item.state}
+        >
+          <span className="line-clamp-2 text-sm">{item.title}</span>
+          <span className="mt-0.5 flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
+            <span className={item.kind === 'anomaly' ? (item.severity === 'critical' ? 'text-destructive' : 'text-warning') : ''}>{item.kind === 'anomaly' ? (item.severity ?? 'anomaly') : 'question'}</span>
+            <span className={`${STATE[item.state].tone} ${item.state === 'running' ? 'animate-pulse' : ''}`}>{STATE[item.state].label}</span>
+            <span className="ml-auto tabular-nums">{new Date(item.startedAtMs).toLocaleTimeString()}</span>
+          </span>
+        </button>
+      ))}
+    </nav>
+  )
+
+  const turn = shown && <TurnView key={shown.id} turn={shown} onStop={() => chatStore.stop(shown)} />
 
   if (info.data && !info.data.enabled) {
     return (
-      <div className="mx-auto max-w-3xl space-y-4">
-        <Card data-testid="chat-disabled">
-          <CardContent className="space-y-2 text-sm">
-            <p className="font-medium">Chat is disabled</p>
-            <p className="text-muted-foreground">{info.data.reason}</p>
-          </CardContent>
-        </Card>
-        {feed}
+      <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
+        <div>{sidebar}</div>
+        <div className="space-y-4">
+          <Card data-testid="chat-disabled">
+            <CardContent className="space-y-2 text-sm">
+              <p className="font-medium">Chat is disabled</p>
+              <p className="text-muted-foreground">{info.data.reason}</p>
+            </CardContent>
+          </Card>
+          {turn}
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <PageHeader title="Ask the agents" subtitle="They read your traces with tools — every fact comes from the data.">
-        {info.data?.enabled && (
-          <Badge variant={info.data.mode === 'mock' ? 'outline' : 'secondary'} className="font-mono" data-testid="chat-mode">
-            {info.data.mode === 'mock' ? 'MOCK — no real model' : 'REAL model'}
-          </Badge>
-        )}
-        {turns.length > 0 && (
-          <Button type="button" variant="ghost" size="sm" onClick={newChat} disabled={running}>
-            New chat
-          </Button>
-        )}
-      </PageHeader>
-
-      {turns.length === 0 && (
-        <div className="flex flex-col items-start gap-2">
-          {SUGGESTIONS.map((s) => (
-            <Button key={s} type="button" variant="outline" size="sm" className="h-auto whitespace-normal py-2 text-left font-normal" onClick={() => void ask(s)} disabled={running}>
-              {s}
+    <div className={`mx-auto grid gap-6 ${sidebar ? 'max-w-6xl lg:grid-cols-[18rem_minmax(0,1fr)]' : 'max-w-3xl'}`}>
+      {sidebar && <div>{sidebar}</div>}
+      <div className="min-w-0 space-y-6">
+        <PageHeader title="Ask the agents" subtitle="They read your traces with tools — every fact comes from the data.">
+          {info.data?.enabled && (
+            <Badge variant={info.data.mode === 'mock' ? 'outline' : 'secondary'} className="font-mono" data-testid="chat-mode">
+              {info.data.mode === 'mock' ? 'MOCK — no real model' : 'REAL model'}
+            </Badge>
+          )}
+          {turns.length > 0 && (
+            <Button type="button" variant="ghost" size="sm" onClick={chatStore.newConversation} disabled={running} title="The next question starts a new conversation; the investigations stay in the list">
+              New chat
             </Button>
-          ))}
-        </div>
-      )}
+          )}
+        </PageHeader>
 
-      {feed}
+        {turns.length === 0 && (
+          <div className="flex flex-col items-start gap-2">
+            {SUGGESTIONS.map((s) => (
+              <Button key={s} type="button" variant="outline" size="sm" className="h-auto whitespace-normal py-2 text-left font-normal" onClick={() => ask(s)} disabled={running}>
+                {s}
+              </Button>
+            ))}
+          </div>
+        )}
 
-      <form onSubmit={submit} className="flex gap-2">
-        <Input aria-label="Question" placeholder="Why is checkout slow?" value={draft} onChange={(e) => setDraft(e.target.value)} disabled={running} />
-        <Button type="submit" disabled={running || !draft.trim()}>
-          {running ? 'Investigating…' : 'Ask'}
-        </Button>
-      </form>
+        {turn}
+
+        <form onSubmit={submit} className="flex gap-2">
+          <Input aria-label="Question" placeholder="Why is checkout slow?" value={draft} onChange={(e) => setDraft(e.target.value)} disabled={running} />
+          <Button type="submit" disabled={running || !draft.trim()}>
+            {running ? 'Investigating…' : 'Ask'}
+          </Button>
+        </form>
+      </div>
     </div>
   )
 }
