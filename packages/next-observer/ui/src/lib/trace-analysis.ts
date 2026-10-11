@@ -1,4 +1,5 @@
 // Where a trace's time went. Pure functions over the spans of one trace.
+import type { NormalizedSpan } from '../../../src/collector/types.js'
 import type { WaterfallSpan } from './waterfall.js'
 
 const end = (s: WaterfallSpan) => s.startTimeMs + s.durationMs
@@ -117,4 +118,25 @@ export type Standing = 'fast' | 'typical' | 'slow'
 export function standing(durationMs: number, others: { p50Ms: number; p95Ms: number }): Standing {
   if (durationMs > others.p95Ms) return 'slow'
   return durationMs < others.p50Ms ? 'fast' : 'typical'
+}
+
+/** Event name and shape of a check the app made on its own data — the detector's `data_integrity` rule reads the same. */
+const INTEGRITY_CHECK = 'integrity_check'
+
+export interface WrongData {
+  spanId: string
+  name: string
+  expected: unknown
+  actual: unknown
+}
+
+/**
+ * Spans where the app checked "did I get what I asked for" and the answer was no. Their status and duration are
+ * unremarkable — which is the point: nothing else on the page would give them away.
+ */
+export function wrongData(spans: Pick<NormalizedSpan, 'spanId' | 'name' | 'events'>[]): WrongData[] {
+  return spans.flatMap((s) => {
+    const failed = s.events.find((e) => e.name === INTEGRITY_CHECK && e.attributes.ok === false)
+    return failed ? [{ spanId: s.spanId, name: s.name, expected: failed.attributes.expected, actual: failed.attributes.actual }] : []
+  })
 }

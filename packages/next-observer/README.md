@@ -60,6 +60,12 @@ this call compares with the others of its kind.
 
 ![A trace with the critical path highlighted and a table of where the time went](https://raw.githubusercontent.com/ataztech910/nextjs-observe/master/docs/screenshots/trace.png)
 
+A span can be fast, without an error, and still carry the wrong answer. When the app records its own verdict as a span
+event — `integrity_check` with `ok`, `expected`, `actual` — the observer raises an anomaly on the first `ok: false` and the
+trace says so:
+
+![A trace with a Wrong data banner: getProductById asked for 1 and got back 3](https://raw.githubusercontent.com/ataztech910/nextjs-observe/master/docs/screenshots/wrong-data.png)
+
 **One operation up close** — its latency distribution, and a note when the calls fall into two clearly separate speeds
 (a fast and a slow path, or the version before and after a deployment).
 

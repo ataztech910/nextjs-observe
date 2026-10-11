@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { criticalPath, rootSpan, selfTimes, standing, timeByOperation } from '../ui/src/lib/trace-analysis.js'
+import { criticalPath, rootSpan, selfTimes, standing, timeByOperation, wrongData } from '../ui/src/lib/trace-analysis.js'
 import type { WaterfallSpan } from '../ui/src/lib/waterfall.js'
 
 const span = (spanId: string, parentSpanId: string | null, startTimeMs: number, durationMs: number, name = spanId, service = 'shop'): WaterfallSpan => ({
@@ -137,5 +137,32 @@ describe('standing', () => {
     expect(standing(320, others)).toBe('typical')
     expect(standing(200, others)).toBe('typical')
     expect(standing(180, others)).toBe('fast')
+  })
+})
+
+describe('wrongData', () => {
+  const span = (spanId: string, events: { name: string; attributes: Record<string, unknown> }[]) => ({ spanId, name: `op ${spanId}`, events: events.map((e) => ({ ...e, timeMs: 0 })) }) as never
+
+  it('finds the spans whose own check said the answer was not the one asked for', () => {
+    const spans = [
+      span('a', []),
+      span('b', [{ name: 'integrity_check', attributes: { ok: true, expected: '1', actual: '1' } }]),
+      span('c', [{ name: 'integrity_check', attributes: { ok: false, expected: '1', actual: '5' } }]),
+      span('d', [{ name: 'exception', attributes: { ok: false, 'exception.message': 'boom' } }]),
+      span('e', [{ name: 'integrity_check', attributes: { ok: true, expected: 1, actual: 1 } }, { name: 'integrity_check', attributes: { ok: false, expected: 3, actual: 24 } }]),
+      span('f', [{ name: 'integrity_check', attributes: { ok: 'false', expected: '1', actual: '2' } }]),
+    ]
+    expect(wrongData(spans)).toEqual([
+      { spanId: 'c', name: 'op c', expected: '1', actual: '5' },
+      { spanId: 'e', name: 'op e', expected: 3, actual: 24 },
+    ])
+  })
+
+  it('agrees with the detector on what a failed check is', async () => {
+    const { integrityFailureEvent, INTEGRITY_CHECK_EVENT } = await import('../src/debug/detector.js')
+    const failed = span('x', [{ name: INTEGRITY_CHECK_EVENT, attributes: { ok: false, expected: 'a', actual: 'b' } }])
+    const passed = span('y', [{ name: INTEGRITY_CHECK_EVENT, attributes: { ok: true, expected: 'a', actual: 'a' } }])
+    expect([integrityFailureEvent(failed) !== undefined, integrityFailureEvent(passed) !== undefined]).toEqual([true, false])
+    expect(wrongData([failed, passed]).map((w) => w.spanId)).toEqual(['x'])
   })
 })
