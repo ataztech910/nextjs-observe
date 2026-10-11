@@ -1,5 +1,6 @@
 // Types come straight from the collector, so the UI can't drift from the API.
 import type { ChatEvent, EvidenceCard, ProactiveEvent, VersionStats } from '../../src/collector/chat'
+import type { StoredTurn } from '../../src/collector/chat-history'
 import type { CheckResult, CheckRule, ChecksReport, CheckStatus } from '../../src/checks/types'
 import type { Anomaly } from '../../src/debug/detector'
 import type { Defect } from '../../src/collector/defects'
@@ -8,6 +9,7 @@ import type { Overview, RouteRow } from '../../src/collector/overview'
 import type { Regression } from '../../src/debug/regression'
 import type { NormalizedSpan, OperationStats, ServiceInfo, TraceSpan, TraceSummary } from '../../src/collector/types'
 
+export type { StoredTurn }
 export type { Anomaly, CheckResult, CheckRule, ChecksReport, CheckStatus, Defect, Histogram, OperationDetails, Speed, Overview, Regression, RouteRow, ChatEvent, EvidenceCard, ProactiveEvent, VersionStats, NormalizedSpan, OperationStats, ServiceInfo, TraceSpan, TraceSummary }
 
 export type ChatInfo = { enabled: true; mode: 'mock' | 'real' } | { enabled: false; reason: string }
@@ -56,8 +58,12 @@ export const api = {
     ),
 
   /** Streams one chat turn: calls onEvent for every NDJSON line as the agents work. Aborting `signal` stops the investigation. */
-  async ask(question: string, sessionId: string | undefined, onEvent: (event: ChatEvent) => void, signal?: AbortSignal): Promise<void> {
-    const res = await fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question, sessionId }), signal })
+  /** Every chat turn the observer remembers, and the event number the live stream continues from. */
+  chatHistory: () => get<{ seq: number; turns: StoredTurn[] }>('/api/chat/history'),
+
+  /** `turnId` names the turn on the observer's side too, so its copy in the history is recognised after a reload. */
+  async ask(question: string, sessionId: string | undefined, onEvent: (event: ChatEvent) => void, signal?: AbortSignal, turnId?: string): Promise<void> {
+    const res = await fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question, sessionId, turnId }), signal })
     if (!res.ok || !res.body) {
       const body = (await res.json().catch(() => ({}))) as { error?: string }
       onEvent({ type: 'error', message: body.error ?? `chat failed: ${res.status}` })

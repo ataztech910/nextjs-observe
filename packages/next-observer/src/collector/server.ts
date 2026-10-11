@@ -13,6 +13,7 @@
 //   GET  /api/chat                  { enabled, mode }
 //   POST /api/chat                  { question, sessionId? } → NDJSON stream of ChatEvent (status, step…, card…, report | error | stopped); closing the request stops the investigation
 //   POST /api/chat/stop             { turnId } → stops an investigation the observer started on its own
+//   GET  /api/chat/history          { seq, turns }: every chat turn so far — questions asked and the observer's own investigations
 //   GET  /api/chat/events           SSE: proactive turns (detector anomaly → investigation), recent ones replayed on connect
 //   GET  /*                         the UI (dist/ui) with SPA fallback
 import { createHash, timingSafeEqual } from 'node:crypto'
@@ -23,6 +24,7 @@ import { questionFor, type Anomaly, type AnomalyDetector } from '../debug/detect
 import { createAgentQueries } from '../debug/queries.js'
 import { findRegression } from '../debug/regression.js'
 import type { ChatEvent, ChatHandler, ProactiveEvent } from './chat.js'
+import { ChatHistory } from './chat-history.js'
 import { gunzipSync } from 'node:zlib'
 import type { CheckRunner } from '../checks/runner.js'
 import { CHECK_RULE, type CheckRule, type ChecksReport } from '../checks/types.js'
@@ -186,8 +188,12 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
   // --- proactive: detector → SSE broadcast → investigation, one at a time ---
   const subscribers = new Set<ServerResponse>()
   const recent: ProactiveEvent[] = []
+  // Every turn of the chat — asked or started here — so that a reloaded page finds them again.
+  const history = new ChatHistory()
   let seq = 0
   const broadcast = (message: Omit<ProactiveEvent, 'seq'>) => {
+    history.start({ id: message.turnId, proactive: true, startedAtMs: message.event.type === 'anomaly' ? message.event.anomaly.detectedAtMs : Date.now(), running: options.chat !== undefined })
+    history.add(message.turnId, message.event)
     const envelope: ProactiveEvent = { seq: ++seq, ...message }
     recent.push(envelope)
     if (recent.length > REPLAY_EVENTS) recent.shift()
@@ -198,6 +204,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
   let investigations = Promise.resolve()
   /** Investigations the observer started itself and that are queued or running — each can be stopped by its turn id. */
   const proactive = new Map<string, AbortController>()
+  let asked = 0
   const onAnomalies = () => {
     for (const anomaly of [...(options.detector?.check() ?? []), ...(options.checks?.anomalies?.() ?? [])]) {
       const turnId = anomaly.id
@@ -230,7 +237,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
 
   async function chat(req: IncomingMessage, res: ServerResponse) {
     if (!options.chat) throw new HttpError(503, CHAT_DISABLED)
-    let body: { question?: unknown; sessionId?: unknown }
+    let body: { question?: unknown; sessionId?: unknown; turnId?: unknown }
     try {
       body = JSON.parse((await readBody(req, 64 * 1024)).toString('utf8'))
     } catch (error) {
@@ -244,10 +251,17 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     if (sessionId !== undefined && (typeof sessionId !== 'string' || !/^[\w-]{1,100}$/.test(sessionId))) {
       throw new HttpError(400, 'sessionId must be 1–100 characters of letters, digits, _ or -')
     }
+    // The page names its turn, so that the copy it gets back from the history is recognised as the same one.
+    if (body.turnId !== undefined && (typeof body.turnId !== 'string' || !/^[\w-]{1,100}$/.test(body.turnId))) {
+      throw new HttpError(400, 'turnId must be 1–100 characters of letters, digits, _ or -')
+    }
+    const turnId = body.turnId !== undefined && !history.has(body.turnId) ? body.turnId : `q-${Date.now()}-${++asked}`
+    history.start({ id: turnId, question, proactive: false, startedAtMs: Date.now() })
 
     // One JSON event per line, flushed as the agents work — the UI shows each step live.
     res.writeHead(200, { ...CORS, 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-cache' })
     const emit = (event: ChatEvent) => {
+      history.add(turnId, event)
       if (!res.writableEnded) res.write(JSON.stringify(event) + '\n')
     }
     // The asker closing the connection (the Stop button, a closed tab) stops the investigation: nobody reads the answer.
@@ -262,6 +276,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
       emit({ type: 'error', message: error instanceof Error ? error.message : String(error) })
     } finally {
       res.off('close', onClose)
+      history.end(turnId)
     }
     res.end()
   }
@@ -302,6 +317,8 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     if (req.method !== 'GET') throw new HttpError(404, 'not found')
 
     if (url.pathname === '/api/chat/events') return events(req, res)
+    // `seq`: the page opens the event stream next and skips what the history already told it.
+    if (url.pathname === '/api/chat/history') return send(res, 200, { seq, turns: history.list() })
     if (url.pathname === '/api/chat') {
       return send(res, 200, options.chat ? { enabled: true, mode: options.chat.mode } : { enabled: false, reason: CHAT_DISABLED })
     }

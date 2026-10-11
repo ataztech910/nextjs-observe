@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatEvent } from '../src/collector/index.js'
 import type { Anomaly } from '../src/debug/detector.js'
-import { applyProactive, investigations, shownTurn, summarize, type Turn } from '../ui/src/lib/chat-turns.js'
+import type { StoredTurn } from '../src/collector/chat-history.js'
+import { applyProactive, investigations, shownTurn, summarize, withHistory, type Turn } from '../ui/src/lib/chat-turns.js'
 
 const anomaly = (severity: Anomaly['severity'], detectedAtMs: number): Anomaly => ({
   id: 'a', type: 'high_latency', scope: 'all', severity, detectedAtMs, value: 0.4, threshold: 0.3, sampleSize: 10, windowMs: 10_000, operations: [],
@@ -86,5 +87,41 @@ describe('the list and the turn on screen', () => {
     expect(shownTurn(turns, null)?.id).toBe('new')
     expect(shownTurn(turns, 'gone')?.id).toBe('new')
     expect(shownTurn([], null)).toBeUndefined()
+  })
+})
+
+describe('withHistory: a page that was just opened', () => {
+  const headline = (a: Anomaly) => `Slow · ${a.severity}`
+  const stored: StoredTurn[] = [
+    { id: 'q-1', question: 'why is checkout slow?', proactive: false, startedAtMs: 100, events: [step, { type: 'report', text: 'r' }], running: false },
+    { id: 'a-1', proactive: true, startedAtMs: 200, events: [{ type: 'anomaly', anomaly: anomaly('critical', 200) }, step], running: true },
+    { id: 'q-2', question: 'left in the middle', proactive: false, startedAtMs: 300, events: [step], running: true },
+  ]
+
+  it('brings back questions and the observer\'s own investigations', () => {
+    const turns = withHistory([], stored, headline)
+    expect(turns.map((t) => [t.id, t.question, t.proactive ?? false])).toEqual([
+      ['q-1', 'why is checkout slow?', false],
+      ['a-1', 'Slow · critical', true],
+      ['q-2', 'left in the middle', false],
+    ])
+    expect(summarize(turns[0]).state).toBe('answered')
+  })
+
+  it('an investigation of the observer\'s own may still be running; a question from a page that is gone is not', () => {
+    const turns = withHistory([], stored, headline)
+    expect(turns.map((t) => t.running)).toEqual([false, true, false])
+    expect(summarize(turns[2]).state).toBe('noted')
+  })
+
+  it('turns already on the page win over their stored copies, and come after the restored ones', () => {
+    const mine = question('q-2', 300, [step, step], true)
+    const turns = withHistory([mine], stored, headline)
+    expect(turns.map((t) => t.id)).toEqual(['q-1', 'a-1', 'q-2'])
+    expect(turns[2]).toBe(mine)
+  })
+
+  it('a stored turn without an anomaly event still gets a name', () => {
+    expect(withHistory([], [{ id: 'x', proactive: true, startedAtMs: 1, events: [], running: false }], headline)[0].question).toBe('Anomaly')
   })
 })
