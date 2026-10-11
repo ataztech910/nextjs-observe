@@ -53,6 +53,54 @@ async function listen(until: (events: ProactiveEvent[]) => boolean, timeoutMs = 
 }
 const types = (events: ProactiveEvent[]) => events.map((e) => e.event.type)
 
+describe('stopping a proactive investigation', () => {
+  const anomaly = (id: string) => ({
+    id, type: 'check_failed' as const, scope: 'operation' as const, severity: 'critical' as const, detectedAtMs: 1, value: 2, threshold: 2, sampleSize: 2, windowMs: 10_000, operations: [],
+    check: { name: id, method: 'GET', url: 'http://app/x', rule: 'in_row' as const, reason: 'expected status 2xx, got 500', status: 500, traceId: 'a'.repeat(32) },
+  })
+  const stop = (turnId: string) => fetch(`${collector!.url}/api/chat/stop`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ turnId }) })
+
+  it('stops the running one, and one still in the queue never does any work', async () => {
+    const started: string[] = []
+    const worked: string[] = []
+    // Like the real handler: ends with `stopped` as soon as its signal says so.
+    const handle: ChatHandler = async ({ question, signal }, emit) => {
+      const name = /"(first|second|third)"/.exec(question)![1]
+      if (signal?.aborted) return void emit({ type: 'stopped' })
+      started.push(name)
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 400)
+        signal?.addEventListener('abort', () => (clearTimeout(timer), resolve()))
+      })
+      if (signal?.aborted) return void emit({ type: 'stopped' })
+      worked.push(name)
+      emit({ type: 'report', text: `${name} done` })
+    }
+    let pending = [anomaly('first'), anomaly('second'), anomaly('third')]
+    const taken = () => {
+      const found = pending
+      pending = []
+      return found
+    }
+    collector = await startCollector({ port: 0, uiDir: false, chat: { mode: 'mock', handle }, detectorIntervalMs: 30, checks: { list: () => [], anomalies: taken } })
+    const listening = listen((e) => e.filter((x) => x.event.type === 'report' || x.event.type === 'stopped').length === 3, 5000)
+    for (let i = 0; i < 100 && started.length === 0; i++) await new Promise((r) => setTimeout(r, 10))
+    // The queued one first: once the running one stops, the queue moves on at once.
+    expect((await stop('second')).status).toBe(200)
+    expect((await stop('first')).status).toBe(200)
+    const events = await listening
+    const ends = events.filter((e) => e.event.type === 'report' || e.event.type === 'stopped').map((e) => [e.turnId, e.event.type])
+    // Each is told the moment it is stopped — the queued one does not wait for its turn to say so.
+    expect(ends).toEqual([['second', 'stopped'], ['first', 'stopped'], ['third', 'report']])
+    expect(events.filter((e) => e.event.type === 'stopped')).toHaveLength(2) // and told once
+    expect(started).toEqual(['first', 'third'])
+    expect(worked).toEqual(['third'])
+    // Finished or stopped: there is nothing left to stop.
+    expect((await stop('first')).status).toBe(404)
+    expect((await stop('third')).status).toBe(404)
+  })
+})
+
 describe('proactive investigations', () => {
   it('a check that keeps failing → anomaly over SSE and an investigation, with or without the detector', async () => {
     const anomaly = {

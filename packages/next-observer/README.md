@@ -126,6 +126,11 @@ One investigation makes 7–12 model calls. A call that hangs is started again o
 few requests per minute, so an investigation may pause for that minute; a key without credits, a wrong key or a wrong
 model name is explained in the chat in plain words.
 
+An investigation can be stopped — the **Stop** button next to "working…" in the chat, for a question you asked and for
+one the observer started on its own. What was found until then stays on the page. A model behind an API drops the call
+in flight; a CLI model finishes the call it is on and then stops. A stopped (or timed-out) conversation is not continued —
+the next question starts a new one.
+
 ## Your own AI agents
 
 The built-in AI agents are an orchestrator and three specialists (latency, errors, traffic). To change them, put `observe.agents.ts` (or `.mts`, `.js`, `.mjs`) in the app root. A specialist with a built-in name

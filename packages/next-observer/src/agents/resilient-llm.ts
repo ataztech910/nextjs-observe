@@ -61,13 +61,16 @@ export class ResilientLlm extends BaseLlm {
     this.attempts = Math.max(1, options.attempts ?? 2)
     this.transientAttempts = Math.max(1, options.transientAttempts ?? 3)
     this.maxRetryDelayMs = options.maxRetryDelayMs ?? 60_000
-    this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)))
+    // unref: a wait that a stop has already ended must not keep the process alive until its timer fires.
+    this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => void setTimeout(resolve, ms).unref?.()))
   }
 
   async *generateContentAsync(request: LlmRequest, stream = false, abortSignal?: AbortSignal): AsyncGenerator<LlmResponse, void> {
     // Hangs and provider errors are counted apart: a call may hang once and be rate-limited twice.
     let transientTries = 1
     for (let attempt = 1; ; attempt++) {
+      // Stopped while we were waiting out a rate limit (or before we began): no new call goes out — nobody reads it.
+      if (abortSignal?.aborted) return
       // Our own signal: a provider that supports cancelling (Gemini) stops the hung request; one that does not (a CLI
       // model) keeps running in the background and its late answer is dropped.
       const controller = new AbortController()
@@ -83,9 +86,11 @@ export class ResilientLlm extends BaseLlm {
           try {
             next = await Promise.race([responses.next(), deadline]).finally(() => clearTimeout(timer))
           } catch (error) {
+            // The caller stopped the investigation and the provider dropped the call: not a model failure to report.
+            if (abortSignal?.aborted) throw error
             const failure = parseModelError(error)
             const wait = failure.retryAfterMs ?? backoffMs(transientTries)
-            const retry = isTransient(failure) && !answered && transientTries < this.transientAttempts && wait <= this.maxRetryDelayMs && !abortSignal?.aborted
+            const retry = isTransient(failure) && !answered && transientTries < this.transientAttempts && wait <= this.maxRetryDelayMs
             if (!retry) {
               // An error we know how to explain is rethrown in plain words; anything else exactly as it came.
               if (failure.status === undefined) {
@@ -99,7 +104,16 @@ export class ResilientLlm extends BaseLlm {
             transientTries++
             const what = failure.status === 429 ? 'rate limit reached (429)' : `provider unavailable (${failure.status})`
             this.options.onRetry?.({ attempt: transientTries, attempts: this.transientAttempts, reason: `${what}, waiting ${Math.ceil(wait / 1000)}s` })
-            await this.sleep(wait)
+            // A stop does not wait out the provider's "retry in 50 s".
+            await new Promise<void>((resolve) => {
+              // Whichever comes first ends the wait and takes the listener off — one is not left behind per retry.
+              const done = () => {
+                abortSignal?.removeEventListener('abort', done)
+                resolve()
+              }
+              abortSignal?.addEventListener('abort', done, { once: true })
+              void this.sleep(wait).then(done)
+            })
             // The same attempt again: this was not a hang.
             attempt--
             break

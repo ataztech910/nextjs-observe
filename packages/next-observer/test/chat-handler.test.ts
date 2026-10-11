@@ -49,15 +49,144 @@ describe('createChatHandler', () => {
     const slow = await createChatHandler({ storage: await shopStorage(), env: {}, queryOptions: { now: () => NOW }, timeoutMs: 100, model: new SlowMockLlm() })
     const events: ChatEvent[] = []
     await slow.handle({ question: 'q' }, (e) => events.push(e))
-    expect(events.at(-1)).toEqual({ type: 'error', message: expect.stringContaining('longer than') })
+    expect(events.at(-1)).toEqual({ type: 'error', message: expect.stringContaining('longer than'), closed: true })
     const countAtEnd = events.length
     await sleep(600) // the investigation keeps running in the background
     expect(events).toHaveLength(countAtEnd)
+  })
+
+  describe('stopping an investigation', () => {
+    const slowHandler = async () => createChatHandler({ storage: await shopStorage(), env: {}, queryOptions: { now: () => NOW }, model: new SlowMockLlm() })
+
+    it('ends the turn at once with `stopped`, and nothing comes after it', async () => {
+      const handler = await slowHandler()
+      const controller = new AbortController()
+      const events: ChatEvent[] = []
+      const turn = handler.handle({ question: 'q', signal: controller.signal }, (e) => events.push(e))
+      await sleep(80) // a few steps in
+      const before = Date.now()
+      controller.abort()
+      await turn
+      expect(Date.now() - before).toBeLessThan(200)
+      expect(events[0]).toMatchObject({ type: 'status' })
+      expect(events.at(-1)).toEqual({ type: 'stopped', closed: true })
+      expect(events.some((e) => e.type === 'report' || e.type === 'error')).toBe(false)
+      const countAtEnd = events.length
+      await sleep(600)
+      expect(events).toHaveLength(countAtEnd)
+    })
+
+    it('really stops the run: far fewer steps than an investigation left alone', async () => {
+      const full = await run(await slowHandler(), 'q')
+      const controller = new AbortController()
+      const seen: ChatEvent[] = []
+      const steps: string[] = []
+      // Count what the agents go on doing behind the finished turn, through the model itself.
+      class CountingLlm extends SlowMockLlm {
+        async *generateContentAsync(...args: Parameters<MockLlm['generateContentAsync']>): AsyncGenerator<LlmResponse, void> {
+          steps.push('call')
+          yield* super.generateContentAsync(...args)
+        }
+      }
+      const counted = await createChatHandler({ storage: await shopStorage(), env: {}, queryOptions: { now: () => NOW }, model: new CountingLlm() })
+      const turn = counted.handle({ question: 'q', signal: controller.signal }, (e) => seen.push(e))
+      await sleep(80)
+      controller.abort()
+      await turn
+      const callsAtStop = steps.length
+      await sleep(800)
+      const fullCalls = full.filter((e) => e.type === 'step').length
+      // After the stop the run winds down: at most the call already in flight finishes.
+      expect(steps.length - callsAtStop).toBeLessThanOrEqual(2)
+      expect(steps.length).toBeLessThan(fullCalls)
+    })
+
+    it('a signal already aborted starts nothing — not even one model call', async () => {
+      let calls = 0
+      class CountingLlm extends SlowMockLlm {
+        async *generateContentAsync(...args: Parameters<MockLlm['generateContentAsync']>): AsyncGenerator<LlmResponse, void> {
+          calls++
+          yield* super.generateContentAsync(...args)
+        }
+      }
+      const handler = await createChatHandler({ storage: await shopStorage(), env: {}, queryOptions: { now: () => NOW }, model: new CountingLlm() })
+      const events: ChatEvent[] = []
+      await handler.handle({ question: 'q', signal: AbortSignal.abort() }, (e) => events.push(e))
+      await sleep(200)
+      expect(events.map((e) => e.type)).toEqual(['status', 'stopped'])
+      expect(calls).toBe(0)
+    })
+
+    it('a stopped conversation is not continued; a new one is answered', async () => {
+      const handler = await slowHandler()
+      const controller = new AbortController()
+      const first: ChatEvent[] = []
+      const turn = handler.handle({ question: 'q', signal: controller.signal }, (e) => first.push(e))
+      await sleep(80)
+      controller.abort()
+      await turn
+      expect(first.at(-1)).toEqual({ type: 'stopped', closed: true })
+      const sessionId = (first[0] as { sessionId: string }).sessionId
+      // Its history may end with a tool call that never got its result: a provider would reject the next request.
+      const second: ChatEvent[] = []
+      await handler.handle({ question: 'and now?', sessionId }, (e) => second.push(e))
+      expect(second).toEqual([{ type: 'error', message: 'this conversation was cut short — ask again in a new chat', closed: true }])
+      const fresh = await run(handler, 'and now?')
+      expect(fresh.at(-1)?.type).toBe('report')
+    })
+
+    it('remembers only so many cut conversations; a forgotten id starts clean', async () => {
+      const handler = await createChatHandler({ storage: await shopStorage(), env: {}, queryOptions: { now: () => NOW }, model: new SlowMockLlm(), maxCutSessions: 1 })
+      const stopOne = async () => {
+        const controller = new AbortController()
+        const events: ChatEvent[] = []
+        const turn = handler.handle({ question: 'q', signal: controller.signal }, (e) => events.push(e))
+        await sleep(60)
+        controller.abort()
+        await turn
+        return (events[0] as { sessionId: string }).sessionId
+      }
+      const first = await stopOne()
+      const second = await stopOne()
+      await sleep(300) // the stopped runs wind down
+      const again: ChatEvent[] = []
+      await handler.handle({ question: 'Why is checkout slow?', sessionId: first }, (e) => again.push(e))
+      expect(again[0]).toMatchObject({ type: 'status', sessionId: first })
+      expect(again.at(-1)?.type).toBe('report')
+      const stillCut: ChatEvent[] = []
+      await handler.handle({ question: 'q', sessionId: second }, (e) => stillCut.push(e))
+      expect(stillCut).toEqual([{ type: 'error', message: 'this conversation was cut short — ask again in a new chat', closed: true }])
+    }, 15_000)
+
+    it('the timeout cancels the run too, not only reports it', async () => {
+      let calls = 0
+      class CountingLlm extends SlowMockLlm {
+        async *generateContentAsync(...args: Parameters<MockLlm['generateContentAsync']>): AsyncGenerator<LlmResponse, void> {
+          calls++
+          yield* super.generateContentAsync(...args)
+        }
+      }
+      const handler = await createChatHandler({ storage: await shopStorage(), env: {}, queryOptions: { now: () => NOW }, timeoutMs: 100, model: new CountingLlm() })
+      const events = await run(handler, 'q')
+      expect(events.at(-1)).toMatchObject({ type: 'error', message: expect.stringContaining('longer than') })
+      const atTimeout = calls
+      await sleep(800)
+      expect(calls - atTimeout).toBeLessThanOrEqual(2)
+    })
+
+    it('without a stop, a signal changes nothing', async () => {
+      const handler = await createChatHandler({ storage: await shopStorage(), env: {}, queryOptions: { now: () => NOW } })
+      const events: ChatEvent[] = []
+      await handler.handle({ question: 'Why is checkout slow?', signal: new AbortController().signal }, (e) => events.push(e))
+      expect(events.at(-1)?.type).toBe('report')
+    })
   })
 
   it('reports a failing model as an error event, not a crash', async () => {
     const handler = await createChatHandler({ storage: await shopStorage(), env: {}, queryOptions: { now: () => NOW }, model: new ThrowingLlm() })
     const events = await run(handler)
     expect(events.at(-1)).toMatchObject({ type: 'error', message: expect.stringContaining('provider unavailable') })
+    // An ordinary failure does not close the conversation: the same chat can ask again.
+    expect(events.every((e) => !('closed' in e))).toBe(true)
   })
 })

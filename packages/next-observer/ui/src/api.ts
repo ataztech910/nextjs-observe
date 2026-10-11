@@ -44,9 +44,20 @@ export const api = {
   regression: () => get<{ regression: Regression | null }>('/api/regression'),
   chatInfo: () => get<ChatInfo>('/api/chat'),
 
-  /** Streams one chat turn: calls onEvent for every NDJSON line as the agents work. */
-  async ask(question: string, sessionId: string | undefined, onEvent: (event: ChatEvent) => void): Promise<void> {
-    const res = await fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question, sessionId }) })
+  /**
+   * Stops an investigation the observer started on its own. 'gone' when there is none to stop (it has ended, or the
+   * observer was restarted); 'failed' when the request did not get through — it may still be running. One the user
+   * asked for is stopped by aborting `ask`.
+   */
+  stopInvestigation: (turnId: string): Promise<'stopped' | 'gone' | 'failed'> =>
+    fetch('/api/chat/stop', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ turnId }) }).then(
+      (res) => (res.ok ? 'stopped' : res.status === 404 ? 'gone' : 'failed'),
+      () => 'failed',
+    ),
+
+  /** Streams one chat turn: calls onEvent for every NDJSON line as the agents work. Aborting `signal` stops the investigation. */
+  async ask(question: string, sessionId: string | undefined, onEvent: (event: ChatEvent) => void, signal?: AbortSignal): Promise<void> {
+    const res = await fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question, sessionId }), signal })
     if (!res.ok || !res.body) {
       const body = (await res.json().catch(() => ({}))) as { error?: string }
       onEvent({ type: 'error', message: body.error ?? `chat failed: ${res.status}` })

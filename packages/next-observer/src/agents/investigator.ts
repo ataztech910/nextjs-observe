@@ -122,6 +122,10 @@ export function createInvestigator(options: InvestigatorOptions) {
 
   return {
     startSession,
+    /** Forgets a conversation and its history. */
+    async endSession(sessionId: string): Promise<void> {
+      await sessions.deleteSession({ appName: APP_NAME, userId: USER_ID, sessionId })
+    },
     /**
      * Runs one investigation; resolves with the final report and every tool call made on the way.
      * Pass the sessionId from a previous answer to continue that conversation. Safe to call concurrently (per session: one at a time).
@@ -133,6 +137,8 @@ export function createInvestigator(options: InvestigatorOptions) {
         /** Called with each data tool's result — the chat builds evidence cards from these. */
         onResult?: (step: InvestigationStep, result: unknown) => void
         sessionId?: string
+        /** Stops the run: ADK cancels between steps, and a model that supports it drops the call in flight. */
+        signal?: AbortSignal
       } = {},
     ): Promise<{ text: string; sessionId: string; steps: InvestigationStep[]; transcript: TranscriptEntry[]; error?: string }> {
       const sessionId = await startSession(call.sessionId)
@@ -146,7 +152,7 @@ export function createInvestigator(options: InvestigatorOptions) {
       const transcript: TranscriptEntry[] = []
       let text = ''
       let failure: string | undefined
-      for await (const event of runner.runAsync({ userId: USER_ID, sessionId, newMessage: { role: 'user', parts: [{ text: question }] } })) {
+      for await (const event of runner.runAsync({ userId: USER_ID, sessionId, newMessage: { role: 'user', parts: [{ text: question }] }, ...(call.signal ? { abortSignal: call.signal } : {}) })) {
         if (event.errorMessage) failure = event.errorMessage
         if (event.author !== 'orchestrator') continue
         for (const part of event.content?.parts ?? []) {

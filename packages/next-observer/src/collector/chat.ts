@@ -27,12 +27,20 @@ export type ChatEvent =
   | { type: 'step'; agent: string; tool: string; args: Record<string, unknown> }
   | { type: 'card'; card: EvidenceCard }
   | { type: 'report'; text: string }
-  | { type: 'error'; message: string }
+  /** Somebody stopped the investigation; what was found until then stays on the page. */
+  | { type: 'stopped'; closed?: true }
+  /**
+   * `closed`: this conversation cannot be continued (it was stopped or timed out, so its history ends in the middle of
+   * a step) — the next question has to start a new one. The observer says so; the client does not have to guess.
+   */
+  | { type: 'error'; message: string; closed?: true }
 
 export interface ChatRequest {
   question: string
   /** From a previous `status` event: continue that conversation. Omitted → a new conversation. */
   sessionId?: string
+  /** Aborted when somebody stops the investigation (the Stop button, or the asker went away). */
+  signal?: AbortSignal
 }
 
 /** Runs one chat turn, emitting events as it goes. Resolves when the turn is over. */
