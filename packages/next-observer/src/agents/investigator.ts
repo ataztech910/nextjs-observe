@@ -122,6 +122,10 @@ export function createInvestigator(options: InvestigatorOptions) {
 
   return {
     startSession,
+    /** Forgets a conversation and its history. */
+    async endSession(sessionId: string): Promise<void> {
+      await sessions.deleteSession({ appName: APP_NAME, userId: USER_ID, sessionId })
+    },
     /**
      * Runs one investigation; resolves with the final report and every tool call made on the way.
      * Pass the sessionId from a previous answer to continue that conversation. Safe to call concurrently (per session: one at a time).

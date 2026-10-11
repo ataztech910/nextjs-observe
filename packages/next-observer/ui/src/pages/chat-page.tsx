@@ -92,14 +92,16 @@ export function ChatPage() {
     asking.current.set(id, controller)
     setTurns((all) => [...all, { id, question, events: [], running: true }])
     setDraft('')
-    let answered = false
+    // The observer says when a conversation cannot be continued (stopped, timed out); our own Stop closes it too.
+    let closed = false
+    let lost = false
     try {
       await api.ask(
         question,
         sessionId,
         (event) => {
           if (event.type === 'status') setSessionId(event.sessionId)
-          if (event.type === 'report') answered = true
+          if ((event.type === 'error' || event.type === 'stopped') && event.closed) closed = true
           update((t) => ({ ...t, events: [...t.events, event] }))
         },
         controller.signal,
@@ -107,11 +109,11 @@ export function ChatPage() {
     } catch (error) {
       // Our own Stop closes the request; that is not a failure to report.
       const event: ChatEvent = controller.signal.aborted ? { type: 'stopped' } : { type: 'error', message: error instanceof Error ? error.message : String(error) }
+      lost = !controller.signal.aborted
       update((t) => ({ ...t, events: [...t.events, event] }))
     } finally {
-      // A turn that did not end in a report was stopped, timed out or lost its connection: the observer does not
-      // continue such a conversation (its history ends in the middle of a step). The next question starts a new one.
-      if (!answered) setSessionId(undefined)
+      // A lost connection stops the investigation on the observer's side as well, so that closes it too.
+      if (closed || controller.signal.aborted || lost) setSessionId(undefined)
       asking.current.delete(id)
       update((t) => ({ ...t, running: false }))
     }
@@ -122,7 +124,10 @@ export function ChatPage() {
     // The observer answers with a `stopped` event for everyone watching. When it has nothing to stop — the turn ended,
     // or the observer was restarted — the turn here is stale: mark it so, or it would look alive for ever.
     void api.stopInvestigation(turn.id).then((result) => {
-      if (result === 'gone') setTurns((all) => all.map((t) => (t.id === turn.id && t.running ? { ...t, running: false, events: [...t.events, { type: 'stopped' }] } : t)))
+      if (result === 'stopped') return
+      // Nothing to stop, or nobody to ask: either way no event will ever end this turn — end it here, and say which.
+      const event: ChatEvent = result === 'gone' ? { type: 'stopped' } : { type: 'error', message: 'could not reach the observer to stop this — it may still be running' }
+      setTurns((all) => all.map((t) => (t.id === turn.id && t.running ? { ...t, running: false, events: [...t.events, event] } : t)))
     })
   }
 

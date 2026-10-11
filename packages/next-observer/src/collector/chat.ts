@@ -28,8 +28,12 @@ export type ChatEvent =
   | { type: 'card'; card: EvidenceCard }
   | { type: 'report'; text: string }
   /** Somebody stopped the investigation; what was found until then stays on the page. */
-  | { type: 'stopped' }
-  | { type: 'error'; message: string }
+  | { type: 'stopped'; closed?: true }
+  /**
+   * `closed`: this conversation cannot be continued (it was stopped or timed out, so its history ends in the middle of
+   * a step) — the next question has to start a new one. The observer says so; the client does not have to guess.
+   */
+  | { type: 'error'; message: string; closed?: true }
 
 export interface ChatRequest {
   question: string

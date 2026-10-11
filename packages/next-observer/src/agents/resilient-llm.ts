@@ -61,7 +61,8 @@ export class ResilientLlm extends BaseLlm {
     this.attempts = Math.max(1, options.attempts ?? 2)
     this.transientAttempts = Math.max(1, options.transientAttempts ?? 3)
     this.maxRetryDelayMs = options.maxRetryDelayMs ?? 60_000
-    this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)))
+    // unref: a wait that a stop has already ended must not keep the process alive until its timer fires.
+    this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => void setTimeout(resolve, ms).unref?.()))
   }
 
   async *generateContentAsync(request: LlmRequest, stream = false, abortSignal?: AbortSignal): AsyncGenerator<LlmResponse, void> {
@@ -104,7 +105,15 @@ export class ResilientLlm extends BaseLlm {
             const what = failure.status === 429 ? 'rate limit reached (429)' : `provider unavailable (${failure.status})`
             this.options.onRetry?.({ attempt: transientTries, attempts: this.transientAttempts, reason: `${what}, waiting ${Math.ceil(wait / 1000)}s` })
             // A stop does not wait out the provider's "retry in 50 s".
-            await Promise.race([this.sleep(wait), new Promise<void>((resolve) => abortSignal?.addEventListener('abort', () => resolve(), { once: true }))])
+            await new Promise<void>((resolve) => {
+              // Whichever comes first ends the wait and takes the listener off — one is not left behind per retry.
+              const done = () => {
+                abortSignal?.removeEventListener('abort', done)
+                resolve()
+              }
+              abortSignal?.addEventListener('abort', done, { once: true })
+              void this.sleep(wait).then(done)
+            })
             // The same attempt again: this was not a hang.
             attempt--
             break

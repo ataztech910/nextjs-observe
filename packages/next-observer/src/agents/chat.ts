@@ -10,6 +10,8 @@ import { getModel, resolveAiMode, type Env } from './model.js'
 import { MAX_CALL_TIMEOUT_MS, ResilientLlm } from './resilient-llm.js'
 
 export interface ChatHandlerOptions {
+  /** How many cut-short conversations are remembered (and their history kept) before the oldest is dropped. Default 1000. */
+  maxCutSessions?: number
   storage: StorageAdapter
   env?: Env
   queryOptions?: QueryOptions
@@ -63,13 +65,13 @@ export async function createChatHandler(options: ChatHandlerOptions): Promise<{ 
   // Conversations whose last run was cut short (stopped, or timed out). Their history may end in the middle of a step —
   // a tool call without its result — which a provider rejects on the next request; they are not continued.
   const cut = new Set<string>()
-  const MAX_CUT_SESSIONS = 1000
+  const MAX_CUT_SESSIONS = options.maxCutSessions ?? 1000
 
   const handle: ChatHandler = async ({ question, sessionId: requested, signal }, emit) => {
     // Reserve synchronously, before any await: two requests for the same session must not both get through.
     if (requested) {
       if (cut.has(requested)) {
-        emit({ type: 'error', message: 'this conversation was cut short — ask again in a new chat' })
+        emit({ type: 'error', message: 'this conversation was cut short — ask again in a new chat', closed: true })
         return
       }
       if (busy.has(requested)) {
@@ -118,11 +120,11 @@ export async function createChatHandler(options: ChatHandlerOptions): Promise<{ 
       const result = await Promise.race([running, timeout, stop])
       if (result === 'stopped') {
         stopped = true
-        send({ type: 'stopped' })
+        send({ type: 'stopped', closed: true })
       } else if (result === 'timeout') {
         timedOut = true
         own.abort()
-        send({ type: 'error', message: `investigation took longer than ${Math.round(timeoutMs / 1000)}s — try a narrower question` })
+        send({ type: 'error', message: `investigation took longer than ${Math.round(timeoutMs / 1000)}s — try a narrower question`, closed: true })
       } else if (result.error && !result.text) {
         send({ type: 'error', message: result.error })
       } else {
@@ -132,7 +134,7 @@ export async function createChatHandler(options: ChatHandlerOptions): Promise<{ 
       // The run was cancelled under us: that is the stop, not a failure.
       if (signal?.aborted) {
         stopped = true
-        send({ type: 'stopped' })
+        send({ type: 'stopped', closed: true })
       } else send({ type: 'error', message: error instanceof Error ? error.message : String(error) })
     } finally {
       // A cancelled run may still be winding down (a CLI model finishes the call it is on): its late steps must not
@@ -144,8 +146,13 @@ export async function createChatHandler(options: ChatHandlerOptions): Promise<{ 
         busy.delete(sessionId)
         if (timedOut || stopped) {
           cut.add(sessionId)
-          // The oldest are forgotten: an observer that runs for weeks must not keep every stopped turn's id.
-          if (cut.size > MAX_CUT_SESSIONS) cut.delete(cut.values().next().value as string)
+          // The oldest are forgotten, together with their history: an observer that runs for weeks must not keep every
+          // stopped turn. Its id then simply starts a clean conversation — the run that used it ended long ago.
+          if (cut.size > MAX_CUT_SESSIONS) {
+            const oldest = cut.values().next().value as string
+            cut.delete(oldest)
+            void investigator.endSession(oldest).catch(() => {})
+          }
         }
       }
     }

@@ -1,4 +1,5 @@
 import { BaseLlm, type BaseLlmConnection, type LlmRequest, type LlmResponse } from '@google/adk'
+import { getEventListeners } from 'node:events'
 import { describe, expect, it } from 'vitest'
 import { createChatHandler, MockLlm } from '../src/agents/index.js'
 import { DEFAULT_CALL_TIMEOUT_MS, ResilientLlm } from '../src/agents/resilient-llm.js'
@@ -80,10 +81,12 @@ describe('ResilientLlm: a stopped investigation', () => {
     expect(inner.calls).toBe(1)
   })
 
-  it('without a stop the same wait ends in the answer', async () => {
-    const inner = new FailsThenAnswers([rateLimited()])
-    expect(await collect(new ResilientLlm(inner, { sleep: async () => {} }), new AbortController().signal)).toEqual(['answer'])
-    expect(inner.calls).toBe(2)
+  it('without a stop the same wait ends in the answer, and leaves no listener on the signal', async () => {
+    const inner = new FailsThenAnswers([rateLimited(), rateLimited()])
+    const { signal } = new AbortController()
+    expect(await collect(new ResilientLlm(inner, { sleep: async () => {} }), signal)).toEqual(['answer'])
+    expect(inner.calls).toBe(3)
+    expect(getEventListeners(signal, 'abort')).toHaveLength(0)
   })
 
   it('a call dropped by the stop is not reported as a model error', async () => {

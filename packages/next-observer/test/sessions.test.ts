@@ -127,7 +127,7 @@ describe('chat handler sessions: races and timeouts', () => {
     expect(first.at(-1)).toMatchObject({ type: 'error', message: expect.stringContaining('longer than') })
     const sessionId = first[0].type === 'status' ? first[0].sessionId : ''
 
-    const CUT = { type: 'error', message: 'this conversation was cut short — ask again in a new chat' }
+    const CUT = { type: 'error', message: 'this conversation was cut short — ask again in a new chat', closed: true }
     expect(await turn({ question: 'q2', sessionId })).toEqual([CUT])
     await new Promise((r) => setTimeout(r, 300))
     expect(await turn({ question: 'q3', sessionId })).toEqual([CUT]) // not a matter of waiting
