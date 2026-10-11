@@ -121,16 +121,20 @@ describe('chat handler sessions: races and timeouts', () => {
     expect([a, b].find((events) => events !== refused[0])!.at(-1)).toMatchObject({ type: 'report' })
   })
 
-  it('keeps a timed-out session busy until the background investigation really ends', async () => {
+  it('a timed-out conversation is cancelled and not continued: its history ends in the middle of a step', async () => {
     const { turn } = await setup(60)
     const first = await turn({ question: 'q1' })
     expect(first.at(-1)).toMatchObject({ type: 'error', message: expect.stringContaining('longer than') })
     const sessionId = first[0].type === 'status' ? first[0].sessionId : ''
 
-    expect(await turn({ question: 'q2', sessionId })).toEqual([BUSY]) // still running in the background
-    await new Promise((r) => setTimeout(r, 1500)) // ~15 mock turns × 20 ms, with margin
-    const later = await turn({ question: 'q3', sessionId })
-    expect(later[0]).toMatchObject({ type: 'status', sessionId })
+    const CUT = { type: 'error', message: 'this conversation was cut short — ask again in a new chat' }
+    expect(await turn({ question: 'q2', sessionId })).toEqual([CUT])
+    await new Promise((r) => setTimeout(r, 300))
+    expect(await turn({ question: 'q3', sessionId })).toEqual([CUT]) // not a matter of waiting
+    // A new conversation is answered as usual.
+    const fresh = await turn({ question: 'q4' })
+    expect(fresh[0]).toMatchObject({ type: 'status' })
+    expect(fresh[0].type === 'status' && fresh[0].sessionId).not.toBe(sessionId)
   })
 })
 

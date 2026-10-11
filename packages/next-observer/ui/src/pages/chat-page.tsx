@@ -106,8 +106,8 @@ export function ChatPage() {
       // Our own Stop closes the request; that is not a failure to report.
       const event: ChatEvent = controller.signal.aborted ? { type: 'stopped' } : { type: 'error', message: error instanceof Error ? error.message : String(error) }
       update((t) => ({ ...t, events: [...t.events, event] }))
-      // A model that cannot be cancelled (a CLI) may still be finishing its call in that conversation, which stays busy
-      // until it does — the next question starts a new one instead of waiting for it.
+      // A stopped conversation is not continued: its history ends in the middle of a step, and the observer refuses
+      // it. The next question starts a new one.
       if (controller.signal.aborted) setSessionId(undefined)
     } finally {
       asking.current.delete(id)
@@ -116,8 +116,12 @@ export function ChatPage() {
   }
 
   function stop(turn: Turn) {
-    if (turn.proactive) void api.stopInvestigation(turn.id)
-    else asking.current.get(turn.id)?.abort()
+    if (!turn.proactive) return void asking.current.get(turn.id)?.abort()
+    // The observer answers with a `stopped` event for everyone watching. When it has nothing to stop — the turn ended,
+    // or the observer was restarted — the turn here is stale: mark it so, or it would look alive for ever.
+    void api.stopInvestigation(turn.id).then((ok) => {
+      if (!ok) setTurns((all) => all.map((t) => (t.id === turn.id && t.running ? { ...t, running: false, events: [...t.events, { type: 'stopped' }] } : t)))
+    })
   }
 
   // A question handed over in the URL (?ask=…, from the regression banner) is sent once, then removed from the URL so

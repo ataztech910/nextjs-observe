@@ -90,7 +90,9 @@ describe('stopping a proactive investigation', () => {
     expect((await stop('first')).status).toBe(200)
     const events = await listening
     const ends = events.filter((e) => e.event.type === 'report' || e.event.type === 'stopped').map((e) => [e.turnId, e.event.type])
-    expect(ends).toEqual([['first', 'stopped'], ['second', 'stopped'], ['third', 'report']])
+    // Each is told the moment it is stopped — the queued one does not wait for its turn to say so.
+    expect(ends).toEqual([['second', 'stopped'], ['first', 'stopped'], ['third', 'report']])
+    expect(events.filter((e) => e.event.type === 'stopped')).toHaveLength(2) // and told once
     expect(started).toEqual(['first', 'third'])
     expect(worked).toEqual(['third'])
     // Finished or stopped: there is nothing left to stop.

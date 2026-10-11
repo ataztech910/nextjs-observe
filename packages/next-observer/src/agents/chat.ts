@@ -60,10 +60,17 @@ export async function createChatHandler(options: ChatHandlerOptions): Promise<{ 
 
   // One question at a time per conversation: a second one would interleave with the first in the session history.
   const busy = new Set<string>()
+  // Conversations whose last run was cut short (stopped, or timed out). Their history may end in the middle of a step —
+  // a tool call without its result — which a provider rejects on the next request; they are not continued.
+  const cut = new Set<string>()
 
   const handle: ChatHandler = async ({ question, sessionId: requested, signal }, emit) => {
     // Reserve synchronously, before any await: two requests for the same session must not both get through.
     if (requested) {
+      if (cut.has(requested)) {
+        emit({ type: 'error', message: 'this conversation was cut short — ask again in a new chat' })
+        return
+      }
       if (busy.has(requested)) {
         emit({ type: 'error', message: 'this chat is still answering the previous question' })
         return
@@ -82,6 +89,9 @@ export async function createChatHandler(options: ChatHandlerOptions): Promise<{ 
     const timeout = new Promise<'timeout'>((resolve) => (timer = setTimeout(() => resolve('timeout'), timeoutMs)))
     // Resolves when somebody stops the investigation. The run itself is cancelled through the same signal, but a model
     // that cannot be cancelled (a CLI) would keep us waiting — so the turn ends here, at once.
+    // One way to cancel the run, for a stop and for the timeout alike.
+    const own = new AbortController()
+    const cancel = signal ? AbortSignal.any([signal, own.signal]) : own.signal
     let onAbort: (() => void) | undefined
     const stop = new Promise<'stopped'>((resolve) => {
       if (!signal) return
@@ -102,7 +112,7 @@ export async function createChatHandler(options: ChatHandlerOptions): Promise<{ 
       sessionId = await investigator.startSession(requested)
       busy.add(sessionId)
       emit({ type: 'status', mode, sessionId, text: 'Investigating…' })
-      const running = investigator.ask(question, { sessionId, onStep: (s) => send({ type: 'step', ...s }), onResult, signal })
+      const running = investigator.ask(question, { sessionId, onStep: (s) => send({ type: 'step', ...s }), onResult, signal: cancel })
       investigation = running
       // A cancelled run rejects or resolves on its own time; nobody is waiting for it any more.
       running.catch(() => {})
@@ -112,6 +122,7 @@ export async function createChatHandler(options: ChatHandlerOptions): Promise<{ 
         send({ type: 'stopped' })
       } else if (result === 'timeout') {
         timedOut = true
+        own.abort()
         send({ type: 'error', message: `investigation took longer than ${Math.round(timeoutMs / 1000)}s — try a narrower question` })
       } else if (result.error && !result.text) {
         send({ type: 'error', message: result.error })
@@ -130,6 +141,7 @@ export async function createChatHandler(options: ChatHandlerOptions): Promise<{ 
       finished = true
       clearTimeout(timer)
       if (onAbort) signal?.removeEventListener('abort', onAbort)
+      if ((timedOut || stopped) && sessionId) cut.add(sessionId)
       const release = () => {
         if (sessionId) busy.delete(sessionId)
       }

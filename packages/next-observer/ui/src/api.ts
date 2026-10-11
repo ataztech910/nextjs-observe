@@ -44,10 +44,17 @@ export const api = {
   regression: () => get<{ regression: Regression | null }>('/api/regression'),
   chatInfo: () => get<ChatInfo>('/api/chat'),
 
-  /** Streams one chat turn: calls onEvent for every NDJSON line as the agents work. */
-  /** Stops an investigation the observer started on its own. One the user asked for is stopped by aborting `ask`. */
-  stopInvestigation: (turnId: string) => fetch('/api/chat/stop', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ turnId }) }).then((res) => res.ok),
+  /**
+   * Stops an investigation the observer started on its own; false when there is none to stop (it has ended, or the
+   * observer was restarted). One the user asked for is stopped by aborting `ask`.
+   */
+  stopInvestigation: (turnId: string) =>
+    fetch('/api/chat/stop', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ turnId }) }).then(
+      (res) => res.ok,
+      () => false,
+    ),
 
+  /** Streams one chat turn: calls onEvent for every NDJSON line as the agents work. Aborting `signal` stops the investigation. */
   async ask(question: string, sessionId: string | undefined, onEvent: (event: ChatEvent) => void, signal?: AbortSignal): Promise<void> {
     const res = await fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question, sessionId }), signal })
     if (!res.ok || !res.body) {

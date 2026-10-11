@@ -117,15 +117,8 @@ describe('createChatHandler', () => {
       expect(calls).toBe(0)
     })
 
-    it('a model that cannot be cancelled keeps the conversation busy until its call returns', async () => {
-      // A CLI model ignores the signal: its call runs to the end and may still write into the session.
-      class DeafLlm extends MockLlm {
-        async *generateContentAsync(...args: Parameters<MockLlm['generateContentAsync']>): AsyncGenerator<LlmResponse, void> {
-          await sleep(500)
-          yield* super.generateContentAsync(...args)
-        }
-      }
-      const handler = await createChatHandler({ storage: await shopStorage(), env: {}, queryOptions: { now: () => NOW }, model: new DeafLlm() })
+    it('a stopped conversation is not continued; a new one is answered', async () => {
+      const handler = await slowHandler()
       const controller = new AbortController()
       const first: ChatEvent[] = []
       const turn = handler.handle({ question: 'q', signal: controller.signal }, (e) => first.push(e))
@@ -134,30 +127,29 @@ describe('createChatHandler', () => {
       await turn
       expect(first.at(-1)).toEqual({ type: 'stopped' })
       const sessionId = (first[0] as { sessionId: string }).sessionId
+      // Its history may end with a tool call that never got its result: a provider would reject the next request.
       const second: ChatEvent[] = []
       await handler.handle({ question: 'and now?', sessionId }, (e) => second.push(e))
-      expect(second).toEqual([{ type: 'error', message: 'this chat is still answering the previous question' }])
+      expect(second).toEqual([{ type: 'error', message: 'this conversation was cut short — ask again in a new chat' }])
+      const fresh = await run(handler, 'and now?')
+      expect(fresh.at(-1)?.type).toBe('report')
     })
 
-    it('frees the conversation: the next question in the same session is answered', async () => {
-      const handler = await slowHandler()
-      const controller = new AbortController()
-      const first: ChatEvent[] = []
-      const turn = handler.handle({ question: 'q', signal: controller.signal }, (e) => first.push(e))
-      await sleep(80)
-      controller.abort()
-      await turn
-      const sessionId = (first[0] as { sessionId: string }).sessionId
-      // The cancelled run may need a moment to wind down; until then the session says it is busy.
-      let second: ChatEvent[] = []
-      for (let i = 0; i < 40; i++) {
-        second = []
-        await handler.handle({ question: 'and now?', sessionId }, (e) => second.push(e))
-        if (second.at(-1)?.type === 'report') break
-        await sleep(100)
+    it('the timeout cancels the run too, not only reports it', async () => {
+      let calls = 0
+      class CountingLlm extends SlowMockLlm {
+        async *generateContentAsync(...args: Parameters<MockLlm['generateContentAsync']>): AsyncGenerator<LlmResponse, void> {
+          calls++
+          yield* super.generateContentAsync(...args)
+        }
       }
-      expect(second.at(-1)?.type).toBe('report')
-    }, 15_000)
+      const handler = await createChatHandler({ storage: await shopStorage(), env: {}, queryOptions: { now: () => NOW }, timeoutMs: 100, model: new CountingLlm() })
+      const events = await run(handler, 'q')
+      expect(events.at(-1)).toMatchObject({ type: 'error', message: expect.stringContaining('longer than') })
+      const atTimeout = calls
+      await sleep(800)
+      expect(calls - atTimeout).toBeLessThanOrEqual(2)
+    })
 
     it('without a stop, a signal changes nothing', async () => {
       const handler = await createChatHandler({ storage: await shopStorage(), env: {}, queryOptions: { now: () => NOW } })

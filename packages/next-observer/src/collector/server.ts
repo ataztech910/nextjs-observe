@@ -11,7 +11,7 @@
 //   GET  /api/checks                { checks, nowMs, rule, investigates }: scheduled checks from observe.checks.ts with their latest results
 //   GET  /api/regression?service&sinceMinutes   { regression }: the latest version vs the previous one, or null
 //   GET  /api/chat                  { enabled, mode }
-//   POST /api/chat                  { question, sessionId? } → NDJSON stream of ChatEvent (status, step…, card…, report | error)
+//   POST /api/chat                  { question, sessionId? } → NDJSON stream of ChatEvent (status, step…, card…, report | error | stopped); closing the request stops the investigation
 //   POST /api/chat/stop             { turnId } → stops an investigation the observer started on its own
 //   GET  /api/chat/events           SSE: proactive turns (detector anomaly → investigation), recent ones replayed on connect
 //   GET  /*                         the UI (dist/ui) with SPA fallback
@@ -209,7 +209,10 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
       // Queued: two investigations at once would double the model load and interleave in the UI.
       investigations = investigations
         .then(() =>
-          chat.handle({ question: questionFor(anomaly), signal: controller.signal }, (event) => broadcast({ turnId, event })).catch((error: unknown) => {
+          chat.handle({ question: questionFor(anomaly), signal: controller.signal }, (event) => {
+            // Already told to everyone by the stop request itself; and nothing of a stopped turn is news after that.
+            if (!controller.signal.aborted) broadcast({ turnId, event })
+          }).catch((error: unknown) => {
             broadcast({ turnId, event: { type: 'error', message: error instanceof Error ? error.message : String(error) } })
           }),
         )
@@ -272,9 +275,14 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
       if (error instanceof HttpError) throw error
       throw new HttpError(400, 'body is not valid JSON')
     }
-    const controller = typeof body?.turnId === 'string' ? proactive.get(body.turnId) : undefined
+    const turnId = typeof body?.turnId === 'string' ? body.turnId : ''
+    const controller = proactive.get(turnId)
     if (!controller) throw new HttpError(404, 'no such investigation is running')
+    const already = controller.signal.aborted
     controller.abort()
+    // Said at once: an investigation still waiting in the queue would otherwise look alive until its turn came.
+    // The handler's own `stopped`, when the queue gets to it, changes nothing for a turn that has already ended.
+    if (!already) broadcast({ turnId, event: { type: 'stopped' } })
     send(res, 200, { stopped: true })
   }
 

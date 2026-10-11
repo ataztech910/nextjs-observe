@@ -68,6 +68,8 @@ export class ResilientLlm extends BaseLlm {
     // Hangs and provider errors are counted apart: a call may hang once and be rate-limited twice.
     let transientTries = 1
     for (let attempt = 1; ; attempt++) {
+      // Stopped while we were waiting out a rate limit (or before we began): no new call goes out — nobody reads it.
+      if (abortSignal?.aborted) return
       // Our own signal: a provider that supports cancelling (Gemini) stops the hung request; one that does not (a CLI
       // model) keeps running in the background and its late answer is dropped.
       const controller = new AbortController()
@@ -83,6 +85,8 @@ export class ResilientLlm extends BaseLlm {
           try {
             next = await Promise.race([responses.next(), deadline]).finally(() => clearTimeout(timer))
           } catch (error) {
+            // The caller stopped the investigation and the provider dropped the call: not a model failure to report.
+            if (abortSignal?.aborted) throw error
             const failure = parseModelError(error)
             const wait = failure.retryAfterMs ?? backoffMs(transientTries)
             const retry = isTransient(failure) && !answered && transientTries < this.transientAttempts && wait <= this.maxRetryDelayMs && !abortSignal?.aborted

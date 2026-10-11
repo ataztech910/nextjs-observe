@@ -36,6 +36,71 @@ async function collect(llm: BaseLlm, signal?: AbortSignal): Promise<string[]> {
   return out
 }
 
+describe('ResilientLlm: a stopped investigation', () => {
+  /** Fails with the given errors in turn, then answers. */
+  class FailsThenAnswers extends BaseLlm {
+    calls = 0
+    constructor(private readonly failures: unknown[]) {
+      super({ model: 'failing' })
+    }
+    async *generateContentAsync(): AsyncGenerator<LlmResponse, void> {
+      const failure = this.failures[this.calls++]
+      if (failure) throw failure
+      yield text('answer')
+    }
+    async connect(): Promise<BaseLlmConnection> {
+      throw new Error('no live')
+    }
+  }
+  const rateLimited = () => Object.assign(new Error('got status: 429 Too Many Requests'), { status: 429 })
+
+  it('makes no call when the stop came before it', async () => {
+    const inner = new ScriptedLlm([['answer']])
+    expect(await collect(new ResilientLlm(inner), AbortSignal.abort())).toEqual([])
+    expect(inner.calls).toBe(0)
+  })
+
+  it('a stop during the wait for a rate limit sends no second call', async () => {
+    const inner = new FailsThenAnswers([rateLimited()])
+    const controller = new AbortController()
+    // The wait itself is where the stop arrives.
+    const llm = new ResilientLlm(inner, { sleep: async () => controller.abort() })
+    expect(await collect(llm, controller.signal)).toEqual([])
+    expect(inner.calls).toBe(1)
+  })
+
+  it('without a stop the same wait ends in the answer', async () => {
+    const inner = new FailsThenAnswers([rateLimited()])
+    expect(await collect(new ResilientLlm(inner, { sleep: async () => {} }), new AbortController().signal)).toEqual(['answer'])
+    expect(inner.calls).toBe(2)
+  })
+
+  it('a call dropped by the stop is not reported as a model error', async () => {
+    const controller = new AbortController()
+    const aborted = Object.assign(new Error('This operation was aborted'), { name: 'AbortError' })
+    const reported: string[] = []
+    class DropsOnStop extends BaseLlm {
+      constructor() {
+        super({ model: 'drops' })
+      }
+      // eslint-disable-next-line require-yield
+      async *generateContentAsync(): AsyncGenerator<LlmResponse, void> {
+        controller.abort()
+        throw aborted
+      }
+      async connect(): Promise<BaseLlmConnection> {
+        throw new Error('no live')
+      }
+    }
+    await expect(collect(new ResilientLlm(new DropsOnStop(), { onError: (m) => reported.push(m) }), controller.signal)).rejects.toBe(aborted)
+    expect(reported).toEqual([])
+    // The same error without a stop is a failure like any other.
+    const inner = new FailsThenAnswers([aborted])
+    await expect(collect(new ResilientLlm(inner, { onError: (m) => reported.push(m) }))).rejects.toBe(aborted)
+    expect(reported).toEqual(['This operation was aborted'])
+  })
+})
+
 describe('ResilientLlm', () => {
   it('passes a normal answer through, calling the model once', async () => {
     const inner = new ScriptedLlm([['a', 'b']])
