@@ -126,6 +126,9 @@ One investigation makes 7–12 model calls. A call that hangs is started again o
 few requests per minute, so an investigation may pause for that minute; a key without credits, a wrong key or a wrong
 model name is explained in the chat in plain words.
 
+The chat keeps a list of investigations — your questions and the ones the observer started on its own — with their
+state; pick one to read it again. Leaving the page does not lose them (a reload still loses your own questions).
+
 An investigation can be stopped — the **Stop** button next to "working…" in the chat, for a question you asked and for
 one the observer started on its own. What was found until then stays on the page. A model behind an API drops the call
 in flight; a CLI model finishes the call it is on and then stops. A stopped (or timed-out) conversation is not continued —

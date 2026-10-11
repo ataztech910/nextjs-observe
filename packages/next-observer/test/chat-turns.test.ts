@@ -1,0 +1,90 @@
+import { describe, expect, it } from 'vitest'
+import type { ChatEvent } from '../src/collector/index.js'
+import type { Anomaly } from '../src/debug/detector.js'
+import { applyProactive, investigations, shownTurn, summarize, type Turn } from '../ui/src/lib/chat-turns.js'
+
+const anomaly = (severity: Anomaly['severity'], detectedAtMs: number): Anomaly => ({
+  id: 'a', type: 'high_latency', scope: 'all', severity, detectedAtMs, value: 0.4, threshold: 0.3, sampleSize: 10, windowMs: 10_000, operations: [],
+})
+const options = { chatEnabled: true, headline: (a: Anomaly) => `Slow · ${a.severity}`, nowMs: 5000 }
+const feed = (events: ChatEvent[], turnId = 't1', start: Turn[] = [], opts = options) => events.reduce((turns, event) => applyProactive(turns, { turnId, event }, opts), start)
+const status: ChatEvent = { type: 'status', mode: 'mock', sessionId: 's', text: 'Investigating…' }
+const step: ChatEvent = { type: 'step', agent: 'latency_agent', tool: 'compare_versions', args: {} }
+const question = (id: string, startedAtMs: number, events: ChatEvent[] = [], running = false): Turn => ({ id, question: `q ${id}`, events, running, startedAtMs })
+
+describe('applyProactive', () => {
+  it('an anomaly starts a turn named by its headline, dated by when it was detected', () => {
+    const turns = feed([{ type: 'anomaly', anomaly: anomaly('critical', 1234) }])
+    expect(turns).toEqual([{ id: 't1', question: 'Slow · critical', events: [expect.objectContaining({ type: 'anomaly' })], running: true, proactive: true, startedAtMs: 1234 }])
+  })
+
+  it('later events join the same turn; a report ends it', () => {
+    const turns = feed([{ type: 'anomaly', anomaly: anomaly('warning', 1) }, status, step, { type: 'report', text: 'done' }])
+    expect(turns).toHaveLength(1)
+    expect(turns[0].events.map((e) => e.type)).toEqual(['anomaly', 'status', 'step', 'report'])
+    expect(turns[0].running).toBe(false)
+  })
+
+  it.each([[{ type: 'error', message: 'boom' }], [{ type: 'stopped' }]] as [ChatEvent][])('%j ends it too', (end) => {
+    expect(feed([{ type: 'anomaly', anomaly: anomaly('warning', 1) }, end])[0].running).toBe(false)
+  })
+
+  it('an ended turn stays ended, whatever comes after', () => {
+    const turns = feed([{ type: 'anomaly', anomaly: anomaly('warning', 1) }, { type: 'stopped' }, step])
+    expect(turns[0].running).toBe(false)
+    expect(turns[0].events).toHaveLength(3)
+  })
+
+  it('without agents an anomaly is just noted — nothing is running', () => {
+    const turns = feed([{ type: 'anomaly', anomaly: anomaly('warning', 1) }], 't1', [], { ...options, chatEnabled: false })
+    expect(turns[0].running).toBe(false)
+    expect(summarize(turns[0]).state).toBe('noted')
+  })
+
+  it('keeps turns apart, in the order they started, and leaves the others untouched', () => {
+    const mine = question('q-1', 10)
+    const turns = feed([{ type: 'anomaly', anomaly: anomaly('warning', 20) }], 't2', feed([{ type: 'anomaly', anomaly: anomaly('critical', 5) }], 't1', [mine]))
+    expect(turns.map((t) => t.id)).toEqual(['q-1', 't1', 't2'])
+    expect(turns[0]).toBe(mine)
+  })
+
+  it('a turn whose first event is not an anomaly still gets a name and a time', () => {
+    expect(feed([status])[0]).toMatchObject({ question: 'Anomaly', startedAtMs: 5000 })
+  })
+})
+
+describe('summarize', () => {
+  it.each([
+    [[] as ChatEvent[], true, 'running'],
+    [[step], true, 'running'],
+    [[step, { type: 'report', text: 'r' }], false, 'answered'],
+    [[step, { type: 'stopped' }], false, 'stopped'],
+    [[{ type: 'error', message: 'e' }], false, 'failed'],
+    [[step], false, 'noted'],
+    [[{ type: 'stopped' }, { type: 'error', message: 'late' }], false, 'stopped'], // what the user did wins over what came after
+  ] as [ChatEvent[], boolean, string][])('%j running=%s → %s', (events, running, state) => {
+    expect(summarize(question('q', 1, events, running)).state).toBe(state)
+  })
+
+  it('a question has no severity; an anomaly carries its own', () => {
+    expect(summarize(question('q', 7))).toEqual({ id: 'q', title: 'q q', kind: 'question', state: 'noted', startedAtMs: 7 })
+    const [turn] = feed([{ type: 'anomaly', anomaly: anomaly('critical', 9) }, { type: 'report', text: 'r' }])
+    expect(summarize(turn)).toEqual({ id: 't1', title: 'Slow · critical', kind: 'anomaly', state: 'answered', severity: 'critical', startedAtMs: 9 })
+  })
+})
+
+describe('the list and the turn on screen', () => {
+  const turns = [question('old', 100), question('new', 300), question('middle', 200)]
+
+  it('lists the newest first', () => {
+    expect(investigations(turns).map((t) => t.id)).toEqual(['new', 'middle', 'old'])
+    expect(turns.map((t) => t.id)).toEqual(['old', 'new', 'middle'])
+  })
+
+  it('shows the one picked, else the latest', () => {
+    expect(shownTurn(turns, 'old')?.id).toBe('old')
+    expect(shownTurn(turns, null)?.id).toBe('new')
+    expect(shownTurn(turns, 'gone')?.id).toBe('new')
+    expect(shownTurn([], null)).toBeUndefined()
+  })
+})
