@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ChatEvent } from '../src/collector/index.js'
 import type { Anomaly } from '../src/debug/detector.js'
 import type { StoredTurn } from '../src/collector/chat-history.js'
-import { applyProactive, investigations, shownTurn, summarize, withHistory, type Turn } from '../ui/src/lib/chat-turns.js'
+import { applyProactive, followedElsewhere, investigations, shownTurn, summarize, withHistory, type Turn } from '../ui/src/lib/chat-turns.js'
 
 const anomaly = (severity: Anomaly['severity'], detectedAtMs: number): Anomaly => ({
   id: 'a', type: 'high_latency', scope: 'all', severity, detectedAtMs, value: 0.4, threshold: 0.3, sampleSize: 10, windowMs: 10_000, operations: [],
@@ -108,10 +108,53 @@ describe('withHistory: a page that was just opened', () => {
     expect(summarize(turns[0]).state).toBe('answered')
   })
 
-  it('an investigation of the observer\'s own may still be running; a question from a page that is gone is not', () => {
+  it('takes the observer\'s word for what is still running — the page that asked may be another tab', () => {
     const turns = withHistory([], stored, headline)
-    expect(turns.map((t) => t.running)).toEqual([false, true, false])
-    expect(summarize(turns[2]).state).toBe('noted')
+    expect(turns.map((t) => t.running)).toEqual([false, true, true])
+    expect(summarize(turns[2]).state).toBe('running')
+  })
+
+  it('a question asked elsewhere is followed by asking again: its copy here is replaced, nothing else is', () => {
+    const first = withHistory([], stored, headline)
+    const mine = question('q-mine', 400, [step], true)
+    const later: StoredTurn[] = [
+      { ...stored[0], events: [] }, // not followed: must stay as it is on the page
+      stored[1],
+      { ...stored[2], events: [step, step, { type: 'report', text: 'done elsewhere' }], running: false },
+      { id: 'q-mine', question: 'stale copy', proactive: false, startedAtMs: 400, events: [], running: false },
+    ]
+    const turns = withHistory([...first, mine], later, headline, new Set(['q-2']))
+    expect(turns.map((t) => t.id)).toEqual(['q-1', 'a-1', 'q-2', 'q-mine'])
+    expect(turns[0].events).toHaveLength(2)
+    expect(turns[2]).toMatchObject({ running: false, events: [step, step, { type: 'report', text: 'done elsewhere' }] })
+    expect(turns[3]).toBe(mine)
+    // A followed turn the observer has forgotten meanwhile stays as it was.
+    expect(withHistory(first, [], headline, new Set(['q-2']))[2]).toBe(first[2])
+  })
+
+  it('a question that turns up in a later answer is followed from then on — it does not freeze at its first sight', () => {
+    const followed = new Set<string>()
+    // What the page does with every answer of the observer: mark what is not its own, then merge.
+    const take = (turns: Turn[], answer: StoredTurn[]) => {
+      for (const s of answer) if (!s.proactive) followed.add(s.id)
+      return withHistory(turns, answer, headline, followed)
+    }
+    const late: StoredTurn = { id: 'q-late', question: 'asked in another tab, after this page loaded', proactive: false, startedAtMs: 900, events: [step], running: true }
+    let turns = take([], stored.slice(0, 1))
+    turns = take(turns, [stored[0], late])
+    expect(turns.find((t) => t.id === 'q-late')).toMatchObject({ running: true, events: [step] })
+    expect(followedElsewhere(turns, followed)).toBe(true)
+    turns = take(turns, [stored[0], { ...late, events: [step, { type: 'report', text: 'done' }], running: false }])
+    expect(turns.find((t) => t.id === 'q-late')).toMatchObject({ running: false, events: [step, { type: 'report', text: 'done' }] })
+    expect(followedElsewhere(turns, followed)).toBe(false)
+  })
+
+  it('knows when there is still a question being answered elsewhere', () => {
+    const turns = withHistory([], stored, headline)
+    expect(followedElsewhere(turns, new Set(['q-1', 'q-2']))).toBe(true)
+    expect(followedElsewhere(turns, new Set(['q-1']))).toBe(false) // answered
+    expect(followedElsewhere(turns, new Set(['a-1']))).toBe(false) // the observer's own: the event stream covers it
+    expect(followedElsewhere(turns, new Set())).toBe(false)
   })
 
   it('turns already on the page win over their stored copies, and come after the restored ones', () => {

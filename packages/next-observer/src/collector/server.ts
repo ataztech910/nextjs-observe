@@ -12,7 +12,7 @@
 //   GET  /api/regression?service&sinceMinutes   { regression }: the latest version vs the previous one, or null
 //   GET  /api/chat                  { enabled, mode }
 //   POST /api/chat                  { question, sessionId? } → NDJSON stream of ChatEvent (status, step…, card…, report | error | stopped); closing the request stops the investigation
-//   POST /api/chat/stop             { turnId } → stops an investigation the observer started on its own
+//   POST /api/chat/stop             { turnId } → stops a running investigation: one the observer started, or a question asked elsewhere
 //   GET  /api/chat/history          { seq, turns }: every chat turn so far — questions asked and the observer's own investigations
 //   GET  /api/chat/events           SSE: proactive turns (detector anomaly → investigation), recent ones replayed on connect
 //   GET  /*                         the UI (dist/ui) with SPA fallback
@@ -192,7 +192,9 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
   const history = new ChatHistory()
   let seq = 0
   const broadcast = (message: Omit<ProactiveEvent, 'seq'>) => {
-    history.start({ id: message.turnId, proactive: true, startedAtMs: message.event.type === 'anomaly' ? message.event.anomaly.detectedAtMs : Date.now(), running: options.chat !== undefined })
+    // A turn of our own begins with its anomaly — and only then: a later event of a turn the history has already
+    // dropped must not bring back a nameless ghost of it.
+    if (message.event.type === 'anomaly') history.start({ id: message.turnId, proactive: true, startedAtMs: message.event.anomaly.detectedAtMs, running: options.chat !== undefined })
     history.add(message.turnId, message.event)
     const envelope: ProactiveEvent = { seq: ++seq, ...message }
     recent.push(envelope)
@@ -205,6 +207,8 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
   /** Investigations the observer started itself and that are queued or running — each can be stopped by its turn id. */
   const proactive = new Map<string, AbortController>()
   let asked = 0
+  /** Questions being answered right now — so that a page other than the one that asked can stop them too. */
+  const askedRunning = new Map<string, AbortController>()
   const onAnomalies = () => {
     for (const anomaly of [...(options.detector?.check() ?? []), ...(options.checks?.anomalies?.() ?? [])]) {
       const turnId = anomaly.id
@@ -223,7 +227,10 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
             if (!controller.signal.aborted) broadcast({ turnId, event: { type: 'error', message: error instanceof Error ? error.message : String(error) } })
           }),
         )
-        .finally(() => proactive.delete(turnId))
+        .finally(() => {
+          proactive.delete(turnId)
+          history.end(turnId)
+        })
     }
   }
 
@@ -252,8 +259,9 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
       throw new HttpError(400, 'sessionId must be 1–100 characters of letters, digits, _ or -')
     }
     // The page names its turn, so that the copy it gets back from the history is recognised as the same one.
-    if (body.turnId !== undefined && (typeof body.turnId !== 'string' || !/^[\w-]{1,100}$/.test(body.turnId))) {
-      throw new HttpError(400, 'turnId must be 1–100 characters of letters, digits, _ or -')
+    // "q-": its own corner of the id space — the observer's own turns are named after their anomalies.
+    if (body.turnId !== undefined && (typeof body.turnId !== 'string' || !/^q-[\w-]{1,98}$/.test(body.turnId))) {
+      throw new HttpError(400, 'turnId must be "q-" followed by 1–98 letters, digits, _ or -')
     }
     const turnId = body.turnId !== undefined && !history.has(body.turnId) ? body.turnId : `q-${Date.now()}-${++asked}`
     history.start({ id: turnId, question, proactive: false, startedAtMs: Date.now() })
@@ -266,6 +274,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     }
     // The asker closing the connection (the Stop button, a closed tab) stops the investigation: nobody reads the answer.
     const controller = new AbortController()
+    askedRunning.set(turnId, controller)
     const onClose = () => {
       if (!res.writableEnded) controller.abort()
     }
@@ -276,6 +285,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
       emit({ type: 'error', message: error instanceof Error ? error.message : String(error) })
     } finally {
       res.off('close', onClose)
+      askedRunning.delete(turnId)
       history.end(turnId)
     }
     res.end()
@@ -291,6 +301,12 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
       throw new HttpError(400, 'body is not valid JSON')
     }
     const turnId = typeof body?.turnId === 'string' ? body.turnId : ''
+    // A question asked from another tab or machine: its own page stops it by closing the request, anyone else here.
+    const asked = askedRunning.get(turnId)
+    if (asked) {
+      asked.abort()
+      return send(res, 200, { stopped: true })
+    }
     const controller = proactive.get(turnId)
     if (!controller) throw new HttpError(404, 'no such investigation is running')
     const already = controller.signal.aborted

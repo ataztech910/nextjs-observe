@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link, useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import { Rocket, X } from 'lucide-react'
 import { useState } from 'react'
 import { api, type Regression } from '@/api'
@@ -34,8 +34,10 @@ export function RegressionBanner() {
   const navigate = useNavigate()
   const [dismissed, setDismissed] = useState(readDismissed)
   const { data } = useQuery({ queryKey: ['regression'], queryFn: api.regression, refetchInterval: REFRESH_MS })
+  // Not over the chat: it floats in the corner where the Ask button is, and the chat is where its own button leads.
+  const onChat = useRouterState({ select: (state) => state.location.pathname === '/chat' })
   const r = data?.regression
-  if (!r || idOf(r) === dismissed) return null
+  if (!r || onChat || idOf(r) === dismissed) return null
 
   const dismiss = () => {
     writeDismissed(idOf(r))

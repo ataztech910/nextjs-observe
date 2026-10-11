@@ -1,6 +1,6 @@
 // The chat as data: turns (one question or one anomaly, with everything the AI agents did about it) and the words for
 // the list of investigations. Pure, so it is tested without a browser.
-import type { ChatEvent, ProactiveEvent } from '../../../src/collector/chat.js'
+import { isTurnEnd, type ChatEvent, type ProactiveEvent } from '../../../src/collector/chat.js'
 import type { StoredTurn } from '../../../src/collector/chat-history.js'
 import type { Anomaly } from '../../../src/debug/detector.js'
 
@@ -16,7 +16,7 @@ export interface Turn {
   startedAtMs: number
 }
 
-export const isEnd = (e: ChatEvent) => e.type === 'report' || e.type === 'error' || e.type === 'stopped'
+export const isEnd = isTurnEnd
 
 /** One event of a proactive turn, as it arrives over SSE: starts the turn or adds to it. */
 export function applyProactive(turns: Turn[], envelope: Pick<ProactiveEvent, 'turnId' | 'event'>, options: { chatEnabled: boolean; headline: (anomaly: Anomaly) => string; nowMs: number }): Turn[] {
@@ -37,27 +37,32 @@ export function applyProactive(turns: Turn[], envelope: Pick<ProactiveEvent, 'tu
 }
 
 /**
- * Turns the observer remembers, for a page that has just been opened. Turns already on the page win: they are the
- * same ones (same id), only fresher.
+ * Turns the observer remembers, for a page that has just been opened. Turns already on the page win — they are the
+ * same ones (same id), only fresher — except those in `refresh`: questions asked elsewhere, which this page can only
+ * follow by asking the observer again.
  */
-export function withHistory(turns: Turn[], stored: StoredTurn[], headline: (anomaly: Anomaly) => string): Turn[] {
+export function withHistory(turns: Turn[], stored: StoredTurn[], headline: (anomaly: Anomaly) => string, refresh: ReadonlySet<string> = new Set()): Turn[] {
+  const restore = (s: StoredTurn): Turn => {
+    const anomaly = s.events.find((e): e is Extract<ChatEvent, { type: 'anomaly' }> => e.type === 'anomaly')?.anomaly
+    return {
+      id: s.id,
+      question: s.question ?? (anomaly ? headline(anomaly) : 'Anomaly'),
+      events: s.events,
+      // The observer knows whether somebody is still working on it: the page that asked may be another tab.
+      running: s.running,
+      ...(s.proactive ? { proactive: true } : {}),
+      startedAtMs: s.startedAtMs,
+    }
+  }
+  const byId = new Map(stored.map((s) => [s.id, s]))
   const known = new Set(turns.map((t) => t.id))
-  const restored = stored
-    .filter((s) => !known.has(s.id))
-    .map((s): Turn => {
-      const anomaly = s.events.find((e): e is Extract<ChatEvent, { type: 'anomaly' }> => e.type === 'anomaly')?.anomaly
-      return {
-        id: s.id,
-        question: s.question ?? (anomaly ? headline(anomaly) : 'Anomaly'),
-        events: s.events,
-        // A question restored from the history was asked by a page that is gone, and with it the request that kept the
-        // investigation alive — whatever the observer still says, nobody is working on it.
-        running: s.proactive && s.running,
-        ...(s.proactive ? { proactive: true } : {}),
-        startedAtMs: s.startedAtMs,
-      }
-    })
-  return [...restored, ...turns]
+  const updated = turns.map((t) => (refresh.has(t.id) && byId.has(t.id) ? restore(byId.get(t.id)!) : t))
+  return [...stored.filter((s) => !known.has(s.id)).map(restore), ...updated]
+}
+
+/** Questions that came from the history and are still being answered — somewhere else; worth asking about again. */
+export function followedElsewhere(turns: Turn[], restored: ReadonlySet<string>): boolean {
+  return turns.some((t) => t.running && !t.proactive && restored.has(t.id))
 }
 
 export type TurnState = 'running' | 'answered' | 'stopped' | 'failed' | 'noted'

@@ -57,11 +57,13 @@ export const api = {
       () => 'failed',
     ),
 
-  /** Streams one chat turn: calls onEvent for every NDJSON line as the agents work. Aborting `signal` stops the investigation. */
   /** Every chat turn the observer remembers, and the event number the live stream continues from. */
   chatHistory: () => get<{ seq: number; turns: StoredTurn[] }>('/api/chat/history'),
 
-  /** `turnId` names the turn on the observer's side too, so its copy in the history is recognised after a reload. */
+  /**
+   * Streams one chat turn: calls onEvent for every NDJSON line as the agents work. Aborting `signal` stops the
+   * investigation. `turnId` names the turn on the observer's side too, so its copy in the history is recognised.
+   */
   async ask(question: string, sessionId: string | undefined, onEvent: (event: ChatEvent) => void, signal?: AbortSignal, turnId?: string): Promise<void> {
     const res = await fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question, sessionId, turnId }), signal })
     if (!res.ok || !res.body) {

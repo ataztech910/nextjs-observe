@@ -37,6 +37,9 @@ export type ChatEvent =
    */
   | { type: 'error'; message: string; closed?: true }
 
+/** The events after which a turn is over. One definition for the observer's history and for the page. */
+export const isTurnEnd = (event: ChatEvent): boolean => event.type === 'report' || event.type === 'error' || event.type === 'stopped'
+
 export interface ChatRequest {
   question: string
   /** From a previous `status` event: continue that conversation. Omitted → a new conversation. */

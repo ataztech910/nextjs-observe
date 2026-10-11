@@ -1,7 +1,7 @@
 // What the chat has been through, kept by the observer: questions asked and investigations it started on its own.
 // A page that is reloaded (or opened on another machine) gets them back — the browser used to be their only home.
 // In memory, like the traces: a restart of the observer starts clean.
-import type { ChatEvent } from './chat.js'
+import { isTurnEnd as isEnd, type ChatEvent } from './chat.js'
 
 export interface StoredTurn {
   id: string
@@ -17,11 +17,9 @@ export interface StoredTurn {
 export interface ChatHistoryOptions {
   /** Turns kept; the oldest go first. Default 100. */
   maxTurns?: number
-  /** Events kept per turn (steps of a long investigation). Default 500. */
+  /** Events kept per turn (steps of a long investigation). Default 200 — a page gets the whole history when it opens. */
   maxEvents?: number
 }
-
-const isEnd = (event: ChatEvent) => event.type === 'report' || event.type === 'error' || event.type === 'stopped'
 
 export class ChatHistory {
   private readonly turns = new Map<string, StoredTurn>()
@@ -30,7 +28,7 @@ export class ChatHistory {
 
   constructor(options: ChatHistoryOptions = {}) {
     this.maxTurns = Math.max(1, options.maxTurns ?? 100)
-    this.maxEvents = Math.max(1, options.maxEvents ?? 500)
+    this.maxEvents = Math.max(1, options.maxEvents ?? 200)
   }
 
   /** Begins a turn. An id already known is left as it is: the same question is not recorded twice. */

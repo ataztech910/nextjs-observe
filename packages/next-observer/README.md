@@ -129,7 +129,8 @@ model name is explained in the chat in plain words.
 
 The chat keeps a list of investigations — your questions and the ones the observer started on its own — with their
 state; pick one to read it again. The observer keeps them (the last 100, in memory), so a reload or another browser
-shows the same list; a restart of the observer starts clean.
+shows the same list — a question being answered in another tab included, and it can be stopped from here too. A
+restart of the observer starts clean.
 
 An investigation can be stopped — the **Stop** button next to "working…" in the chat, for a question you asked and for
 one the observer started on its own. What was found until then stays on the page. A model behind an API drops the call

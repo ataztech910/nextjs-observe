@@ -1,8 +1,8 @@
 // The chat's state lives here, outside the page: leaving for a trace and coming back must not lose the questions asked
 // or drop the live feed of the observer's own investigations.
-import { api, type ChatEvent, type ProactiveEvent } from '@/api'
+import { api, type ChatEvent, type ProactiveEvent, type StoredTurn } from '@/api'
 import { anomalyHeadline } from '@/components/chat/anomaly-view'
-import { applyProactive, withHistory, type Turn } from './chat-turns'
+import { applyProactive, followedElsewhere, withHistory, type Turn } from './chat-turns'
 
 interface ChatState {
   turns: Turn[]
@@ -28,6 +28,13 @@ let source: EventSource | undefined
 const userIsAsking = () => state.turns.some((t) => t.running && !t.proactive)
 
 let listening = false
+/** Questions this page did not ask itself: it knows them only from the observer's history. */
+const restoredQuestions = new Set<string>()
+/** Every question this page asked itself — the observer's copy of those is never taken over the page's own. */
+const asked = new Set<string>()
+/** Sessions of the observer's own investigations, by turn — the next question continues the one that just ended. */
+const proactiveSessions = new Map<string, string>()
+const FOLLOW_ELSEWHERE_MS = 3000
 
 /**
  * Once per page load: first what the observer remembers (questions asked before a reload, investigations of its own),
@@ -40,7 +47,13 @@ function listen() {
     .chatHistory()
     .then(
       (history) => {
-        set((s) => ({ ...s, turns: withHistory(s.turns, history.turns, anomalyHeadline) }))
+        for (const turn of history.turns) {
+          // The stream will not repeat what the history already holds — the session of a running investigation included.
+          const status = turn.events.find((e) => e.type === 'status')
+          if (turn.proactive && status?.type === 'status') proactiveSessions.set(turn.id, status.sessionId)
+        }
+        takeHistory(history.turns)
+        followElsewhere()
         return history.seq
       },
       // An observer too old to keep a history, or unreachable right now: the live feed alone, as before.
@@ -49,9 +62,32 @@ function listen() {
     .then(follow)
 }
 
+/**
+ * Puts what the observer remembers onto the page. Every time, not only on the first load: a question asked elsewhere
+ * can turn up in any answer, and only one that is marked as "not ours" is refreshed by the next.
+ */
+function takeHistory(stored: StoredTurn[]) {
+  for (const turn of stored) if (!turn.proactive && !asked.has(turn.id)) restoredQuestions.add(turn.id)
+  set((s) => ({ ...s, turns: withHistory(s.turns, stored, anomalyHeadline, restoredQuestions) }))
+}
+
+/** A question being answered for another tab sends this page nothing; while there is one, ask the observer again. */
+function followElsewhere() {
+  if (!followedElsewhere(state.turns, restoredQuestions)) return
+  setTimeout(() => {
+    void api.chatHistory().then(
+      (history) => {
+        takeHistory(history.turns)
+        followElsewhere()
+      },
+      () => followElsewhere(),
+    )
+  }, FOLLOW_ELSEWHERE_MS)
+}
+
 function follow(fromSeq: number) {
   let lastSeq = fromSeq
-  const sessions = new Map<string, string>()
+  const sessions = proactiveSessions
   source = new EventSource('/api/chat/events')
   source.onmessage = (message) => {
     const { seq, turnId, event } = JSON.parse(message.data) as ProactiveEvent
@@ -68,6 +104,7 @@ function follow(fromSeq: number) {
 async function ask(question: string) {
   const id = `q-${Date.now()}`
   const controller = new AbortController()
+  asked.add(id)
   asking.set(id, controller)
   // The turn just asked is the one to look at.
   set((s) => ({ ...s, selectedId: id, turns: [...s.turns, { id, question, events: [], running: true, startedAtMs: Date.now() }] }))
@@ -100,8 +137,11 @@ async function ask(question: string) {
 }
 
 function stop(turn: Turn) {
-  if (!turn.proactive) return void asking.get(turn.id)?.abort()
-  // The observer answers with a `stopped` event for everyone watching.
+  // Our own question: closing its request is the stop.
+  const own = asking.get(turn.id)
+  if (own) return void own.abort()
+  // Anything else — the observer's own investigation, or a question asked elsewhere — is stopped by the observer,
+  // which then says so to everyone watching.
   void api.stopInvestigation(turn.id).then((result) => {
     if (result === 'stopped') return
     // Nothing to stop, or nobody to ask: either way no event will ever end this turn — end it here, and say which.

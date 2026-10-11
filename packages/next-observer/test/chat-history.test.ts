@@ -112,26 +112,26 @@ describe('GET /api/chat/history', () => {
   it('gives a turn an id of its own when the page sent none, or one that is taken', async () => {
     collector = await startCollector({ port: 0, uiDir: false, chat: { mode: 'mock', handle: answer } })
     await (await ask({ question: 'a' })).text()
-    await (await ask({ question: 'b', turnId: 'mine' })).text()
-    await (await ask({ question: 'c', turnId: 'mine' })).text()
+    await (await ask({ question: 'b', turnId: 'q-mine' })).text()
+    await (await ask({ question: 'c', turnId: 'q-mine' })).text()
     const { turns } = await history()
     expect(turns.map((t) => t.question)).toEqual(['a', 'b', 'c'])
-    expect(turns[1].id).toBe('mine')
+    expect(turns[1].id).toBe('q-mine')
     expect(new Set(turns.map((t) => t.id)).size).toBe(3)
-    expect((await ask({ question: 'd', turnId: '../etc' })).status).toBe(400)
-    expect((await ask({ question: 'd', turnId: 7 })).status).toBe(400)
+    // "q-" is the questions' corner of the id space: the observer's own turns are named after their anomalies.
+    for (const turnId of ['../etc', 7, 'mine', 'high_latency-1-1', 'q-']) expect((await ask({ question: 'd', turnId })).status, String(turnId)).toBe(400)
     expect((await history()).turns).toHaveLength(3)
   })
 
   it('a handler that throws leaves a turn that ended in an error', async () => {
     collector = await startCollector({ port: 0, uiDir: false, chat: { mode: 'mock', handle: async () => Promise.reject(new Error('boom')) } })
-    await (await ask({ question: 'q', turnId: 't' })).text()
+    await (await ask({ question: 'q', turnId: 'q-t' })).text()
     expect((await history()).turns[0]).toMatchObject({ events: [{ type: 'error', message: 'boom' }], running: false })
   })
 
   it('a handler that returns without a closing event still ends the turn', async () => {
     collector = await startCollector({ port: 0, uiDir: false, chat: { mode: 'mock', handle: async (_request, emit) => emit({ type: 'status', mode: 'mock', sessionId: 's', text: 'Investigating…' }) } })
-    await (await ask({ question: 'q', turnId: 't' })).text()
+    await (await ask({ question: 'q', turnId: 'q-t' })).text()
     expect((await history()).turns[0]).toMatchObject({ events: [expect.objectContaining({ type: 'status' })], running: false })
   })
 
@@ -143,12 +143,37 @@ describe('GET /api/chat/history', () => {
     }
     collector = await startCollector({ port: 0, uiDir: false, chat: { mode: 'mock', handle } })
     const controller = new AbortController()
-    const res = await ask({ question: 'q', turnId: 'left' }, { signal: controller.signal })
+    const res = await ask({ question: 'q', turnId: 'q-left' }, { signal: controller.signal })
     await res.body!.getReader().read()
-    expect((await history()).turns[0]).toMatchObject({ id: 'left', running: true })
+    expect((await history()).turns[0]).toMatchObject({ id: 'q-left', running: true })
     controller.abort() // the page was reloaded
     for (let i = 0; i < 100 && (await history()).turns[0].running; i++) await new Promise((r) => setTimeout(r, 10))
     expect((await history()).turns[0]).toMatchObject({ running: false, events: [expect.objectContaining({ type: 'status' }), { type: 'stopped', closed: true }] })
+  })
+
+  it('a question being answered can be stopped from another page', async () => {
+    const handle: ChatHandler = async ({ signal }, emit) => {
+      emit({ type: 'status', mode: 'mock', sessionId: 's1', text: 'Investigating…' })
+      await new Promise<void>((resolve) => signal?.addEventListener('abort', () => resolve()))
+      emit({ type: 'stopped', closed: true })
+    }
+    collector = await startCollector({ port: 0, uiDir: false, chat: { mode: 'mock', handle } })
+    const stop = (turnId: string) => fetch(`${collector!.url}/api/chat/stop`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ turnId }) })
+    const asking = ask({ question: 'q', turnId: 'q-elsewhere' }).then((res) => res.text())
+    for (let i = 0; i < 100 && !(await history()).turns[0]?.running; i++) await new Promise((r) => setTimeout(r, 10))
+    expect((await stop('q-elsewhere')).status).toBe(200)
+    // The page that asked gets the end of its stream; the history has the same.
+    expect(await asking).toContain('"type":"stopped"')
+    expect((await history()).turns[0]).toMatchObject({ id: 'q-elsewhere', running: false })
+    expect((await stop('q-elsewhere')).status).toBe(404) // nothing left to stop
+  })
+
+  it('an investigation of its own that ends without a closing event is still over', async () => {
+    const anomaly = { id: 'no_traffic-9-9', type: 'no_traffic' as const, scope: 'all' as const, severity: 'critical' as const, detectedAtMs: 7, value: 130, threshold: 120, sampleSize: 0, windowMs: 10_000, operations: [] }
+    const pending = [anomaly]
+    collector = await startCollector({ port: 0, uiDir: false, chat: { mode: 'mock', handle: async () => {} }, detectorIntervalMs: 30, checks: { list: () => [], anomalies: () => pending.splice(0) } })
+    for (let i = 0; i < 100 && ((await history()).turns[0]?.running ?? true); i++) await new Promise((r) => setTimeout(r, 10))
+    expect((await history()).turns[0]).toMatchObject({ id: 'no_traffic-9-9', running: false })
   })
 
   it('remembers the observer\'s own investigations, and says where the event stream continues', async () => {
