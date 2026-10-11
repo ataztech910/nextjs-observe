@@ -1,6 +1,7 @@
 // The chat as data: turns (one question or one anomaly, with everything the AI agents did about it) and the words for
 // the list of investigations. Pure, so it is tested without a browser.
 import type { ChatEvent, ProactiveEvent } from '../../../src/collector/chat.js'
+import type { StoredTurn } from '../../../src/collector/chat-history.js'
 import type { Anomaly } from '../../../src/debug/detector.js'
 
 export interface Turn {
@@ -33,6 +34,30 @@ export function applyProactive(turns: Turn[], envelope: Pick<ProactiveEvent, 'tu
   // A turn that has ended stays ended: a late event (the observer's own `stopped` after ours) does not revive it.
   const updated: Turn = { ...turn, events: [...turn.events, event], running: turn.running && !isEnd(event) }
   return existing ? turns.map((t) => (t.id === turnId ? updated : t)) : [...turns, updated]
+}
+
+/**
+ * Turns the observer remembers, for a page that has just been opened. Turns already on the page win: they are the
+ * same ones (same id), only fresher.
+ */
+export function withHistory(turns: Turn[], stored: StoredTurn[], headline: (anomaly: Anomaly) => string): Turn[] {
+  const known = new Set(turns.map((t) => t.id))
+  const restored = stored
+    .filter((s) => !known.has(s.id))
+    .map((s): Turn => {
+      const anomaly = s.events.find((e): e is Extract<ChatEvent, { type: 'anomaly' }> => e.type === 'anomaly')?.anomaly
+      return {
+        id: s.id,
+        question: s.question ?? (anomaly ? headline(anomaly) : 'Anomaly'),
+        events: s.events,
+        // A question restored from the history was asked by a page that is gone, and with it the request that kept the
+        // investigation alive — whatever the observer still says, nobody is working on it.
+        running: s.proactive && s.running,
+        ...(s.proactive ? { proactive: true } : {}),
+        startedAtMs: s.startedAtMs,
+      }
+    })
+  return [...restored, ...turns]
 }
 
 export type TurnState = 'running' | 'answered' | 'stopped' | 'failed' | 'noted'

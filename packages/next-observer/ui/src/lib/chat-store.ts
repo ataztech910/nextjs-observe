@@ -2,7 +2,7 @@
 // or drop the live feed of the observer's own investigations.
 import { api, type ChatEvent, type ProactiveEvent } from '@/api'
 import { anomalyHeadline } from '@/components/chat/anomaly-view'
-import { applyProactive, type Turn } from './chat-turns'
+import { applyProactive, withHistory, type Turn } from './chat-turns'
 
 interface ChatState {
   turns: Turn[]
@@ -27,10 +27,30 @@ let source: EventSource | undefined
 
 const userIsAsking = () => state.turns.some((t) => t.running && !t.proactive)
 
-/** Opens the feed of proactive turns once; it stays open while the app does. */
+let listening = false
+
+/**
+ * Once per page load: first what the observer remembers (questions asked before a reload, investigations of its own),
+ * then the live feed of proactive turns from where that history ends. The feed stays open while the app does.
+ */
 function listen() {
-  if (source) return
-  let lastSeq = 0
+  if (listening) return
+  listening = true
+  void api
+    .chatHistory()
+    .then(
+      (history) => {
+        set((s) => ({ ...s, turns: withHistory(s.turns, history.turns, anomalyHeadline) }))
+        return history.seq
+      },
+      // An observer too old to keep a history, or unreachable right now: the live feed alone, as before.
+      () => 0,
+    )
+    .then(follow)
+}
+
+function follow(fromSeq: number) {
+  let lastSeq = fromSeq
   const sessions = new Map<string, string>()
   source = new EventSource('/api/chat/events')
   source.onmessage = (message) => {
@@ -64,6 +84,7 @@ async function ask(question: string) {
         updateTurn(id, (t) => ({ ...t, events: [...t.events, event] }))
       },
       controller.signal,
+      id,
     )
   } catch (error) {
     // Our own Stop closes the request; that is not a failure to report.

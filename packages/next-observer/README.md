@@ -128,7 +128,8 @@ few requests per minute, so an investigation may pause for that minute; a key wi
 model name is explained in the chat in plain words.
 
 The chat keeps a list of investigations — your questions and the ones the observer started on its own — with their
-state; pick one to read it again. Leaving the page does not lose them (a reload still loses your own questions).
+state; pick one to read it again. The observer keeps them (the last 100, in memory), so a reload or another browser
+shows the same list; a restart of the observer starts clean.
 
 An investigation can be stopped — the **Stop** button next to "working…" in the chat, for a question you asked and for
 one the observer started on its own. What was found until then stays on the page. A model behind an API drops the call
