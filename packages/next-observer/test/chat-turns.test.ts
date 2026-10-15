@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ChatEvent } from '../src/collector/index.js'
 import type { Anomaly } from '../src/debug/detector.js'
 import type { StoredTurn } from '../src/collector/chat-history.js'
-import { applyProactive, investigations, shownTurn, summarize, withHistory, type Turn } from '../ui/src/lib/chat-turns.js'
+import { applyProactive, investigations, notedText, shownTurn, summarize, withHistory, type Turn } from '../ui/src/lib/chat-turns.js'
 
 const anomaly = (severity: Anomaly['severity'], detectedAtMs: number): Anomaly => ({
   id: 'a', type: 'high_latency', scope: 'all', severity, detectedAtMs, value: 0.4, threshold: 0.3, sampleSize: 10, windowMs: 10_000, operations: [],
@@ -123,5 +123,26 @@ describe('withHistory: a page that was just opened', () => {
 
   it('a stored turn without an anomaly event still gets a name', () => {
     expect(withHistory([], [{ id: 'x', proactive: true, startedAtMs: 1, events: [], running: false }], headline)[0].question).toBe('Anomaly')
+  })
+})
+
+describe('notedText: why an anomaly was not investigated', () => {
+  const budget = { limit: 5, periodMs: 3_600_000, used: 5, nextAtMs: 42, byType: {} }
+  const time = (ms: number) => `t${ms}`
+  it('names the budget and when the next one may start, or the queue, or that they are off', () => {
+    expect(notedText({ type: 'noted', reason: 'budget', budget }, time)).toBe('not investigated: 5 of 5 investigations on their own used in the last 60 min, next at t42 — ask in the chat to look into it')
+    expect(notedText({ type: 'noted', reason: 'budget', budget: { ...budget, limit: 1, used: 1 } }, time)).toContain('1 of 1 investigation on their own')
+    expect(notedText({ type: 'noted', reason: 'queue', budget }, time)).toBe('not investigated: enough investigations are already waiting — ask in the chat to look into it')
+    expect(notedText({ type: 'noted', reason: 'budget', budget: { ...budget, limit: 0, used: 0, nextAtMs: null } }, time)).toContain('only when asked (OBSERVE_AUTO_INVESTIGATIONS=0)')
+  })
+
+  it('a noted anomaly ends its turn and is listed as noted', () => {
+    const anomaly = { id: 'x', type: 'high_error_rate', scope: 'app', severity: 'warning', detectedAtMs: 1, value: 1, threshold: 1, sampleSize: 1, windowMs: 1, operations: [] } as unknown as Anomaly
+    const opts = { chatEnabled: true, headline: () => 'errors', nowMs: 1 }
+    let turns = applyProactive([], { turnId: 'x', event: { type: 'anomaly', anomaly } }, opts)
+    expect(turns[0].running).toBe(true)
+    turns = applyProactive(turns, { turnId: 'x', event: { type: 'noted', reason: 'budget', budget } }, opts)
+    expect(turns[0].running).toBe(false)
+    expect(summarize(turns[0]).state).toBe('noted')
   })
 })

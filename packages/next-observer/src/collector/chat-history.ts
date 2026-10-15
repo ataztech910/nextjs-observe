@@ -21,7 +21,7 @@ export interface ChatHistoryOptions {
   maxEvents?: number
 }
 
-const isEnd = (event: ChatEvent) => event.type === 'report' || event.type === 'error' || event.type === 'stopped'
+const isEnd = (event: ChatEvent) => event.type === 'report' || event.type === 'error' || event.type === 'stopped' || event.type === 'noted'
 
 export class ChatHistory {
   private readonly turns = new Map<string, StoredTurn>()

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { startCollector, type ChatHandler, type Collector, type ProactiveEvent } from '../src/collector/index.js'
 import { AnomalyDetector } from '../src/debug/detector.js'
+import { InvestigationBudget } from '../src/collector/budget.js'
 
 let collector: Collector | undefined
 afterEach(async () => {
@@ -218,5 +219,58 @@ describe('proactive investigations', () => {
     const listening = listen(() => false, 600)
     await ingest(requests(20, 'GET /'))
     expect(await listening).toEqual([])
+  })
+})
+
+describe('budget of investigations the observer starts on its own', () => {
+  const anomaly = (id: string) => ({
+    id, type: 'check_failed' as const, scope: 'operation' as const, severity: 'critical' as const, detectedAtMs: 1, value: 2, threshold: 2, sampleSize: 2, windowMs: 10_000, operations: [],
+    check: { name: id, method: 'GET', url: 'http://app/x', rule: 'in_row' as const, reason: 'expected status 2xx, got 500', status: 500, traceId: 'a'.repeat(32) },
+  })
+  const feed = (ids: string[]) => {
+    let pending = ids.map(anomaly)
+    return () => {
+      const found = pending
+      pending = []
+      return found
+    }
+  }
+  const chatState = async () => (await (await fetch(`${collector!.url}/api/chat`)).json()) as { budget: { used: number; nextAtMs: number | null; byType: object } }
+
+  it('over the budget an anomaly is only noted: shown, ended, not investigated', async () => {
+    const asked: string[] = []
+    const handle: ChatHandler = async ({ question }, emit) => {
+      asked.push(question)
+      emit({ type: 'report', text: 'done' })
+    }
+    collector = await startCollector({ port: 0, uiDir: false, chat: { mode: 'mock', handle }, budget: new InvestigationBudget({ limit: 2, periodMs: 3_600_000 }), detectorIntervalMs: 30, checks: { list: () => [], anomalies: feed(['one', 'two', 'three']) } })
+    const events = await listen((e) => e.filter((x) => ['report', 'noted'].includes(x.event.type)).length === 3)
+    expect(events.filter((e) => e.turnId === 'three').map((e) => e.event)).toEqual([
+      expect.objectContaining({ type: 'anomaly' }),
+      { type: 'noted', reason: 'budget', budget: expect.objectContaining({ limit: 2, used: 2, nextAtMs: expect.any(Number) }) },
+    ])
+    expect(asked).toHaveLength(2)
+    expect((await chatState()).budget).toMatchObject({ used: 2, byType: { check_failed: 2 } })
+    // The history knows it ended: a reloaded page does not show it as still being investigated.
+    const { turns } = (await (await fetch(`${collector.url}/api/chat/history`)).json()) as { turns: { id: string; running: boolean }[] }
+    expect(turns.find((t) => t.id === 'three')).toMatchObject({ running: false })
+  })
+
+  it('with one running and two waiting, the next is noted — and does not use up the budget', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    const started: string[] = []
+    const handle: ChatHandler = async ({ question }, emit) => {
+      started.push(/"(\w+)"/.exec(question)![1])
+      await gate
+      emit({ type: 'report', text: 'done' })
+    }
+    collector = await startCollector({ port: 0, uiDir: false, chat: { mode: 'mock', handle }, budget: new InvestigationBudget({ limit: 10, periodMs: 3_600_000 }), detectorIntervalMs: 30, checks: { list: () => [], anomalies: feed(['a', 'b', 'c', 'd']) } })
+    const noted = await listen((e) => e.some((x) => x.event.type === 'noted'))
+    expect(noted.filter((e) => e.event.type === 'noted')).toEqual([expect.objectContaining({ turnId: 'd', event: expect.objectContaining({ reason: 'queue' }) })])
+    expect((await chatState()).budget).toMatchObject({ used: 3 })
+    release()
+    for (let i = 0; i < 100 && started.length < 3; i++) await new Promise((r) => setTimeout(r, 10))
+    expect(started).toEqual(['a', 'b', 'c'])
   })
 })

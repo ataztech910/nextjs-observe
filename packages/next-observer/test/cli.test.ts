@@ -184,7 +184,7 @@ describe('chat in the CLI', () => {
     const exit = run(['collector', '--port', '0'], h.deps)
     await until(h.collectorUrl)
     expect(h.logs[0]).toMatch(/chat\s+mock\s+\(OBSERVE_AI=real for a real model\)/)
-    expect(await (await fetch(`${h.collectorUrl()}/api/chat`)).json()).toEqual({ enabled: true, mode: 'mock' })
+    expect(await (await fetch(`${h.collectorUrl()}/api/chat`)).json()).toEqual({ enabled: true, mode: 'mock', budget: { limit: 5, periodMs: 3_600_000, used: 0, nextAtMs: null, byType: {} } })
     h.stop()
     expect(await exit).toBe(0)
   })
@@ -550,5 +550,27 @@ describe('detector in the CLI', () => {
     expect(off.logs[0]).toContain('detector   off (OBSERVE_DETECTOR=off)')
     off.stop()
     await exit2
+  })
+})
+
+describe('investigation budget in the CLI', () => {
+  it('shows the budget in the banner, takes OBSERVE_AUTO_INVESTIGATIONS, and refuses a value it cannot read', async () => {
+    for (const [value, line] of [
+      [undefined, 'budget     5 investigations on their own per 60 min (OBSERVE_AUTO_INVESTIGATIONS)'],
+      ['3/30m', 'budget     3 investigations on their own per 30 min (OBSERVE_AUTO_INVESTIGATIONS)'],
+      ['1', 'budget     1 investigation on their own per 60 min (OBSERVE_AUTO_INVESTIGATIONS)'],
+      ['0', 'budget     0 — agents investigate only when asked (OBSERVE_AUTO_INVESTIGATIONS=0)'],
+    ] as const) {
+      const h = harness({ OBSERVE_AUTO_INVESTIGATIONS: value })
+      const exit = run(['collector', '--port', '0'], h.deps)
+      await until(h.collectorUrl)
+      expect(h.logs[0]).toContain(line)
+      if (value === '3/30m') expect(((await (await fetch(`${h.collectorUrl()}/api/chat`)).json()) as { budget: object }).budget).toMatchObject({ limit: 3, periodMs: 1_800_000 })
+      h.stop()
+      expect(await exit).toBe(0)
+    }
+    const bad = harness({ OBSERVE_AUTO_INVESTIGATIONS: 'lots' })
+    expect(await run(['collector', '--port', '0'], bad.deps)).toBe(1)
+    expect(bad.logs.join('\n')).toContain('OBSERVE_AUTO_INVESTIGATIONS="lots"')
   })
 })

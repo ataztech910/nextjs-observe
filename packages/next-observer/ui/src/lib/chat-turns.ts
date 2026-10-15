@@ -16,7 +16,7 @@ export interface Turn {
   startedAtMs: number
 }
 
-export const isEnd = (e: ChatEvent) => e.type === 'report' || e.type === 'error' || e.type === 'stopped'
+export const isEnd = (e: ChatEvent) => e.type === 'report' || e.type === 'error' || e.type === 'stopped' || e.type === 'noted'
 
 /** One event of a proactive turn, as it arrives over SSE: starts the turn or adds to it. */
 export function applyProactive(turns: Turn[], envelope: Pick<ProactiveEvent, 'turnId' | 'event'>, options: { chatEnabled: boolean; headline: (anomaly: Anomaly) => string; nowMs: number }): Turn[] {
@@ -58,6 +58,16 @@ export function withHistory(turns: Turn[], stored: StoredTurn[], headline: (anom
       }
     })
   return [...restored, ...turns]
+}
+
+/** Why the observer did not investigate an anomaly on its own — the line under it in the chat. */
+export function notedText(event: Extract<ChatEvent, { type: 'noted' }>, formatTime: (ms: number) => string): string {
+  const { limit, periodMs, nextAtMs } = event.budget
+  const ask = 'ask in the chat to look into it'
+  if (event.reason === 'queue') return `not investigated: enough investigations are already waiting — ${ask}`
+  if (limit === 0) return `not investigated: the agents start investigations only when asked (OBSERVE_AUTO_INVESTIGATIONS=0) — ${ask}`
+  const next = nextAtMs === null ? '' : `, next at ${formatTime(nextAtMs)}`
+  return `not investigated: ${limit} of ${limit} investigation${limit === 1 ? '' : 's'} on their own used in the last ${periodMs / 60_000} min${next} — ${ask}`
 }
 
 export type TurnState = 'running' | 'answered' | 'stopped' | 'failed' | 'noted'

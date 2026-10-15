@@ -1,5 +1,6 @@
 // Chat protocol shared by the collector (transport) and the agents (producer). No ADK imports here.
 import type { Anomaly } from '../debug/detector.js'
+import type { BudgetState } from './budget.js'
 
 export interface VersionStats {
   version: string
@@ -36,6 +37,11 @@ export type ChatEvent =
    * a step) — the next question has to start a new one. The observer says so; the client does not have to guess.
    */
   | { type: 'error'; message: string; closed?: true }
+  /**
+   * The observer did not investigate this anomaly on its own: its budget for the period is spent (`budget`), or enough
+   * investigations are already waiting (`queue`). Ends the turn; somebody can still ask about it.
+   */
+  | { type: 'noted'; reason: 'budget' | 'queue'; budget: BudgetState }
 
 export interface ChatRequest {
   question: string

@@ -12,6 +12,7 @@ import { CheckRunner } from './checks/runner.js'
 import { CheckWatch } from './checks/watch.js'
 import { validateChecks } from './checks/spec.js'
 import { AnomalyDetector } from './debug/detector.js'
+import { InvestigationBudget, parseBudget } from './collector/budget.js'
 
 // Type-only: the agents module (and @google/adk behind it) is loaded lazily, so `next-observer --help` stays instant.
 type AgentsModule = typeof import('./agents/index.js')
@@ -33,7 +34,9 @@ export const HELP = `Usage:
 Environment: OBSERVE_ROOT, OBSERVE_PORT (default 4318), OBSERVE_HOST (default 127.0.0.1), OBSERVE_API_KEY,
              OBSERVE_AI (mock | real), OBSERVE_DETECTOR (off to disable the anomaly detector),
              OBSERVE_APP_URL (where the checks from observe.checks.ts are sent; default http://localhost:3000),
-             OBSERVE_MODEL_TIMEOUT_MS (one model call; default 90000, a call that hangs is started again once)`
+             OBSERVE_MODEL_TIMEOUT_MS (one model call; default 90000, a call that hangs is started again once),
+             OBSERVE_AUTO_INVESTIGATIONS (investigations the agents start on their own: 5, 5/30m or 5/2h; default 5 per
+             60 min, 0 = only when asked)`
 
 export class CliError extends Error {}
 
@@ -254,12 +257,20 @@ async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collect
     const o = detector.options
     lines.push(`  detector   errors > ${o.errorRate * 100}%, slow (>${o.slowMs}ms) > ${o.slowRate * 100}%, silence > ${o.noTrafficMs / 1000}s → agents investigate on their own`)
   } else lines.push('  detector   off (OBSERVE_DETECTOR=off)')
+  let budget: InvestigationBudget
+  try {
+    budget = new InvestigationBudget(parseBudget(deps.env.OBSERVE_AUTO_INVESTIGATIONS))
+  } catch (error) {
+    throw new CliError((error as Error).message)
+  }
+  const { limit, periodMs } = budget.options
+  lines.push(limit === 0 ? '  budget     0 — agents investigate only when asked (OBSERVE_AUTO_INVESTIGATIONS=0)' : `  budget     ${limit} investigation${limit === 1 ? '' : 's'} on their own per ${periodMs / 60_000} min (OBSERVE_AUTO_INVESTIGATIONS)`)
   const { runner: checks, watch, line: checksLine } = await loadChecks(args.root, deps.env, args.nextArgs, detector !== undefined)
   if (checksLine) lines.push(checksLine)
   if (args.demo) lines.push('  demo       "shop" scenario: v1 → v2 regression, inventory errors, catalog N+1, an error new in v2 — live v2 traffic every 2 s')
   const line = lines.join('\n')
   try {
-    const collector = await startCollector({ port: args.port, host: args.host, apiKey: args.apiKey, uiPassword: args.uiPassword, storage, chat, detector, checks: checks && { list: () => checks.list(), isCheckTrace: (traceId) => checks.isCheckTrace(traceId), ...(watch ? { anomalies: () => watch.take(), rule: watch.rule } : {}) } })
+    const collector = await startCollector({ port: args.port, host: args.host, apiKey: args.apiKey, uiPassword: args.uiPassword, storage, chat, detector, budget, checks: checks && { list: () => checks.list(), isCheckTrace: (traceId) => checks.isCheckTrace(traceId), ...(watch ? { anomalies: () => watch.take(), rule: watch.rule } : {}) } })
     checks?.start()
     const stopDemo = args.demo ? startLiveDemo({ storage, detector }) : undefined
     return {
