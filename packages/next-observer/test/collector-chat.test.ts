@@ -66,7 +66,7 @@ describe('chat enabled', () => {
       emit({ type: 'report', text: 'chargePayment regressed in v2' })
     }
     collector = await startCollector({ port: 0, uiDir: false, chat: { mode: 'mock', handle } })
-    expect(await (await fetch(`${collector.url}/api/chat`)).json()).toEqual({ enabled: true, mode: 'mock' })
+    expect(await (await fetch(`${collector.url}/api/chat`)).json()).toEqual({ enabled: true, mode: 'mock', budget: { limit: 5, periodMs: 3_600_000, used: 0, nextAtMs: null, byType: {} } })
 
     const res = await post({ question: '  why is checkout slow?  ' })
     expect(res.headers.get('content-type')).toBe('application/x-ndjson; charset=utf-8')

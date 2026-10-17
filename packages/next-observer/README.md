@@ -211,12 +211,18 @@ traffic: it appears in the chat, and the investigation starts from the trace of 
 - after an anomaly the same check — and, when nothing accepted the connection, the same address — is quiet for
   5 minutes, whatever happens meanwhile; `OBSERVE_DETECTOR=off` switches this off too.
 
+**The agents start at most 5 investigations on their own per 60 minutes** (`OBSERVE_AUTO_INVESTIGATIONS`), and at most
+2 wait behind the running one: an investigation an hour after its anomaly is no use, and a real model left running
+overnight must not spend a subscription. An anomaly over the budget still appears in the chat, marked as not
+investigated. Questions you ask are not counted. `GET /api/chat` shows how much is used, per incident type.
+
 ## Configuration
 
 | Variable | Default | |
 |---|---|---|
 | `OBSERVE_AI` | `mock` | `mock` \| `real` |
 | `OBSERVE_DETECTOR` | on | `off` disables the anomaly detector |
+| `OBSERVE_AUTO_INVESTIGATIONS` | `5/60m` | investigations the agents start on their own per period: `5`, `5/30m`, `5/2h`; `0` = only when asked |
 | `OBSERVE_APP_URL` | `http://localhost:3000` | where the checks from `observe.checks.ts` are sent |
 | `OBSERVE_MODEL_TIMEOUT_MS` | `90000` | how long one model call may take before it is started again |
 | `OBSERVE_API_KEY` | — | require `x-api-key` on ingest (`/v1/traces`) |

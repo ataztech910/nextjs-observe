@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/page-header'
 import { reportPrompt } from '@/lib/agent-prompt'
 import { chatStore } from '@/lib/chat-store'
-import { investigations, shownTurn, type Turn, type TurnState } from '@/lib/chat-turns'
+import { investigations, notedText, shownTurn, type Turn, type TurnState } from '@/lib/chat-turns'
 import { renderInline } from '@/lib/inline-markdown'
 
 // The three workshop scenarios, one click away.
@@ -162,7 +162,8 @@ function TurnView({ turn, onStop }: { turn: Turn; onStop: () => void }) {
   const report = turn.events.find((e): e is Extract<ChatEvent, { type: 'report' }> => e.type === 'report')
   const error = turn.events.find((e): e is Extract<ChatEvent, { type: 'error' }> => e.type === 'error')
   const stopped = turn.events.some((e) => e.type === 'stopped')
-  const hasBody = steps.length > 0 || cards.length > 0 || report || error || stopped || turn.running
+  const noted = turn.events.find((e): e is Extract<ChatEvent, { type: 'noted' }> => e.type === 'noted')
+  const hasBody = steps.length > 0 || cards.length > 0 || report || error || stopped || noted || turn.running
   return (
     <div className="space-y-2" data-testid="chat-turn" data-proactive={turn.proactive ? 'true' : undefined}>
       {anomaly ? (
@@ -191,6 +192,7 @@ function TurnView({ turn, onStop }: { turn: Turn; onStop: () => void }) {
                 </li>
               )}
               {stopped && <li data-testid="chat-stopped">stopped — what was found until then is above</li>}
+              {noted && <li data-testid="chat-noted">{notedText(noted, (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}</li>}
             </ol>
             {cards.length > 0 && (
               <div className="grid gap-2 sm:grid-cols-2" data-testid="chat-cards">

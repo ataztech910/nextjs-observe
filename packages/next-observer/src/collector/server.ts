@@ -10,7 +10,7 @@
 //   GET  /api/defects?windowMs&service&toMs   errors grouped by where they originated and their message
 //   GET  /api/checks                { checks, nowMs, rule, investigates }: scheduled checks from observe.checks.ts with their latest results
 //   GET  /api/regression?service&sinceMinutes   { regression }: the latest version vs the previous one, or null
-//   GET  /api/chat                  { enabled, mode }
+//   GET  /api/chat                  { enabled, mode, budget }: budget = investigations the observer may still start on its own
 //   POST /api/chat                  { question, sessionId? } → NDJSON stream of ChatEvent (status, step…, card…, report | error | stopped); closing the request stops the investigation
 //   POST /api/chat/stop             { turnId } → stops an investigation the observer started on its own
 //   GET  /api/chat/history          { seq, turns }: every chat turn so far — questions asked and the observer's own investigations
@@ -25,6 +25,7 @@ import { createAgentQueries } from '../debug/queries.js'
 import { findRegression } from '../debug/regression.js'
 import type { ChatEvent, ChatHandler, ProactiveEvent } from './chat.js'
 import { ChatHistory } from './chat-history.js'
+import { InvestigationBudget, MAX_WAITING } from './budget.js'
 import { gunzipSync } from 'node:zlib'
 import type { CheckRunner } from '../checks/runner.js'
 import { CHECK_RULE, type CheckRule, type ChecksReport } from '../checks/types.js'
@@ -62,6 +63,8 @@ export interface CollectorOptions {
   detector?: Pick<AnomalyDetector, 'observe' | 'check'>
   /** How often the detector window is checked. Default 5 s. */
   detectorIntervalMs?: number
+  /** How many investigations the observer starts on its own per period. Default 5 per 60 min. */
+  budget?: InvestigationBudget
   /** Scheduled checks (observe.checks.ts) whose results /api/checks reports; absent → none configured. */
   checks?: Pick<CheckRunner, 'list'> & Partial<Pick<CheckRunner, 'isCheckTrace'>> & { /** Checks that keep failing, as anomalies; taken on the detector's timer. */ anomalies?: () => Anomaly[]; /** The thresholds behind `anomalies`, for the Checks page. */ rule?: CheckRule }
 }
@@ -205,12 +208,19 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
   /** Investigations the observer started itself and that are queued or running — each can be stopped by its turn id. */
   const proactive = new Map<string, AbortController>()
   let asked = 0
+  const budget = options.budget ?? new InvestigationBudget()
   const onAnomalies = () => {
     for (const anomaly of [...(options.detector?.check() ?? []), ...(options.checks?.anomalies?.() ?? [])]) {
       const turnId = anomaly.id
       broadcast({ turnId, event: { type: 'anomaly', anomaly } })
       if (!options.chat) continue
       const chat = options.chat
+      // The queue is looked at first: an anomaly turned away because enough are waiting must not use up the budget.
+      const reason = proactive.size > MAX_WAITING ? 'queue' : budget.take(anomaly.type, Date.now()) ? undefined : 'budget'
+      if (reason) {
+        broadcast({ turnId, event: { type: 'noted', reason, budget: budget.state(Date.now()) } })
+        continue
+      }
       const controller = new AbortController()
       proactive.set(turnId, controller)
       // Queued: two investigations at once would double the model load and interleave in the UI.
@@ -320,7 +330,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     // `seq`: the page opens the event stream next and skips what the history already told it.
     if (url.pathname === '/api/chat/history') return send(res, 200, { seq, turns: history.list() })
     if (url.pathname === '/api/chat') {
-      return send(res, 200, options.chat ? { enabled: true, mode: options.chat.mode } : { enabled: false, reason: CHAT_DISABLED })
+      return send(res, 200, options.chat ? { enabled: true, mode: options.chat.mode, budget: budget.state(Date.now()) } : { enabled: false, reason: CHAT_DISABLED })
     }
 
     if (url.pathname === '/health') return send(res, 200, { status: 'ok', spans: await storage.count() })
