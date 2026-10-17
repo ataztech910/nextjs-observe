@@ -87,10 +87,10 @@ Caddy сам получает сертификат. Проверка: `curl http
 
 ### Подготовка репозитория ✅
 
-От состояния финала (тег `block-4-agents`) — отдельная ветка для деплоя:
+От состояния финала (тег `block-5-observer`; до 17 октября 2026 он назывался `block-4-agents`) — отдельная ветка для деплоя:
 
 ```bash
-git checkout -B prod-demo block-4-agents
+git checkout -B prod-demo block-5-observer
 npx next-observer init --proxy      # добавит только маршрут-прокси: app/api/next-observe/[...path]/route.ts
 git add -A && git commit -m "prod demo: runtime proxy route"
 ```
