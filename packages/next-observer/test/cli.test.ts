@@ -626,6 +626,22 @@ describe('observe.checks.* and observe.agents.* reload while the observer runs',
     expect(await exit).toBe(0)
   })
 
+  it('both files changed at once are reloaded one after the other, and leave process.emitWarning as it was', async () => {
+    const root = fixtureApp(false)
+    const original = process.emitWarning
+    const h = harness({})
+    const exit = run(['collector', '--port', '0', '--root', root], h.deps)
+    await until(h.collectorUrl)
+    writeFileSync(join(root, 'observe.checks.mjs'), `export default [${check('both')}]`)
+    writeFileSync(join(root, 'observe.agents.mjs'), `export default [${cacheAgent}]`)
+    await waitFor(() => h.logs.some((l) => l.includes('checks     reloaded')) && h.logs.some((l) => l.includes('agents     reloaded')))
+    // Two imports at the same time would put back each other's patch of emitWarning in the wrong order.
+    expect(process.emitWarning).toBe(original)
+    expect(await names(h)).toEqual(['both'])
+    h.stop()
+    expect(await exit).toBe(0)
+  })
+
   it('picks up observe.agents.* written after the start: the new specialist answers in the chat', async () => {
     const root = fixtureApp(false)
     const h = harness({})

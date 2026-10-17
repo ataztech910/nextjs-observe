@@ -1,6 +1,6 @@
 // `next-observer` CLI — the observer for apps instrumented with next-observe. Pure logic lives here; bin.ts wires real process I/O.
 import type { ChildProcess, SpawnOptions } from 'node:child_process'
-import { existsSync, statSync, watch as watchDir } from 'node:fs'
+import { existsSync, watch as watchDir } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -127,6 +127,9 @@ export const AGENTS_FILES = ['observe.agents.ts', 'observe.agents.mts', 'observe
 
 export const CHECKS_FILES = ['observe.checks.ts', 'observe.checks.mts', 'observe.checks.js', 'observe.checks.mjs']
 
+/** Bumped on every reload: the import URL must differ, or Node hands back the module it has cached. */
+let reloads = 0
+
 /** The default export of the one file from `names` that exists in the app root; `{}` when there is none. */
 async function importProjectFile(root: string, names: string[], fresh = false): Promise<{ file?: string; exported?: unknown }> {
   const found = names.filter((name) => existsSync(join(root, name)))
@@ -141,10 +144,10 @@ async function importProjectFile(root: string, names: string[], fresh = false): 
     return (emitWarning as (...args: unknown[]) => void).call(process, warning, ...rest)
   }) as typeof process.emitWarning
   try {
-    // On a reload the file's modification time goes in the URL: Node caches modules by URL, and the file has changed.
-    const path = join(root, file)
-    const url = pathToFileURL(path).href
-    return { file, exported: (await import(fresh ? `${url}?v=${statSync(path).mtimeMs}` : url)).default }
+    // On a reload a fresh number goes in the URL: Node caches modules by URL (a file's mtime can repeat on coarse
+    // filesystems). Only this file is reloaded — modules it imports stay as first loaded.
+    const url = pathToFileURL(join(root, file)).href
+    return { file, exported: (await import(fresh ? `${url}?v=${++reloads}` : url)).default }
   } catch (error) {
     const e = error as NodeJS.ErrnoException
     if (e?.code === 'ERR_UNKNOWN_FILE_EXTENSION') throw new CliError(`${file}: this Node.js cannot load TypeScript — use Node.js ≥22.18 or rename it to ${file.replace(/\.m?ts$/, '.mjs')}`)
@@ -234,7 +237,7 @@ function agentsLine(builtIn: SpecialistSpec[], file: string, project: Specialist
   return `  agents     ${file}: ${own.join(', ')}${kept.length ? `; built-in: ${kept.join(', ')}` : ''}`
 }
 
-async function loadChat(storage: MemoryStorage, root: string, deps: CliDeps, fresh = false): Promise<{ chat: CollectorOptions['chat']; line: string }> {
+async function loadChat(storage: MemoryStorage, root: string, deps: CliDeps, fresh = false): Promise<{ chat: CollectorOptions['chat']; line: string; agents: string }> {
   const agents = await (deps.loadAgents ?? (() => import('./agents/index.js')))()
   const project = await loadProjectSpecialists(root, agents, fresh)
   const specialists = agents.mergeSpecialists(agents.BUILT_IN_SPECIALISTS, project.specs)
@@ -242,7 +245,8 @@ async function loadChat(storage: MemoryStorage, root: string, deps: CliDeps, fre
     const chat = await agents.createChatHandler({ storage, env: deps.env, specialists })
     const hint = chat.mode === 'mock' ? '  (OBSERVE_AI=real for a real model)' : ''
     const line = `  chat       ${chat.mode}${hint}`
-    return { chat, line: project.file ? `${line}\n${agentsLine(agents.BUILT_IN_SPECIALISTS, project.file, project.specs)}` : line }
+    const own = project.file ? agentsLine(agents.BUILT_IN_SPECIALISTS, project.file, project.specs) : undefined
+    return { chat, line: own ? `${line}\n${own}` : line, agents: own ?? '  agents     built-in only (no observe.agents.*)' }
   } catch (error) {
     throw new CliError((error as Error).message)
   }
@@ -274,9 +278,6 @@ function watchProjectFiles(root: string, onChange: (kind: 'checks' | 'agents') =
   }
 }
 
-/** The agents line of loadChat's banner, or what to say when there is no observe.agents.*. */
-const agentsPart = (line: string) => line.split('\n')[1] ?? '  agents     built-in only (no observe.agents.*)'
-
 async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collector; chatLine: string; stop: () => Promise<void> }> {
   const storage = new MemoryStorage()
   if (args.demo) await seedDemo(storage)
@@ -303,6 +304,7 @@ async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collect
   // run: a reload of observe.checks.* keeps its cooldowns.
   const watch = detector ? new CheckWatch() : undefined
   let current = await loadChecks(args.root, deps.env, args.nextArgs, watch)
+  let previous: CheckRunner | undefined
   if (current.line) lines.push(current.line)
   if (args.demo) lines.push('  demo       "shop" scenario: v1 → v2 regression, inventory errors, catalog N+1, an error new in v2 — live v2 traffic every 2 s')
   const line = lines.join('\n')
@@ -310,7 +312,8 @@ async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collect
     // Read through `current` on every call, so the collector follows reloads of observe.checks.*.
     const checks: CollectorOptions['checks'] = {
       list: () => current.runner?.list() ?? [],
-      isCheckTrace: (traceId) => current.runner?.isCheckTrace(traceId) ?? false,
+      // The previous runner's requests are still being exported for a few seconds after a reload — not traffic either.
+      isCheckTrace: (traceId) => Boolean(current.runner?.isCheckTrace(traceId) || previous?.isCheckTrace(traceId)),
       get anomalies() {
         return watch && current.runner ? () => watch.take() : undefined
       },
@@ -320,13 +323,16 @@ async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collect
     current.runner?.start()
     const stopDemo = args.demo ? startLiveDemo({ storage, detector }) : undefined
 
-    // Reloads, one at a time per kind. A file that does not load keeps what was running — with a line saying why.
+    // Reloads, one at a time. A file that does not load keeps what was running — with a line saying why. Trade-offs,
+    // fine for a file people edit by hand: reloaded agents start new conversations; reloaded checks start a new runner
+    // (fresh history, the start-up grace again).
     let stopped = false
     const reloadChecks = async () => {
       try {
         const next = await loadChecks(args.root, deps.env, args.nextArgs, watch, true)
         if (stopped) return // finished loading after stop(): starting it now would leave a timer nobody stops
         current.runner?.stop()
+        previous = current.runner ?? previous
         current = next
         next.runner?.start()
         deps.log(next.line ? next.line.replace('  checks     ', '  checks     reloaded · ') : '  checks     reloaded · none')
@@ -339,14 +345,15 @@ async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collect
         const next = await loadChat(storage, args.root, deps, true)
         if (stopped) return
         currentChat = next.chat
-        deps.log(agentsPart(next.line).replace('  agents     ', '  agents     reloaded · '))
+        deps.log(next.agents.replace('  agents     ', '  agents     reloaded · '))
       } catch (error) {
         deps.log(`  agents     ${(error as Error).message} — the previous specialists keep answering`)
       }
     }
-    const queue = { checks: Promise.resolve(), agents: Promise.resolve() }
+    // One queue for both files: two imports must not overlap (importProjectFile swaps process.emitWarning meanwhile).
+    let queue = Promise.resolve()
     const stopWatching = watchProjectFiles(args.root, (kind) => {
-      queue[kind] = queue[kind].then(kind === 'checks' ? reloadChecks : reloadAgents)
+      queue = queue.then(kind === 'checks' ? reloadChecks : reloadAgents)
     })
     return {
       collector,
