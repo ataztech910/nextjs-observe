@@ -117,7 +117,7 @@
 
 ## Состояние на момент записи
 
-- `next-observer` 0.3.31 и `next-observe` 0.3.7 опубликованы; теги магазина `block-2-start` … `block-4-agents` и `block-5-incident-f` актуальны.
+- `next-observer` 0.3.31 и `next-observe` 0.3.7 опубликованы; теги магазина тогда были `block-2-start` … `block-4-agents` и `block-5-incident-f` (17 октября заменены на `block-0-start`, `block-3-instrumentation`, `block-5-observer`, `block-6-incident-f`).
 - Открыт PR №74 (лог шага 77, только документ). Этот файл лежит в рабочей папке на ветке `step-77-log-tail` **незакоммиченным**: коммит запускает AI-ревью в хуке, а оно тратит ту же подписку.
 - Слайды — у автора (`observer/workshop-slides`), ждут его вычитки.
 

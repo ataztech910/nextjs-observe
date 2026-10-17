@@ -209,11 +209,11 @@ Lord Manager: *"Impressive. Most impressive."* Kevin повышен до бес�
 
 - [x] **Магазин, приёмник:** `tools/receiver.mjs`, `tools/print-spans.mjs` (дырка) + `tools/solutions/print-spans.mjs` (`npm run receiver -- --solution`), `tools/span.json`, `.telemetry/` в `.gitignore` — PR магазина №11.
 - [x] **Магазин, кейсы:** `tools/cases/*.mjs` (шесть кейсов), `npm run case <имя>`; `dev:v1` / `dev:v2` запускаются с приёмником (он отвечает на `/health`) — PR магазина №12.
-- [ ] **Решение блока 3 под новый план:** проверку количества в `app/api/checkout/route.ts` перенести внутрь спана `placeOrder` и записать причину атрибутом `order.rejected` (`quantity 20 > limit 10`). Сейчас на теге `block-3-instrumentation` проверка стоит до спана — причины нет ни в одном спане. Проверено во временной копии: `npm run case checkout-400` показывает причину.
+- [x] **Решение блока 3 под новый план** (17 октября): проверку количества в `app/api/checkout/route.ts` перенести внутрь спана `placeOrder` и записать причину атрибутом `order.rejected` (`quantity 20 > limit 10`). Проверено из чистого клона: `npm run case checkout-400` показывает причину.
 - [x] **Проверено** на теге `block-3-instrumentation`: браузерные спаны доходят до простого приёмника через прокси `/__observe`, приёмник выдерживает `npm run load` (17 октября).
-- [ ] **Теги** под новый порядок: `block-0-start` (голый магазин + приёмник и скрипты), `block-3-instrumentation` (APM-агент руками, `placeOrder`, `'use observe'`), `block-5-observer` (`observe.checks.ts`, `observe.agents.ts`), `block-6-incident-f`. Прежние теги удалить после перехода.
-- [ ] **`npm run doctor`:** проверять порт 4318 для приёмника и тот же порт для обзервера; новые теги.
-- [ ] **README магазина** — под новый порядок блоков.
+- [x] **Теги** под новый порядок (17 октября): `block-0-start` (голый магазин + приёмник и скрипты), `block-3-instrumentation` (APM-агент руками, `placeOrder` с причиной отказа, `'use observe'`), `block-5-observer` (`observe.checks.ts`, `observe.agents.ts`), `block-6-incident-f`. Прежние (`block-2-start`, `block-2-init`, `block-4-agents`, `block-5-incident-f`) удалены.
+- [x] **`npm run doctor`:** порт 4318 для приёмника и обзервера, новые теги — PR магазина №14.
+- [x] **README магазина** — под новый порядок блоков, PR магазина №14.
 - [ ] **Слайды** (`workshop-slides`) — перестроить под блоки и историю, встроить картинки.
 - [ ] Картинка 10: выбрать между старой («день сурка», опечатка в углу) и новой (на экране `POST /api/orders` вместо `GET /api/products`). Рекомендация — старая.
 - [ ] Репетиция по новому порядку с таймером: главный риск — блоки 2–4 (80 минут без обзервера) по времени и энергии зала.
@@ -301,7 +301,7 @@ OBSERVE_AI=real npx vitest run e2e/investigate.real.test.ts --silent=false   # �
 
 Репозиторий `workshop-ai-observability`. Баги — в таблице «Лесенка» выше: шесть фронтенд-багов (в `master`, видны сразу после подключения APM-агента) и три «девопсовских» (N+1 в каталоге, медленный платёж в v2, 30% отказов склада).
 
-- **Теги:** сейчас `block-2-start` (= `master`), `block-2-init`, `block-3-instrumentation`, `block-4-agents`, `block-5-incident-f`; под новый порядок — см. «Подготовка» выше. После каждого релиза `next-observe` теги пересобираются.
+- **Теги:** `block-0-start` (= `master`), `block-3-instrumentation`, `block-5-observer`, `block-6-incident-f` — см. «Подготовка» выше. После каждого релиза `next-observe` теги пересобираются.
 - **Две «выкатки»:** `npm run observer` в одном терминале, `npm run dev:v1` / `npm run dev:v2` в другом — история телеметрии сохраняется между версиями, как при настоящем деплое.
 - **Нагрузка:** `npm run load 40`. Для багов фронтенда она не нужна — их вызывает сам участник кликами; для проверок по расписанию тоже.
 - **`npm run doctor`:** Node, зависимости, обзервер нужной версии, порт, теги, «блоки работают без Wi-Fi», настоящий AI.
