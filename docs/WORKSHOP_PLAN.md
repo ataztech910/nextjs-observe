@@ -207,8 +207,9 @@ Lord Manager: *"Impressive. Most impressive."* Kevin повышен до бес�
 
 ## Подготовка: что сделать под новый порядок
 
-- [ ] **Магазин:** `tools/receiver.mjs` (каркас с одной дыркой + готовое решение в комментарии или отдельным файлом), `tools/span.json`, `tools/cases/*.mjs` (шесть кейсов), `npm run receiver` и `npm run case`, `.telemetry/` в `.gitignore`.
-- [ ] **Проверить**, что браузерные спаны доходят до простого приёмника через прокси `/__observe` (rewrite в `withObserve` ведёт на адрес приёмника) и что приёмник без обзервера выдерживает нагрузку `npm run load 40`.
+- [x] **Магазин, приёмник:** `tools/receiver.mjs`, `tools/print-spans.mjs` (дырка) + `tools/solutions/print-spans.mjs` (`npm run receiver -- --solution`), `tools/span.json`, `.telemetry/` в `.gitignore` — PR магазина №11.
+- [ ] **Магазин, кейсы:** `tools/cases/*.mjs` (шесть кейсов), `npm run case`; `dev:v1` / `dev:v2` должны запускаться с приёмником, а не только с обзервером (сейчас без обзервера отказываются).
+- [x] **Проверено** на теге `block-3-instrumentation`: браузерные спаны доходят до простого приёмника через прокси `/__observe`, приёмник выдерживает `npm run load` (17 октября).
 - [ ] **Теги** под новый порядок: `block-0-start` (голый магазин + приёмник и скрипты), `block-3-instrumentation` (APM-агент руками, `placeOrder`, `'use observe'`), `block-5-observer` (`observe.checks.ts`, `observe.agents.ts`), `block-6-incident-f`. Прежние теги удалить после перехода.
 - [ ] **`npm run doctor`:** проверять порт 4318 для приёмника и тот же порт для обзервера; новые теги.
 - [ ] **README магазина** — под новый порядок блоков.
