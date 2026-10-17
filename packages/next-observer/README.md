@@ -156,7 +156,9 @@ export default [
 ```
 
 Tools: `get_services`, `get_operation_stats`, `compare_versions`, `get_errors`, `search_traces`, `get_trace`.
-`next-observer` validates the file and lists the loaded specialists on start.
+`next-observer` validates the file and lists the loaded specialists on start. It also watches the app root: create or
+change `observe.agents.*` (or `observe.checks.*`, below) while it runs and it reloads the file — no restart, so the
+telemetry you already have stays. A file that does not load keeps what was running, with a line saying why.
 
 ## Scheduled checks
 

@@ -574,3 +574,68 @@ describe('investigation budget in the CLI', () => {
     expect(bad.logs.join('\n')).toContain('OBSERVE_AUTO_INVESTIGATIONS="lots"')
   })
 })
+
+describe('observe.checks.* and observe.agents.* reload while the observer runs', () => {
+  // A check that never reaches the network: nothing listens on port 9, and it runs every five minutes.
+  const check = (name: string) => `{ name: '${name}', url: 'http://127.0.0.1:9/${name}', everySeconds: 300 }`
+  const cacheAgent = `{ name: 'cache_agent', description: 'Cache specialist', instruction: 'Check versions.', tools: ['get_services'] }`
+  const waitFor = async (condition: () => Promise<boolean> | boolean, ms = 8000) => {
+    const deadline = Date.now() + ms
+    while (Date.now() < deadline) {
+      if (await condition()) return
+      await new Promise((r) => setTimeout(r, 50))
+    }
+    throw new Error('condition not met')
+  }
+  const names = async (h: ReturnType<typeof harness>) => ((await (await fetch(`${h.collectorUrl()}/api/checks`)).json()).checks as { name: string }[]).map((c) => c.name)
+
+  it('picks up observe.checks.* written after the start, then changes to it — and keeps the traces it already has', async () => {
+    const root = fixtureApp(false)
+    const h = harness({})
+    const exit = run(['collector', '--port', '0', '--root', root], h.deps)
+    await until(h.collectorUrl)
+    expect(await names(h)).toEqual([])
+    // Traffic before the file exists: a restart would lose it.
+    const span = { traceId: 'a'.repeat(32), spanId: 'b'.repeat(16), name: 'GET /', kind: 2, startTimeUnixNano: String(BigInt(Date.now()) * 1_000_000n), endTimeUnixNano: String(BigInt(Date.now() + 5) * 1_000_000n) }
+    await fetch(`${h.collectorUrl()}/v1/traces`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ resourceSpans: [{ resource: { attributes: [{ key: 'service.name', value: { stringValue: 'shop' } }] }, scopeSpans: [{ spans: [span] }] }] }) })
+
+    writeFileSync(join(root, 'observe.checks.mjs'), `export default [${check('first')}]`)
+    await waitFor(async () => (await names(h)).join() === 'first')
+    expect(h.logs.join('\n')).toContain('  checks     reloaded · observe.checks.mjs: 1 check')
+
+    writeFileSync(join(root, 'observe.checks.mjs'), `export default [${check('second')}, ${check('third')}]`)
+    await waitFor(async () => (await names(h)).join() === 'second,third')
+
+    const traces = await (await fetch(`${h.collectorUrl()}/api/traces`)).json()
+    expect(JSON.stringify(traces)).toContain('a'.repeat(32))
+    h.stop()
+    expect(await exit).toBe(0)
+  })
+
+  it('a file that does not load keeps the previous checks, and says why', async () => {
+    const root = fixtureApp(false)
+    writeFileSync(join(root, 'observe.checks.mjs'), `export default [${check('kept')}]`)
+    const h = harness({})
+    const exit = run(['collector', '--port', '0', '--root', root], h.deps)
+    await until(h.collectorUrl)
+    writeFileSync(join(root, 'observe.checks.mjs'), `export default [{ name: 'broken', url: 'api' }]`)
+    await waitFor(() => h.logs.some((l) => l.includes('the previous checks keep running')))
+    expect(h.logs.join('\n')).toContain('observe.checks.mjs: check "broken": `url` must be a path')
+    expect(await names(h)).toEqual(['kept'])
+    h.stop()
+    expect(await exit).toBe(0)
+  })
+
+  it('picks up observe.agents.* written after the start: the new specialist answers in the chat', async () => {
+    const root = fixtureApp(false)
+    const h = harness({})
+    const exit = run(['collector', '--port', '0', '--root', root], h.deps)
+    await until(h.collectorUrl)
+    writeFileSync(join(root, 'observe.agents.mjs'), `export default [${cacheAgent}]`)
+    await waitFor(() => h.logs.some((l) => l.includes('agents     reloaded · observe.agents.mjs: cache_agent')))
+    const body = await (await fetch(`${h.collectorUrl()}/api/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question: 'What is going on?' }) })).text()
+    expect(body).toContain('"agent":"cache_agent","tool":"get_services"')
+    h.stop()
+    expect(await exit).toBe(0)
+  })
+})
