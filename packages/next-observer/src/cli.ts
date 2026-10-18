@@ -208,14 +208,15 @@ async function loadChecks(root: string, env: Env, nextArgs: string[], watch: Che
 type SpecialistSpec = import('./agents/index.js').SpecialistSpec
 
 /**
- * The project's own specialists from observe.agents.* in the app root: `export default [defineSpecialist({…})]`.
+ * The project's own specialists from observe.agents.* in the app root, plain data:
+ * `export default [{ name, description, instruction, tools }]`.
  * Same name as a built-in replaces it, a new name adds a specialist. Node ≥22.18 runs the .ts file as is (type stripping).
  */
 async function loadProjectSpecialists(root: string, agents: AgentsModule, fresh = false): Promise<{ file?: string; specs: SpecialistSpec[] }> {
   const { file, exported } = await importProjectFile(root, AGENTS_FILES, fresh)
   if (!file) return { specs: [] }
   const list = Array.isArray(exported) ? exported : exported === undefined ? undefined : [exported]
-  if (!list) throw new CliError(`${file}: export default an array of defineSpecialist({…})`)
+  if (!list) throw new CliError(`${file}: export default an array of specialists { name, description, instruction, tools }`)
   const specs: SpecialistSpec[] = []
   for (const item of list) {
     try {
