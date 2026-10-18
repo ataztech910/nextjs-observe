@@ -246,7 +246,7 @@ describe('project agents (observe.agents.*)', () => {
   it.each([
     [{ 'observe.agents.mjs': `export default [{ ${cacheAgent.slice(1, -1)}, tools: ['run_sql'] }]` }, 'observe.agents.mjs: specialist "cache_agent": unknown tools run_sql'],
     [{ 'observe.agents.mjs': `export default [${cacheAgent}, ${cacheAgent}]` }, 'observe.agents.mjs: specialist "cache_agent" is defined twice'],
-    [{ 'observe.agents.mjs': 'export const x = 1' }, 'observe.agents.mjs: export default an array of defineSpecialist'],
+    [{ 'observe.agents.mjs': 'export const x = 1' }, 'observe.agents.mjs: export default an array of specialists { name, description, instruction, tools }'],
     [{ 'observe.agents.mjs': 'export default [' }, 'observe.agents.mjs: '],
     [{ 'observe.agents.mjs': `export default ${cacheAgent}`, 'observe.agents.ts': `export default ${cacheAgent}` }, 'found observe.agents.ts and observe.agents.mjs'],
   ])('fails with a clear message %#', async (files, message) => {

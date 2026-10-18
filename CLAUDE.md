@@ -15,7 +15,6 @@ packages/next-observe/   goes INTO the app — OpenTelemetry only, no AI depende
   src/client.ts          browser OTel for instrumentation-client.ts
   src/runtime.ts         __observe.run() used by transformed code
   src/transform/         Babel plugin + Turbopack loader for 'use observe'
-  src/agents.ts          defineSpecialist() + types for the app's observe.agents.ts (no ADK; next-observer validates and runs it)
   e2e/observe-page.mjs   instrumentation checks against a running observer
 packages/next-observer/            the observer, run with `npx next-observer dev` — never an app dependency
   src/collector/         OTLP/JSON ingest, MemoryStorage, query API, chat transport (NDJSON + SSE), static UI

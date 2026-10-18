@@ -107,24 +107,10 @@ survives minification.
 
 ## Your own AI agents
 
-The AI agents run in `next-observer`, not here: three built-in specialists (latency, errors, traffic). Add or replace
-them in `observe.agents.ts` in the app root — `next-observe/agents` only gives the types (no AI code enters your app),
-`next-observer` loads and runs the file:
-
-```ts
-import { defineSpecialist } from 'next-observe/agents'
-
-export default [
-  defineSpecialist({
-    name: 'latency_agent',
-    description: 'Finds slow operations and the deployment that made them slow',
-    instruction: 'First call compare_versions; then open one slow trace and name the span with the highest selfMs.',
-    tools: ['compare_versions', 'search_traces', 'get_trace'],
-  }),
-]
-```
-
-See the [next-observer README](https://www.npmjs.com/package/next-observer) for the tools and models.
+The AI agents run in `next-observer`, not here, and so does their configuration: the built-in specialists and your own
+ones in `observe.agents.ts` are set up for the observer, see the
+[next-observer README](https://www.npmjs.com/package/next-observer). Nothing about them is imported into your app.
+(Until 0.3 this package had `next-observe/agents` with the types for that file — the file is plain data now.)
 
 ## Configuration
 
@@ -178,7 +164,6 @@ Production React profiling: build with `next build --profile` to get component r
 | `next-observe/config` | `withObserve()` for `next.config.ts` |
 | `next-observe/server` | `register()` for `instrumentation.ts` |
 | `next-observe/client` | browser telemetry for `instrumentation-client.ts` |
-| `next-observe/agents` | `defineSpecialist()` and types for `observe.agents.ts` (the AI agents themselves run in `next-observer`) |
 | `next-observe/proxy` | runtime proxy route for browser spans (optional) |
 
 Traces are sent as OTLP/HTTP — JSON by default, protobuf with `protocol: 'http/protobuf'` / `OTEL_EXPORTER_OTLP_PROTOCOL`.

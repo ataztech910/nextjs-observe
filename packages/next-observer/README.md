@@ -143,18 +143,21 @@ The built-in AI agents are an orchestrator and three specialists (latency, error
 their `description`; the rules "facts from tools only" and "own tools only" are added to every instruction.
 
 ```ts
-import { defineSpecialist } from 'next-observe/agents'
+type Specialist = { name: string; description: string; instruction: string; tools: string[] }
 
-export default [
-  defineSpecialist({
+const specialists: Specialist[] = [
+  {
     name: 'latency_agent',
     description: 'Finds slow operations and the deployment that made them slow',
     instruction: 'First call compare_versions; then open one slow trace and name the span with the highest selfMs.',
     tools: ['compare_versions', 'search_traces', 'get_trace'],
-  }),
+  },
 ]
+
+export default specialists
 ```
 
+The file is plain data — no imports, like `observe.checks.ts` below; the type in it is only there for your editor.
 Tools: `get_services`, `get_operation_stats`, `compare_versions`, `get_errors`, `search_traces`, `get_trace`.
 `next-observer` validates the file and lists the loaded specialists on start. It also watches the app root: create or
 change `observe.agents.*` (or `observe.checks.*`, below) while it runs and it reloads the file — no restart, so the
