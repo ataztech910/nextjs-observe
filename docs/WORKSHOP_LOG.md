@@ -2891,6 +2891,21 @@ PR магазина №10 смержен, **теги блоков пересоб
 
 ---
 
+## Теги магазина на `next-observe` 0.4 и `observe.agents.ts` без импорта
+
+### Делаем
+
+- Опубликованы `next-observe` 0.4.0 и `next-observer` 0.3.34 (шаг 82).
+- Магазин: цепочка от «Block 3: the APM agent» пересобрана — `next-observe ^0.4.0` (lock — 4 строки), решение блока 4 `observe.agents.ts` — обычные данные, как на слайде. Теги `block-3-instrumentation` (3d82b61), `block-5-observer` (ac96fc0), `block-6-incident-f` (ff0f597) перенесены (force-push сделал автор); `block-0-start` не тронут.
+
+### Как тестировали
+
+- Разница старых и новых тегов — только версия, lock и `observe.agents.ts`.
+- Каждый новый коммит: `npm ci` (ставится 0.4.0), `tsc` без ошибок в `observe.*`. `block-5`: опубликованный `next-observer` 0.3.34 — 83 спана от магазина, баннер `latency_agent (replaces built-in)`, 5 проверок.
+- Свежий клон с GitHub: на трёх тегах `^0.4.0`, импорта `next-observe/agents` нет.
+
+---
+
 ## Дальше
 
 - [x] Бюджет расследований, которые обзервер начинает сам (`OBSERVE_AUTO_INVESTIGATIONS`), шаг 78
