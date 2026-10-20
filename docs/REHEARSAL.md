@@ -21,7 +21,8 @@
 | 2.2 | Your turn · свой приёмник: `npm run receiver`, дописать `printSpans` | приёмник на 4318, `/health` OK; строки `service  name  ms  status` | ✅ | ? (7) | По новой схеме (раскомментировать ▶ в обоих файлах): `{}` от curl, строка `my-first-service  GET /checkout  250.0 ms  ok`. Время не засекли — по ходу переделывали задание |
 | 2.3 | Your turn · первый спан: поменять имя, атрибут, статус в `span.json`, отправить curl | ★ Mission complete | ✅ | ? (5) | Как миссия: подсказка `order.rejected` была непонятна (не JSON) — исправлено. Автор: «шикарно, вот так все задания должны быть» |
 | 2.4 | Your turn · миссия 2: make it a tree | ★ Mission complete | ✅ | ? (5) | Сделано миссией до репетиции шага (магазин PR №21, слайды PR №1) — прошло с первого раза |
-| 2.5 | Your turn · миссия 3: the APM agent, by hand — `npm install next-observe`, раскомментировать три файла, `npm run mission` | ★ Mission 3 complete | | (10) | Подготовлено миссией (магазин PR №22, слайды PR №2); у меня прошло в Chrome |
+| 2.5 | Your turn · миссия 3: the APM agent, by hand — `npm install next-observe`, раскомментировать три файла, `npm run mission` | ★ Mission 3 complete | ✅ | ? (10) | Миссией (магазин PR №22, слайды PR №2). Автор спросил «какие три файла» — имена есть на слайде и в чек-листе, но не нашлись сразу |
+| 2.6 | Your turn · миссия 4: a span of your own — раскомментировать `placeOrder` и причину в `app/api/checkout/route.ts` | ★ Mission 4 complete | | (8) | Подготовлено миссией (магазин PR №23, слайды PR №3); у меня: причина пришла, `case checkout-400` её нашёл |
 
 ## Часть 3. The observer (10)
 
