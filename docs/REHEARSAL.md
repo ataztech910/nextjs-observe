@@ -22,7 +22,7 @@
 | 2.3 | Your turn · первый спан: поменять имя, атрибут, статус в `span.json`, отправить curl | ★ Mission complete | ✅ | ? (5) | Как миссия: подсказка `order.rejected` была непонятна (не JSON) — исправлено. Автор: «шикарно, вот так все задания должны быть» |
 | 2.4 | Your turn · миссия 2: make it a tree | ★ Mission complete | ✅ | ? (5) | Сделано миссией до репетиции шага (магазин PR №21, слайды PR №1) — прошло с первого раза |
 | 2.5 | Your turn · миссия 3: the APM agent, by hand — `npm install next-observe`, раскомментировать три файла, `npm run mission` | ★ Mission 3 complete | ✅ | ? (10) | Миссией (магазин PR №22, слайды PR №2). Автор спросил «какие три файла» — имена есть на слайде и в чек-листе, но не нашлись сразу |
-| 2.6 | Your turn · миссия 4: a span of your own — раскомментировать `placeOrder` и причину в `app/api/checkout/route.ts` | ★ Mission 4 complete | | (8) | Подготовлено миссией (магазин PR №23, слайды PR №3); у меня: причина пришла, `case checkout-400` её нашёл |
+| 2.6–2.8 | миссии 5–7: свой спан, `'use observe'`, кейс скриптом | ★ Mission 5, 6, 7 complete | ✅ | ? (8+5+10) | По брифингу `npm run mission N` без слайда |
 
 ## Часть 3. The observer (10)
 
