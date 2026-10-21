@@ -90,7 +90,6 @@
 - Спан, трейс, атрибуты, события, статус; ресурс (`service.name`, `service.version`); контекст (`traceparent`).
 - Сигналы: трейсы, метрики, логи — сегодня трейсы. OTel = API + SDK + OTLP + семантические соглашения.
 - **Данные и то, куда они уходят, — разные вещи.** Grafana, Dynatrace, Honeycomb, Datadog слушают тот же OTLP.
-- APM-агент (в приложении) и AI-агенты (в обзервере) — разные вещи.
 
 ### Часть 2. OpenTelemetry by hand (55 мин + перерыв 15)
 
@@ -110,6 +109,7 @@ TR-4CE вручает «чёрный ящик» OTLP (06): *"Sadly, only one of 
 ### Часть 3. The observer (10 мин)
 
 *"There has to be a better way."* (13) → *"Good evening, Kevin."* (14).
+- *1 мин.* «Two packages, one letter apart»: `next-observe` — APM-агент, который уже стоит в магазине с части 2; `next-observer` — обзервер рядом с приложением. APM-агент и AI-агенты — разные вещи. До этого места пакеты и обзервер не называются вообще (часть 2 делается руками).
 - **Your turn · 5 мин · Wake it up.** Остановить приёмник, `npm run observer` — тот же порт 4318; в приложении ни строчки. *Результат:* свои спаны в UI, свой `placeOrder` с причиной в трейсе.
 - *5 мин.* Обзор интерфейса: трейсы, waterfall, Errors, Overview. `npx next-observer init` делает три файла части 2 за вас.
 
