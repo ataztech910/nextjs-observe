@@ -2,7 +2,7 @@
 // or drop the live feed of the observer's own investigations.
 import { api, type ChatEvent, type ProactiveEvent } from '@/api'
 import { anomalyHeadline } from '@/components/chat/anomaly-view'
-import { applyProactive, withHistory, type Turn } from './chat-turns'
+import { applyProactive, NEW_CHAT, withHistory, type Turn } from './chat-turns'
 
 interface ChatState {
   turns: Turn[]
@@ -125,5 +125,6 @@ export const chatStore = {
   stop,
   select: (id: string | null) => set((s) => ({ ...s, selectedId: id })),
   /** The next question starts a new conversation; the investigations so far stay in the list. */
-  newConversation: () => set((s) => ({ ...s, sessionId: undefined, selectedId: null })),
+  // An empty page until the next question: with nothing selected the latest turn would show, and the button would seem to do nothing.
+  newConversation: () => set((s) => ({ ...s, sessionId: undefined, selectedId: NEW_CHAT })),
 }

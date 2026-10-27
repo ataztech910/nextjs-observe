@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ChatEvent } from '../src/collector/index.js'
 import type { Anomaly } from '../src/debug/detector.js'
 import type { StoredTurn } from '../src/collector/chat-history.js'
-import { applyProactive, investigations, notedText, shownTurn, summarize, withHistory, type Turn } from '../ui/src/lib/chat-turns.js'
+import { applyProactive, investigations, NEW_CHAT, notedText, shownTurn, summarize, withHistory, type Turn } from '../ui/src/lib/chat-turns.js'
 
 const anomaly = (severity: Anomaly['severity'], detectedAtMs: number): Anomaly => ({
   id: 'a', type: 'high_latency', scope: 'all', severity, detectedAtMs, value: 0.4, threshold: 0.3, sampleSize: 10, windowMs: 10_000, operations: [],
@@ -87,6 +87,10 @@ describe('the list and the turn on screen', () => {
     expect(shownTurn(turns, null)?.id).toBe('new')
     expect(shownTurn(turns, 'gone')?.id).toBe('new')
     expect(shownTurn([], null)).toBeUndefined()
+  })
+
+  it('after New chat shows none — not the latest — until the next question is picked', () => {
+    expect(shownTurn(turns, NEW_CHAT)).toBeUndefined()
   })
 })
 

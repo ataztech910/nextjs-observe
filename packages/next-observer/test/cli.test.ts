@@ -235,6 +235,14 @@ describe('project agents (observe.agents.*)', () => {
     expect(await exit).toBe(0)
   })
 
+  it('an empty list says there are no specialists of its own yet', async () => {
+    const { h, exit } = await start(project({ 'observe.agents.mjs': 'export default []\n' }))
+    await until(h.collectorUrl)
+    expect(h.logs[0]).toContain('  agents     observe.agents.mjs: no specialists of your own yet; built-in: latency_agent, error_agent, traffic_agent')
+    h.stop()
+    expect(await exit).toBe(0)
+  })
+
   it('without a file the banner has no agents line', async () => {
     const { h, exit } = await start(project({}))
     await until(h.collectorUrl)
