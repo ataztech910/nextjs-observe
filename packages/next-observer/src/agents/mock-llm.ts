@@ -19,6 +19,26 @@ function questionOf(request: LlmRequest): string {
   return ''
 }
 
+/**
+ * The slowest trace a tool has listed in this turn (search_traces returns traces with durationMs) — so get_trace opens a
+ * real trace, the one a person would open, instead of being skipped or called with an invented id.
+ */
+function slowestTraceId(parts: { functionResponse?: { response?: unknown } }[]): string | undefined {
+  let best: { traceId: string; durationMs: number } | undefined
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) return value.forEach(visit)
+    if (!value || typeof value !== 'object') return
+    const v = value as Record<string, unknown>
+    if (typeof v.traceId === 'string' && /^[0-9a-f]{32}$/.test(v.traceId)) {
+      const durationMs = typeof v.durationMs === 'number' ? v.durationMs : 0
+      if (!best || durationMs > best.durationMs) best = { traceId: v.traceId, durationMs }
+    }
+    Object.values(v).forEach(visit)
+  }
+  for (const part of parts) visit(part.functionResponse?.response)
+  return best?.traceId
+}
+
 export class MockLlm extends BaseLlm {
   constructor() {
     super({ model: 'mock' })
@@ -35,9 +55,12 @@ export class MockLlm extends BaseLlm {
       if (called.has(tool.name)) continue
       const declaration = tool._getDeclaration() as Declaration | undefined
       const required = declaration?.parameters?.required ?? declaration?.parametersJsonSchema?.required ?? []
-      // Agent-as-tool takes the question as `request`; tools needing other required args (e.g. traceId) are skipped.
-      if (required.some((name) => name !== 'request')) continue
-      const args = required.includes('request') ? { request: question } : {}
+      // Agent-as-tool takes the question as `request`; `traceId` comes from a trace listed earlier in this turn. Tools needing
+      // anything else — or a trace id when none was listed yet — are skipped rather than called with garbage.
+      if (required.some((name) => name !== 'request' && name !== 'traceId')) continue
+      const traceId = required.includes('traceId') ? slowestTraceId(parts) : undefined
+      if (required.includes('traceId') && !traceId) continue
+      const args = { ...(required.includes('request') ? { request: question } : {}), ...(traceId ? { traceId } : {}) }
       yield { content: { role: 'model', parts: [{ functionCall: { name: tool.name, args } }] }, turnComplete: true }
       return
     }

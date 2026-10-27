@@ -132,7 +132,7 @@ export function ChatPage() {
           )}
         </PageHeader>
 
-        {turns.length === 0 && (
+        {!shown && (
           <div className="flex flex-col items-start gap-2">
             {SUGGESTIONS.map((s) => (
               <Button key={s} type="button" variant="outline" size="sm" className="h-auto whitespace-normal py-2 text-left font-normal" onClick={() => ask(s)} disabled={running}>

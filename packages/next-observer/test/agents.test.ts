@@ -49,6 +49,17 @@ describe('MockLlm', () => {
     expect(part.text).toContain(MOCK_PREFIX)
   })
 
+  it('opens the slowest trace listed earlier in the turn with get_trace', async () => {
+    const fast = 'a'.repeat(32)
+    const slow = 'b'.repeat(32)
+    const part = await turn([tool('search_traces', z.object({})), tool('get_trace', z.object({ traceId: z.string() }))], [
+      { role: 'user', parts: [{ text: 'q' }] },
+      { role: 'model', parts: [{ functionCall: { name: 'search_traces', args: {} } }] },
+      { role: 'user', parts: [{ functionResponse: { name: 'search_traces', response: { traces: [{ traceId: fast, durationMs: 80 }, { traceId: slow, durationMs: 2500 }] } } }] },
+    ])
+    expect(part).toEqual({ functionCall: { name: 'get_trace', args: { traceId: slow } } })
+  })
+
   it('does not call the same tool twice and ends with a summary of results', async () => {
     const part = await turn([tool('get_services', z.object({}))], [
       { role: 'user', parts: [{ text: 'q' }] },
@@ -81,6 +92,8 @@ describe('investigator (mock model over the shop scenario)', () => {
         'latency_agent:get_operation_stats',
         'latency_agent:compare_versions',
         'latency_agent:search_traces',
+        // …and then opens the slowest of those traces: that is where the function behind the slowdown shows.
+        'latency_agent:get_trace',
         'error_agent:get_errors',
         // "Is this error new?" — the error agent compares versions too.
         'error_agent:compare_versions',
@@ -89,8 +102,8 @@ describe('investigator (mock model over the shop scenario)', () => {
         'traffic_agent:get_operation_stats',
       ]),
     )
-    // get_trace needs a traceId the mock can't invent — it is skipped, not called with garbage.
-    expect(calls.some((c) => c.endsWith(':get_trace'))).toBe(false)
+    // get_trace gets a real trace id — one search_traces listed — never an invented one.
+    for (const s of steps.filter((s) => s.tool === 'get_trace')) expect(s.args.traceId).toMatch(/^[0-9a-f]{32}$/)
     expect(seen).toEqual(steps)
   })
 

@@ -38,6 +38,7 @@ import { computeOverview } from './overview.js'
 import { serveUi } from './static.js'
 import type { NormalizedSpan, StorageAdapter } from './types.js'
 
+
 const OVERVIEW_DEFAULT_WINDOW_MS = 15 * 60_000
 const OVERVIEW_BUCKETS = 30
 
@@ -407,7 +408,14 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
       return send(res, 200, defects)
     }
     if (url.pathname === '/api/regression') {
-      const { changes } = await createAgentQueries(storage).compareVersions({ service: stringParam(q, 'service'), sinceMinutes: numberParam(q, 'sinceMinutes'), integrity: false })
+      // The same window as during the traffic, counted back from the last span that arrived rather than from now: the card
+      // is about the latest deploy and must not vanish a quarter of an hour after the last request to it. (A wider window
+      // is no fix: it pulls older deploys into the comparison.)
+      const service = stringParam(q, 'service')
+      const seen = (await storage.getServices()).filter((s) => !service || s.name === service).map((s) => s.lastSeenMs)
+      const lastMs = seen.length ? Math.max(...seen) : Date.now()
+      const queries = createAgentQueries(storage, { now: () => Math.min(lastMs, Date.now()) })
+      const { changes } = await queries.compareVersions({ service, sinceMinutes: numberParam(q, 'sinceMinutes'), integrity: false })
       return send(res, 200, { regression: findRegression(changes) })
     }
     if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/v1/')) throw new HttpError(404, 'not found')

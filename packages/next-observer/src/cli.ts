@@ -235,6 +235,8 @@ function agentsLine(builtIn: SpecialistSpec[], file: string, project: Specialist
   const builtInNames = new Set(builtIn.map((s) => s.name))
   const own = project.map((s) => (builtInNames.has(s.name) ? `${s.name} (replaces built-in)` : s.name))
   const kept = builtIn.filter((s) => !project.some((p) => p.name === s.name)).map((s) => s.name)
+  // An empty list is a file waiting for its first specialist (the workshop ships one) — say so, not "file: ;".
+  if (own.length === 0) return `  agents     ${file}: no specialists of your own yet; built-in: ${kept.join(', ')}`
   return `  agents     ${file}: ${own.join(', ')}${kept.length ? `; built-in: ${kept.join(', ')}` : ''}`
 }
 

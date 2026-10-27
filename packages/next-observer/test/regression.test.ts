@@ -90,4 +90,12 @@ describe('GET /api/regression', () => {
     const { regression } = (await (await fetch(`${collector.url}/api/regression`)).json()) as { regression: { version: string; operation: string } }
     expect(regression).toMatchObject({ version: 'v2', operation: 'POST /api/checkout' })
   })
+
+  it('still there half an hour after the last request — the card does not vanish with the agents\' 15-minute window', async () => {
+    const storage = new MemoryStorage()
+    collector = await startCollector({ port: 0, storage, uiDir: false })
+    await storage.insertSpans(demoSpans(Date.now() - 30 * 60_000))
+    const { regression } = (await (await fetch(`${collector.url}/api/regression`)).json()) as { regression: { version: string } | null }
+    expect(regression).toMatchObject({ version: 'v2', operation: 'POST /api/checkout' })
+  })
 })

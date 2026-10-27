@@ -97,6 +97,10 @@ export function investigations(turns: Turn[]): TurnSummary[] {
 }
 
 /** The turn on screen: the one picked, else the latest one. */
+/** Selected by "New chat": no conversation is shown until the next question — the list stays where it is. */
+export const NEW_CHAT = 'new-chat'
+
 export function shownTurn(turns: Turn[], selectedId: string | null): Turn | undefined {
+  if (selectedId === NEW_CHAT) return undefined
   return turns.find((t) => t.id === selectedId) ?? [...turns].sort((a, b) => b.startedAtMs - a.startedAtMs)[0]
 }
