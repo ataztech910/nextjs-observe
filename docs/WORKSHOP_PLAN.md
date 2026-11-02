@@ -90,6 +90,7 @@
 - Спан, трейс, атрибуты, события, статус; ресурс (`service.name`, `service.version`); контекст (`traceparent`).
 - Сигналы: трейсы, метрики, логи — сегодня трейсы. OTel = API + SDK + OTLP + семантические соглашения.
 - **Данные и то, куда они уходят, — разные вещи.** Grafana, Dynatrace, Honeycomb, Datadog слушают тот же OTLP.
+- **Как устроен агент (4 мин, карточка «How an agent works»):** модель + инструкция + инструменты, в цикле — модель просит инструмент, код его выполняет, результат возвращается; модель видит только то, что вернули инструменты. Google ADK: `LlmAgent`, `FunctionTool`, `Runner`; тот же цикл в LangGraph, OpenAI / Claude Agent SDK.
 
 ### Часть 2. OpenTelemetry by hand (55 мин + перерыв 15)
 
@@ -105,6 +106,8 @@ TR-4CE вручает «чёрный ящик» OTLP (06): *"Sadly, only one of 
 - **Your turn · 8 мин · A span of your own.** `placeOrder` с `order.rejected`. *Результат:* причина отказа — атрибутом.
 - **Your turn · 5 мин · 'use observe'.** Одна строка в файлах `lib/`. *Результат:* спаны функций с `code.filepath`. Отставшим — `block-3-instrumentation`.
 - **Your turn · 10 мин · One case by hand.** `npm run case checkout-400` — в скрипте одна дырка: условие «запрос отклонён». *Результат:* `order.rejected=quantity 20 > limit 10`. Остальные пять скриптов кейсов остаются в `tools/cases/` для желающих.
+- **Your turn · 10 мин · Your first agent, by hand (миссия 8).** `tools/agent.mjs` — ADK-агент над теми же сырыми спанами: инструмент `rejected_orders`, инструкция, цикл `Runner`; три строки ▶, после каждой `npm run agent "Why do orders fail?"` и вывод меняется (нет инструмента — модель может только гадать; инструмент без шага — не смотрит; оба — спрашивает, код выполняет, ответ с причиной). Мок без ключа; `--solution` для отставших.
+- *3 мин.* **A real model: Kitana or Gemini** — ведущий показывает `npm run agent -- --real` на своём стенде (Kitana через claude/codex CLI или Gemini по ключу — выбор участника).
 
 ### Часть 3. The observer (10 мин)
 
