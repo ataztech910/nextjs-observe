@@ -147,3 +147,32 @@ describe('MemoryStorage eviction', () => {
     expect((await storage.queryTraces()).map((t) => t.traceId).sort()).toEqual([T(2), T(3)])
   })
 })
+
+describe('MemoryStorage idempotent ingest', () => {
+  it('deduplicates within/across concurrent batches without inflating stats or evicting distinct spans', async () => {
+    const storage = new MemoryStorage({ maxSpans: 2 })
+    const a = span({ traceId: T(1), kind: 'server', resource: { 'service.instance.id': 'p1' } })
+    const b = span({ traceId: T(2) })
+    const results = await Promise.all([storage.insertSpansOnce([a, { ...a }]), storage.insertSpansOnce([{ ...a }, b])])
+    expect(results.flat()).toEqual([a, b])
+    expect(await storage.count()).toBe(2)
+    expect(storage.isColdStart((await storage.getTrace(T(1)))[0])).toBe(true)
+    expect(storage.isHistoryComplete()).toBe(true)
+    expect((await storage.getOperationStats())[0].count).toBe(2)
+    expect((await storage.getServices())[0].spanCount).toBe(2)
+    expect((await storage.queryTraces()).map((t) => t.spanCount)).toEqual([1, 1])
+  })
+
+  it('keys identity by trace and span, keeps the first value, and bounds dedup to retained data', async () => {
+    const storage = new MemoryStorage({ maxSpans: 2 })
+    const a = span({ traceId: T(1), spanId: 'a'.repeat(16) })
+    const b = span({ traceId: T(2), spanId: a.spanId })
+    await storage.insertSpans([a, b, { ...a, durationMs: 900 }])
+    expect(await storage.count()).toBe(2)
+    expect((await storage.getTrace(T(1)))[0].durationMs).toBe(10)
+    await storage.insertSpans([span({ traceId: T(3) })])
+    expect(await storage.getTrace(T(1))).toEqual([])
+    expect(storage.isHistoryComplete()).toBe(false)
+    expect(await storage.insertSpansOnce([a])).toEqual([a])
+  })
+})

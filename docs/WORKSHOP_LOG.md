@@ -3110,3 +3110,76 @@ PR магазина №10 смержен, **теги блоков пересоб
 8. По мелочи: `init` не возвращает ненулевой код при неудачной установке; чат не показывает «ждём лимит модели» в UI (только в терминале); Kitana не уважает `abortSignal`.
 
 **Где искать:** `next-observer` живёт в `packages/next-observer` этого репозитория (`nextjs-observe`); Porto Shop — отдельный репозиторий `~/Desktop/branches/PORTO_HUB_2026/observer/workshop-ai-observability`.
+
+
+---
+
+## 11 ноября 2026 — performance T1: сохранность OTLP traces
+
+**Чтобы** подготовить backend к экспериментам A–F, **делаем** первый отдельный шаг T1 в
+`packages/next-observer/src/collector`. Сбор остаётся в Observe/приложениях, SPA не получает инструментирование.
+
+**Изменено:**
+- Добавлены типизированные поддерживаемые OTLP-поля рядом с прежней проекцией span: точные timestamps строками,
+  links, resource/scope/schema, trace state/flags и dropped counts. Int64 вне safe integer не округляется в атрибутах;
+  `otlp.schemaVersion = 1` сохраняет различие int64/bytes и вложенные значения.
+- JSON/protobuf проходят общую ограниченную валидацию. Невалидный batch целиком получает 400 до записи;
+  пустой корректный OTLP-request допустим. Ошибки кодируются как Status в формате запроса; JSON сохраняет `error`.
+- MemoryStorage атомарно дедуплицирует traceId/spanId, включая вход детектора, пока span хранится.
+  Старые адаптеры сохраняют контракт, новый `insertSpansOnce` необязателен.
+- Trace detail API возвращает консервативные признаки eviction и отсутствующих родителей; это не доказательство
+  получения всего trace. Неизвестные wire-поля не архивируются, disk capture/replay остаётся задачей T3.
+
+**Проверено:** полный backend-прогон — 682 passed, 4 skipped (real-model e2e); typecheck backend/UI и production build
+прошли. Mutation checks намеренно отключали links, дедупликацию и проверку end >= start: тесты обнаружили все три
+регрессии; исходники восстановлены. Нужен был доступ к временным локальным HTTP-портам.
+
+**Packed e2e:** `npm pack --ignore-scripts` после build → распаковка в `/private/tmp/observe-t1-*`;
+`node e2e/otlp-traces.mjs <extracted-package> --serve` использовал upstream SDK/HTTP exporter и оба сериализатора.
+Повторные JSON/protobuf exports оставили 2 spans и count=1 для hook. В браузере проверены built UI, вложенные
+interaction/hook строки, выбор hook, attributes/event details и новые поля query API.
+Зависимости для локального smoke подключались symlink к установленным node_modules; чистая установка из npm
+и физические RN-устройства этим прогоном не проверяются. Публикация/commit/push не выполнялись.
+
+**Дальше:** T2 — OTLP Metrics (Sum/Gauge/explicit Histogram); T3 — run partitions, фильтры и capture/replay.
+После минимального приёма/сохранения подключаем экспериментальные приложения; новый UI расширяем на реальных данных.
+
+
+---
+
+## 11 ноября 2026 — performance T2: OTLP Metrics
+
+**Чтобы** получать измерения A–F как настоящие metric points, **делаем** отдельный metric receiver/storage/query
+в `next-observer`, поверх запушенного T1 (`0bf961e`, `step-performance-otlp-traces`). Ветка T2 —
+`step-performance-otlp-metrics`, зависит от T1; master не менялся.
+
+**Изменено:**
+- `/v1/metrics`: JSON/protobuf/gzip для Sum (Counter/UpDownCounter), Gauge и explicit Histogram; точные int64,
+  timestamps, resource/scope/schema, flags, metadata и exemplars. Неподдерживаемые ExponentialHistogram/Summary
+  отклоняются с 400, включая пустые сообщения в protobuf. Ошибки кодируются в формате запроса.
+- Общие bounded validation/protobuf-примитивы выделены из trace-модулей, новые зависимости не добавлены.
+  Существующие trace/query/auth контракты сохранены.
+- Независимый `MetricStorageAdapter` и MemoryMetricStorage: атомарная дедупликация, отказ при конфликте одного
+  stream/interval, сохранение checkpoints/reset epochs/late arrivals без автоматического сложения cumulative.
+  Клонируется batch целиком с сохранением shared resource/scope references; source hashes кешируются на batch.
+- API `/api/performance/metrics`: сырые точки, фильтры name/service/time, пагинация с total/truncated/nextOffset,
+  historyComplete после eviction; page ограничен также по bytes. Неподдерживаемые capability можно отключить.
+- Histogram quantiles только для отдельной population: p50/p75/p90/p95/p99 с bucket bounds и approximate=true.
+  Для unbounded/empty/no-recorded-value/aggregate-only данных не выдумываются точные значения.
+
+**Проверено:** 731 passed, 4 skipped (real-model e2e); typecheck backend/UI и production build прошли.
+Mutation checks: histogram count consistency, temporality, retry idempotence и quantile labeling — все обнаружены,
+исходники восстановлены. Upstream JSON/protobuf fixtures плюс независимые wire fixtures проверяют signed int64,
+exemplars, mixed packed/unpacked buckets и unsupported-type rejection. HTTP-тесты проверяют auth, gzip/limits,
+atomicity, concurrency, conflict errors, pagination и disabled capability.
+
+**Packed e2e:** `e2e/otlp-metrics.mjs <extracted-package> --serve` создаёт настоящий MeterProvider, Counter,
+UpDownCounter, Gauge и Histogram, отправляет один snapshot обоими upstream serializers через gzip и проверяет
+4 points без удвоения, temporality и buckets. Первый прогон поймал ошибочную конфигурацию smoke View:
+для SDK 2.11.0 boundaries задаются в aggregation.options; после исправления smoke прошёл.
+В браузере built UI загрузился, API вернул четыре точки и approximate quantiles, console errors отсутствовали.
+Использованы установленные dev/transitive dependencies через symlink в распакованном пакете; clean npm install,
+RN-устройства и нагрузочные измерения этим smoke не проверялись.
+
+**Дальше:** T3 — run partitions, attribute predicates и versioned capture/replay; затем экспериментальные приложения
+и ручное Observe/RN инструментирование на этом backend. Новая metric visualization относится к T4–T5.

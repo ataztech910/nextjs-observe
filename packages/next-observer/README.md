@@ -80,6 +80,59 @@ marked), no Docker and no external backend, and it accepts OTLP/HTTP from any Op
 
 Requires Node.js 22.18+.
 
+## OTLP trace ingestion
+
+The backend receiver accepts `POST /v1/traces` as OTLP/HTTP JSON or protobuf, optionally gzip-compressed.
+The existing span/query fields remain available. Decoded spans also expose `startTimeUnixNano` / `endTimeUnixNano`
+as exact decimal strings, normalized `links`, and an `otlp` object (`schemaVersion: 1`) containing supported typed
+source fields: attributes (including int64/bytes), resource/scope/schema metadata, flags, trace state, events, links
+and dropped counts. Integers outside JavaScript's safe range are strings in the display attribute projection too.
+This supported-field representation is not a byte-for-byte archive: unknown protobuf/JSON fields are not retained.
+
+Invalid trace batches are rejected atomically with HTTP 400 before insertion. Empty OTLP requests remain valid.
+Failures return OTLP Status code/message in the request encoding; JSON also retains the legacy `error` property.
+Defaults are 10 MiB before/after decompression, 10,000 spans, nesting depth 32 and 250,000 decoded values/wire fields.
+Programmatic `startCollector({ traceLimits: { maxSpans, maxDepth, maxValues } })` adjusts the decoded limits.
+Counts/depth apply independently; a request can hit the value limit before its span-count limit.
+
+MemoryStorage deduplicates `(traceId, spanId)` atomically: the first accepted observation wins while retained.
+Retries do not inflate stats or detector input. Eviction removes the dedup identity, so replay after eviction can be
+accepted again. Custom storage adapters can implement optional `insertSpansOnce()` to provide the same contract;
+legacy `insertSpans()` adapters remain supported and own their deduplication/detector-input behavior.
+
+`GET /api/traces/:id` adds `completeness.historyComplete` (false after any storage eviction) and
+`completeness.missingParentCount` (parents absent from currently stored spans). Neither proves all spans arrived.
+Storage is still volatile; durable capture/replay is a separate upcoming change.
+
+## OTLP metrics ingestion
+
+`POST /v1/metrics` accepts JSON/protobuf and gzip with the same transport/auth/body limits as traces.
+Supported types are Sum (Counter/UpDownCounter), Gauge and explicit Histogram. Delta/cumulative temporality,
+monotonicity, resource/scope/schema metadata, point attributes, flags, exemplars and exact int64/timestamps are
+preserved. ExponentialHistogram and Summary are rejected with HTTP 400; they are not silently acknowledged.
+Invalid or conflicting batches are rejected atomically. Point limits are configurable through `metricLimits`
+(`maxPoints`: 10,000, `maxDepth`: 32, `maxValues`: 250,000 by default).
+
+A separate `MemoryMetricStorage` retains 100,000 raw points by insertion order by default; the span-only
+`StorageAdapter` stays unchanged. Use `startCollector({ metricStorage })` for another metric adapter or `false`
+to disable metrics (ingest/query then return 503). Identical retained stream/interval retries are idempotent;
+conflicting values or source details return 400. Identity includes resource/scope, metric name/unit/type,
+temporality/monotonicity, point attributes and start/end timestamps. Dedup expires with eviction/restart.
+
+- `GET /api/performance/capabilities`: enabled signals/types.
+- `GET /api/performance/metrics?name&service&fromMs&toMs&limit&offset`: typed points, `total`, `truncated`,
+  `nextOffset` and `historyComplete`. Page limit defaults to 100 (maximum 1,000). The default raw-record page
+  budget is 16 MiB; follow `nextOffset` even when a page contains fewer than `limit` points. Configurable via
+  `new MemoryMetricStorage(maxPoints, maxQueryBytes)`. A single oversized record fails explicitly.
+
+These queries use the same UI Basic auth protection as trace queries; ingest retains x-api-key auth.
+Cumulative checkpoints, reset epochs, out-of-order points and changed bucket schemas remain separate records;
+there is no automatic differencing, rate calculation, cross-point merge or averaging of percentiles.
+Per-point histogram p50/p75/p90/p95/p99 are **approximate**, with bucket lower/upper bounds and the interpolation
+method named in the response. Unbounded buckets without observed min/max have a null estimate; empty,
+aggregate-only or no-recorded-value populations have no quantiles. This is not exact sample percentile data.
+Metric collection in Observe, experiment run partitions/capture and metric visualization are subsequent work.
+
 ## Commands
 
 ```bash
