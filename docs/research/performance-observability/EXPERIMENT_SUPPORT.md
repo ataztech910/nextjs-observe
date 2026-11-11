@@ -2,6 +2,13 @@
 
 None of A–F is complete end to end today. Current reusable foundations are OTLP/HTTP trace ingestion, events/attributes, bounded span storage, tree timeline and raw-span statistics. Observe has document/network/error instrumentation and selected function/component-call timing. Evidence: [architecture inventory and UI audit](ARCHITECTURE_AUDIT.md), especially [runtime.ts:47](../../../packages/next-observe/src/runtime.ts#L47), [receiver.ts:156](../../../packages/next-observer/src/collector/server.ts#L156), [operation.ts:55](../../../packages/next-observer/src/collector/operation.ts#L55). No applications are implemented by this research.
 
+Implementation status (11 November 2026): the original inventory below is a research snapshot. T1–T3 capture and
+T4/T5 run/comparison/timeline/metric evidence increments are now implemented; experiment C has a repeated local web
+session, without full conference statistical acceptance. App-local native bootstrap now passes a Metro iOS and
+restricted-JS transport preflight only. A physical iPhone is available, but RN host/Xcode/signing/Hermes validation
+and iOS native evidence are still missing. See [current implementation updates](IMPLEMENTATION_PLAN.md) and
+[native status](REACT_NATIVE_INSTRUMENTATION.md). None of A–F is declared conference-complete.
+
 ## Shared prerequisites and acceptance rules
 
 Plan task IDs below refer to [implementation plan](IMPLEMENTATION_PLAN.md). Every experiment must have a reproducible run manifest, pinned artifact/tool versions, declared measurement endpoints/units, source availability, completeness/drop counts and repeated independent runs. Baseline/degraded/optimized are app variants; disabled/diagnostic/production_like are instrumentation modes, not synonyms. Separate source/OS/device/compiler/profiling-build strata. Store external artifacts by hash and preserve raw observations for an external report.

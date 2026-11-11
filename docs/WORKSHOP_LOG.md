@@ -3418,3 +3418,57 @@ analysis не редактировались. Оба временных серв
 **Дальше:** перейти к следующему экспериментальному источнику по плану и раннему RN/native feasibility.
 Metric window aggregation/aligned overlays, source/device filtering, calibrated/native tracks и оставшиеся
 conference acceptance gates по-прежнему открыты; текущая визуализация — per-point evidence browsing.
+
+### 11 ноября — Native bootstrap feasibility, целевой стенд iPhone
+
+Merge #95 подтверждён (`ce5c771`). Вместо следующего расширения Observer начат ранний T6 gate в отдельном
+experiment repo: app-local `native/bootstrap.js`, runtime-port probe, сериализованный lifecycle/flush/shutdown
+helper и standalone Metro iOS entry. Observe performance helper переиспользуется через его настоящий public entry;
+SDK/provider/transport принадлежат экспериментальному приложению, receiver/storage/UI остаются отдельными.
+Новый RN SDK package и перенос instrumentation в Observer не требуются.
+
+**Стенд:** пользователь подтвердил только iPhone. На Mac выбран Command Line Tools, полного Xcode нет; JDK,
+Android SDK и adb отсутствуют. Приоритет физического gate изменён на iOS. Native host/подпись/сборка пока не созданы;
+инструменты системы не устанавливались. Android остаётся отдельным неподтверждённым вариантом.
+
+**Feasibility:** pinned Metro 0.88 + RN Babel preset/transformer 0.88 собирают iOS bundle для SDK 2.11.0 /
+exporters 0.222.0; BasicTracerProvider dependency объявлен явно. Использован установленный Node 24.11.1:
+Metro исключает текущий default Node 25. npm после установки сообщает zero vulnerabilities. Это не pin RN runtime:
+сам RN/Hermes host ещё отсутствует. 331 source modules включают browser fetch delegates и не включают Node-platform
+реализации. Bundle выполняется в Node VM с явно переданными web-standard ports и numeric timer handles, без DOM,
+Node process APIs, Buffer/crypto. Metro добавляет собственный process.env stub. Проверка VM не доказывает RN globals.
+
+Адаптер явно проверяет clocks/transport ports, не регистрирует global SDK/context manager, сохраняет async parentage
+через explicit interaction. Disabled не инициализирует SDK и не трогает clocks/export; код SDK всё ещё входит в bundle.
+Diagnostic/production_like сохраняют прежнюю семантику. Trace queue ограничена 256 spans / batch 64; drop accounting
+и metric cardinality accounting не измерены. Lifecycle port нужно привязать к RN AppState; доставку при suspension/
+termination не обещаем. Export errors sticky, оба shutdown ожидаются, active slot освобождается после cleanup.
+Native frames/input, calibrated clock uncertainty и физический Hermes не подменяются моделированием.
+
+**Проверено:** 13 experiment tests pass, web typecheck/production build pass. Новые 7 cases покрывают missing ports,
+backwards/nonfinite clocks, Hermes presence отдельно от native support и очередь lifecycle/manual/shutdown на deferred
+providers: order, rejection recovery, unsubscribe failure, idempotence. Три mutations (clock monotonicity,
+serialization, release cleanup) пойманы, источники восстановлены; tests/build повторены.
+
+**Packed pipeline/browser:** `tools/native-preflight.mjs` против сохранённого packed Observer
+`/private/tmp/observer-metric-evidence-5m7h73u_/package`. Две overlapping actions после await, раздельные roots/body
+parents, errors/events: diagnostic 4 spans, production_like 2; по 4 metric streams × 3 cumulative checkpoints
+(12 points, не 12 новых observations). Disabled 0 exports; trace HTTP 400 оставляет run incomplete, metric shutdown
+всё равно завершён, session можно открыть заново. Финальные bundle/map/receipts/raw captures:
+`.../T/native-bootstrap-preflight-WdwO61`; SHA bundle
+`375506c7540088860c547b09611f2e1dd2b93325961286e0b678644f076f859f`, lockfile
+`b8dbef12d68657c6785d94a462006e4c7c43b932608c53a49623576bc314aadc`.
+Receipt прямо фиксирует physicalDevice=false, nativeFrames=unavailable, calibration=unverified, queueDrops=null.
+Browser подтвердил timeline/event/error, cumulative count=1/checkpoint, disabled empty и failure incomplete;
+healthy page errors=0, screenshot просмотрен. Ранние pilots выявили нужду в RN Babel transformer и node_modules
+fallback для file dependency; они исправлены. Неверная начальная harness-проверка суммы cumulative checkpoints
+заменена проверкой отдельных streams. Старые frozen web captures/reports не редактировались.
+
+Observer runtime в этом шаге не менялся, монорепо содержит только status/plan/log. Отдельный experiment repo
+содержит код и validation notes, commit `6434d89`; remote у него пока отсутствует. Оба временных preflight
+collectors остановлены после проверки process commands; raw evidence оставлена. npm publish не выполнялся.
+
+**Дальше:** pinned RN/Hermes iOS host + полный Xcode/platform support/signing и физический release run на iPhone.
+Сначала runtime/transport/lifecycle/clock availability gate, затем JS scheduling-lateness/native-driven animation
+и независимо проверенные Instruments/XCTest cadence/hitch evidence. CADisplayLink не объявлять presentation proof;
+T6/T7 и D/E/F acceptance остаются открытыми. Инструкции следующего gate записаны в experiment `native/README.md`.
