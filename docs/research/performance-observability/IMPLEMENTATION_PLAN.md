@@ -28,7 +28,16 @@ the currently supported subset. `coverage: received-requests-only` never asserts
 755 tests pass (4 real-model tests skipped), typecheck/build and four mutation checks pass; packed upstream-SDK
 capture → restart → export → repeated replay and browser API checks pass. This is bounded local archive storage,
 with full-run replay on append/query; no capacity/throughput or physical native claim is made.
-Observe metric collection, new timeline/comparison UI and experimental apps remain unimplemented.
+First T6/T9 increment (`step-performance-hook-experiment`): Observe adds a framework-independent manual
+`performance` entry point with explicit interaction contexts, sync callback-body spans/histograms and three
+collection modes. Next becomes an optional peer for using the independent entry point. A standalone app-local
+React profiling experiment C is implemented in the sibling `performance-observability` Git repo, with a real
+browser SDK/exporter bootstrap, controlled variants, artifact hashes, completion markers, capture and deterministic
+report tooling. 108 Observe tests and four mutations pass; the packed Observe tarball was installed into the
+standalone app and all nine variant/mode combinations passed a three-sample browser smoke. This validates the
+pipeline, not the conference statistical acceptance gate. RN/native bootstrap, bounded instrumentation cost/drop
+accounting, independent-run studies and new timeline/comparison UI remain outstanding. Existing Next-specific
+bootstrap still does not emit these metrics automatically.
 The task descriptions below retain the target architecture and acceptance criteria.
 
 ## Architecture constraints

@@ -3234,3 +3234,55 @@ npm cache; повтор с временным cache прошёл. Публика
 **Дальше:** начать экспериментальное приложение и ручное Observe инструментирование поверх T1–T3, проверить
 Node/browser source contracts, затем ранний RN bootstrap/native feasibility. UI T4/T5 расширять на полученных
 captures, внешние отчёты связывать через manifest. Новых исследовательских спецификаций для старта не требуется.
+
+
+---
+
+## 11 ноября 2026 — первый эксперимент C и ручной Observe helper
+
+**Чтобы** проверять UI на настоящих данных приложения, **делаем** первый вертикальный срез C после merge T3
+(`f977d38`). Ветка монорепозитория `step-performance-hook-experiment` создана от свежего master. Само React-приложение
+находится в ранее созданном отдельном Git repo `../performance-observability`, не в Observer frontend.
+
+**Observe:** новый opt-in `next-observe/performance`, только OTel API, без Next/DOM/React internals и SDK bootstrap.
+Явные interaction handles/context, `measureSync` для callback-body, статический source site, work/interaction
+histograms в секундах. Disabled не получает instruments/clock/spans; diagnostic даёт selected-work spans;
+production_like оставляет interaction spans/events и aggregates. Возврат значений/promise/cleanup identity и
+throw сохраняются. Completion idempotent, late work выполняется без attribution; async context передаётся явно.
+Next peer сделан optional для standalone entry; Next-specific API остаются прежними. Новых зависимостей нет.
+
+**Приложение C:** Vite + React production profiling build, baseline/degraded/optimized вычисляют одинаковый результат
+через 16/240/1 избыточных чистых проходов. useMemo callback обёрнут helper, explicit handle приходит от действия;
+Profiler actualDuration — scalar, commitTime — marker; layout-effect отмечается отдельно. Completion — Profiler
+onRender callback, не paint/INP. StrictMode/compiler off, источники и точные build artifact hashes записаны в run
+manifest. App-local trace/metric SDK/exporters отправляют с run header. Disabled сохраняет независимые harness
+samples без OTel bootstrap/export. Finish останавливает SDK до finalize, отдельно измеряет flush/shutdown; экспортная
+ошибка оставляет run incomplete. `tools/report.mjs` делает детерминированный nearest-rank отчёт из выбранного frozen
+capture, не складывая overlap/cumulative checkpoints и не выдавая actions одного run за независимые runs.
+
+**Проверено:** 108 Observe tests, typecheck/build; 4 mutations (disabled collection, explicit parent, units,
+idempotent completion) пойманы, исходники восстановлены. В приложении workload result test и mutation, меняющая
+optimized result, пройдены; production build/typecheck. Установлен настоящий packed Observe tarball
+`/private/tmp/observe-hook-packed-ie8xbt6s/next-observe-0.4.0.tgz`, затем выполнен browser smoke.
+
+Финальная browser matrix `hook-smoke-1794430016062`: 3 variants × 3 modes × 3 actions; diagnostic = 6 spans/3 metric
+points; production_like = 3 spans/3 points; disabled = 0 OTLP requests/spans/points и 3 независимых samples. Histogram
+count=3, parent context корректен, результаты workload совпадают; console errors=0. Коммитимый
+`tools/browser-smoke.js` воспроизводит проверки через Playwright page. Искусственный HTTP 400 на traces оставил
+run incomplete и показал ошибку; оба SDK shutdown вызываются даже при отказе одного. Первый такой smoke выявил
+неполную cleanup при trace shutdown rejection — исправлено и проверено повторно.
+
+Export/replay реального degraded run сохранил counts/stats; два report outputs побайтно совпадают. Все 18 build
+artifact hashes/sizes сверены с dist. UI просмотрен в браузере. Начальные ошибки smoke (favicon, ранний DOM wait,
+отсутствующая parent-папка export) исправлены; это не ошибки измеряемого workload. Vite нового приложения
+зафиксирован на 8.3.8 после audit; audit установленного app dependency tree = 0. Исходный monorepo Vite не менялся.
+`npm ci --ignore-scripts --offline` проверяет воспроизводимую установку и возвращает file-зависимость после tarball smoke.
+Порт 4318 был занят чужим процессом; тест использовал свободные 51311/51340. Тестовые серверы остановлены.
+
+**Границы:** это первый рабочий source/pipeline slice T6/T9 и C, не завершение conference acceptance или T10.
+Profiling artifact одинаков для modes; stripped/ordinary production comparison, независимые repeated/counterbalanced
+runs, CPU/memory/queue/drop accounting, React attempt→commit identity и native endpoints ещё нужны. Публикация
+npm не выполнялась. Новый experiment repo пока локальный, remote не настроен; TASK.md сохранён как исходный brief.
+
+**Дальше:** независимые repeated runs/report protocol и привязка external harness samples, затем run timeline/
+comparison UI T4/T5 на реальных captures; ранний RN bootstrap/native feasibility. Не переносить сбор в Observer UI.
