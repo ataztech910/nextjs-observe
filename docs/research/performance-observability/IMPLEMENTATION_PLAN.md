@@ -9,7 +9,16 @@ and conservative completeness metadata. Existing query fields and span-only adap
 682 tests pass (4 real-model tests skipped), typecheck/build pass, three mutation checks detect regressions,
 and the packed collector/UI were exercised with an upstream exporter and in a browser.
 Unknown wire fields are not archived; durable raw capture belongs to T3. This does not claim full OTLP conformance.
-T2 Metrics, T3 run capture/replay, new timeline/comparison UI and experimental apps remain unimplemented.
+T1 was committed as `0bf961e` and pushed to `origin/step-performance-otlp-traces`.
+
+T2 implementation update: `step-performance-otlp-metrics` adds Sum/Gauge/explicit Histogram ingestion in JSON/protobuf/gzip,
+an independent metric-store capability, atomic validation/dedup/conflict handling, exact typed point metadata,
+and a paginated raw-point query with conservative per-point quantile bounds/estimates. ExponentialHistogram/Summary
+are explicitly rejected. Cumulative checkpoints/resets and late points stay separate; no cross-point aggregation
+or rate conversion is claimed. Shared validation/protobuf primitives are reused by both signal paths.
+731 tests pass (4 real-model tests skipped), typecheck/build pass, four mutation checks detect regressions;
+a real MeterProvider → upstream serializers → packed receiver smoke and browser API check pass.
+T3 run capture/replay, Observe metric collection, new timeline/comparison UI and experimental apps remain unimplemented.
 The task descriptions below retain the target architecture and acceptance criteria.
 
 ## Architecture constraints

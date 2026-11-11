@@ -102,7 +102,36 @@ legacy `insertSpans()` adapters remain supported and own their deduplication/det
 
 `GET /api/traces/:id` adds `completeness.historyComplete` (false after any storage eviction) and
 `completeness.missingParentCount` (parents absent from currently stored spans). Neither proves all spans arrived.
-Storage is still volatile; Metrics ingestion and capture/replay are separate upcoming changes.
+Storage is still volatile; durable capture/replay is a separate upcoming change.
+
+## OTLP metrics ingestion
+
+`POST /v1/metrics` accepts JSON/protobuf and gzip with the same transport/auth/body limits as traces.
+Supported types are Sum (Counter/UpDownCounter), Gauge and explicit Histogram. Delta/cumulative temporality,
+monotonicity, resource/scope/schema metadata, point attributes, flags, exemplars and exact int64/timestamps are
+preserved. ExponentialHistogram and Summary are rejected with HTTP 400; they are not silently acknowledged.
+Invalid or conflicting batches are rejected atomically. Point limits are configurable through `metricLimits`
+(`maxPoints`: 10,000, `maxDepth`: 32, `maxValues`: 250,000 by default).
+
+A separate `MemoryMetricStorage` retains 100,000 raw points by insertion order by default; the span-only
+`StorageAdapter` stays unchanged. Use `startCollector({ metricStorage })` for another metric adapter or `false`
+to disable metrics (ingest/query then return 503). Identical retained stream/interval retries are idempotent;
+conflicting values or source details return 400. Identity includes resource/scope, metric name/unit/type,
+temporality/monotonicity, point attributes and start/end timestamps. Dedup expires with eviction/restart.
+
+- `GET /api/performance/capabilities`: enabled signals/types.
+- `GET /api/performance/metrics?name&service&fromMs&toMs&limit&offset`: typed points, `total`, `truncated`,
+  `nextOffset` and `historyComplete`. Page limit defaults to 100 (maximum 1,000). The default raw-record page
+  budget is 16 MiB; follow `nextOffset` even when a page contains fewer than `limit` points. Configurable via
+  `new MemoryMetricStorage(maxPoints, maxQueryBytes)`. A single oversized record fails explicitly.
+
+These queries use the same UI Basic auth protection as trace queries; ingest retains x-api-key auth.
+Cumulative checkpoints, reset epochs, out-of-order points and changed bucket schemas remain separate records;
+there is no automatic differencing, rate calculation, cross-point merge or averaging of percentiles.
+Per-point histogram p50/p75/p90/p95/p99 are **approximate**, with bucket lower/upper bounds and the interpolation
+method named in the response. Unbounded buckets without observed min/max have a null estimate; empty,
+aggregate-only or no-recorded-value populations have no quantiles. This is not exact sample percentile data.
+Metric collection in Observe, experiment run partitions/capture and metric visualization are subsequent work.
 
 ## Commands
 

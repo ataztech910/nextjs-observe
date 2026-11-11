@@ -1,4 +1,6 @@
 // OTLP/HTTP collector + query API. Node built-ins only.
+//   POST /v1/metrics                OTLP Sum/Gauge/Histogram ingest (JSON/protobuf, optional gzip)
+//   GET  /api/performance/metrics     raw retained metric points; per-point histogram quantile bounds
 //   POST /v1/traces                 OTLP ingest: application/json or application/x-protobuf, optionally gzip
 //   GET  /health
 //   GET  /api/services
@@ -29,7 +31,12 @@ import { InvestigationBudget, MAX_WAITING } from './budget.js'
 import { gunzipSync } from 'node:zlib'
 import type { CheckRunner } from '../checks/runner.js'
 import { CHECK_RULE, type CheckRule, type ChecksReport } from '../checks/types.js'
-import { decodeOtlpJson, type OtlpTraceRequest } from './decode.js'
+import { decodeOtlpJson } from './decode.js'
+import { decodeOtlpMetrics } from './metric-decode.js'
+import { protobufToOtlpMetrics } from './metric-protobuf.js'
+import { histogramQuantiles } from './metric-query.js'
+import { MemoryMetricStorage } from './metric-storage.js'
+import type { MetricDecodeLimits, MetricStorageAdapter } from './metric-types.js'
 import { encodeOtlpError, otlpErrorStatus } from './otlp-response.js'
 import { OtlpValidationError, type TraceDecodeLimits } from './otlp-validation.js'
 import { protobufToOtlpJson } from './protobuf.js'
@@ -60,6 +67,9 @@ export interface CollectorOptions {
   maxBodyBytes?: number
   /** Bounds decoded traces as well as protobuf parsing. */
   traceLimits?: TraceDecodeLimits
+  metricLimits?: MetricDecodeLimits
+  /** Separate from span storage; false disables metric ingest/query. Default bounded MemoryMetricStorage. */
+  metricStorage?: MetricStorageAdapter | false
   /** Built UI to serve at /. Default: the package's dist/ui. `false` disables it. */
   uiDir?: string | false
   /** Agents answering /api/chat (the CLI always provides them); absent → chat disabled. */
@@ -85,6 +95,7 @@ export interface Collector {
   url: string
   port: number
   storage: StorageAdapter
+  metricStorage?: MetricStorageAdapter
   close(): Promise<void>
 }
 
@@ -155,10 +166,12 @@ const stringParam = (params: URLSearchParams, name: string) => params.get(name) 
 
 export async function startCollector(options: CollectorOptions = {}): Promise<Collector> {
   const storage = options.storage ?? new MemoryStorage()
+  const metricStorage = options.metricStorage === false ? undefined : options.metricStorage ?? new MemoryMetricStorage()
   const maxBodyBytes = options.maxBodyBytes ?? 10 * 1024 * 1024
 
-  async function ingest(req: IncomingMessage, res: ServerResponse) {
+  async function ingest(req: IncomingMessage, res: ServerResponse, signal: 'traces' | 'metrics') {
     if (options.apiKey && req.headers['x-api-key'] !== options.apiKey) throw new HttpError(401, 'invalid x-api-key')
+    if (signal === 'metrics' && !metricStorage) throw new HttpError(503, 'metric ingestion is disabled')
     const type = req.headers['content-type'] ?? ''
     const protobuf = /^application\/(x-)?protobuf(?:;|$)/i.test(type)
     if (!protobuf && !/^application\/json(?:;|$)/i.test(type)) {
@@ -176,19 +189,23 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
         throw new HttpError(tooLarge ? 413 : 400, tooLarge ? `body exceeds ${maxBodyBytes} bytes after gzip` : 'body is not valid gzip')
       }
     }
-    let spans: NormalizedSpan[]
+    let payload: unknown
+    const limits = signal === 'traces' ? options.traceLimits : options.metricLimits
     try {
-      const payload: OtlpTraceRequest = protobuf ? protobufToOtlpJson(body, options.traceLimits) : JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(body))
-      spans = decodeOtlpJson(payload, options.traceLimits)
-    } catch (error) {
-      if (error instanceof OtlpValidationError) throw new HttpError(400, error.message)
-      throw new HttpError(400, protobuf ? 'body is not a valid OTLP protobuf ExportTraceServiceRequest' : 'body is not valid JSON')
+      payload = protobuf
+        ? signal === 'traces' ? protobufToOtlpJson(body, limits) : protobufToOtlpMetrics(body, limits)
+        : JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(body))
+    } catch {
+      throw new HttpError(400, protobuf ? `body is not a valid OTLP protobuf Export${signal === 'traces' ? 'Trace' : 'Metrics'}ServiceRequest` : 'body is not valid JSON')
     }
-    const inserted = storage.insertSpansOnce ? await storage.insertSpansOnce(spans) : await storage.insertSpans(spans).then(() => spans)
-    // A restart of next dev compiles each route on its first request — not an anomaly to investigate.
-    // The observer's own check requests are not traffic: counted, they would keep the "silence" rule from ever
-    // firing and put expected refusals into the error rate.
-    options.detector?.observe(inserted.filter((s) => !storage.isColdStart(s) && !options.checks?.isCheckTrace?.(s.traceId)))
+    if (signal === 'metrics') {
+      await metricStorage!.insertMetrics(decodeOtlpMetrics(payload, options.metricLimits))
+    } else {
+      const spans = decodeOtlpJson(payload, options.traceLimits)
+      const inserted = storage.insertSpansOnce ? await storage.insertSpansOnce(spans) : await storage.insertSpans(spans).then(() => spans)
+      // Cold starts and the observer's own checks are stored, but do not train the anomaly detector.
+      options.detector?.observe(inserted.filter((s) => !storage.isColdStart(s) && !options.checks?.isCheckTrace?.(s.traceId)))
+    }
     // OTLP answers in the request's format; an empty ExportTraceServiceResponse is zero bytes in protobuf.
     if (protobuf) res.writeHead(200, { ...CORS, 'content-type': 'application/x-protobuf' }).end()
     else send(res, 200, {})
@@ -321,7 +338,8 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     const url = new URL(req.url ?? '/', 'http://collector')
     const q = url.searchParams
     if (req.method === 'OPTIONS') return void res.writeHead(204, CORS).end()
-    if (req.method === 'POST' && url.pathname === '/v1/traces') return ingest(req, res)
+    if (req.method === 'POST' && url.pathname === '/v1/traces') return ingest(req, res, 'traces')
+    if (req.method === 'POST' && url.pathname === '/v1/metrics') return ingest(req, res, 'metrics')
     if (options.uiPassword && url.pathname !== '/health' && !passwordMatches(req.headers.authorization, options.uiPassword)) {
       // The browser shows its own login dialog and then sends the password with every request of the page.
       return void res
@@ -340,6 +358,12 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     }
 
     if (url.pathname === '/health') return send(res, 200, { status: 'ok', spans: await storage.count() })
+    if (url.pathname === '/api/performance/capabilities') return send(res, 200, { metrics: Boolean(metricStorage), metricTypes: metricStorage ? ['sum', 'gauge', 'histogram'] : [] })
+    if (url.pathname === '/api/performance/metrics') {
+      if (!metricStorage) throw new HttpError(503, 'metric queries are disabled')
+      const result = await metricStorage.queryMetrics({ name: stringParam(q, 'name'), service: stringParam(q, 'service'), fromMs: numberParam(q, 'fromMs'), toMs: numberParam(q, 'toMs'), limit: numberParam(q, 'limit'), offset: numberParam(q, 'offset') })
+      return send(res, 200, { ...result, quantileMethod: 'explicit-bucket-linear-interpolation', points: result.points.map((m) => ({ ...m, quantiles: m.type === 'histogram' ? histogramQuantiles(m.point) : null })) })
+    }
     if (url.pathname === '/api/services') return send(res, 200, await storage.getServices())
     if (url.pathname === '/api/traces') {
       return send(
@@ -434,10 +458,10 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
   const server: Server = createServer((req, res) => {
     route(req, res).catch((error: unknown) => {
       if (res.headersSent) return
-      const status = error instanceof HttpError ? error.status : 500
-      const message = error instanceof HttpError ? error.message : 'internal error'
-      if (!(error instanceof HttpError)) console.error('[next-observer collector]', error)
-      if (req.method === 'POST' && new URL(req.url ?? '/', 'http://collector').pathname === '/v1/traces') {
+      const status = error instanceof HttpError ? error.status : error instanceof OtlpValidationError ? 400 : 500
+      const message = error instanceof HttpError || error instanceof OtlpValidationError ? error.message : 'internal error'
+      if (!(error instanceof HttpError) && !(error instanceof OtlpValidationError)) console.error('[next-observer collector]', error)
+      if (req.method === 'POST' && /^\/v1\/(traces|metrics)$/.test(new URL(req.url ?? '/', 'http://collector').pathname)) {
         const failure = otlpErrorStatus(status, message)
         if (/^application\/(x-)?protobuf(?:;|$)/i.test(req.headers['content-type'] ?? '')) {
           return void res.writeHead(status, { ...CORS, 'content-type': 'application/x-protobuf' }).end(encodeOtlpError(failure))
@@ -468,6 +492,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     url: `http://${host === '0.0.0.0' ? '127.0.0.1' : host}:${port}`,
     port,
     storage,
+    metricStorage,
     close: () =>
       new Promise((resolve, reject) => {
         clearInterval(detectorTimer)

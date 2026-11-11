@@ -8,3 +8,8 @@ export { computeOverview, type Overview, type OverviewOptions, type RouteRow } f
 export type { ChatEvent, ChatHandler, ChatRequest, EvidenceCard, ProactiveEvent, VersionStats } from './chat.js'
 export type * from './otlp-types.js'
 export { OtlpValidationError, type TraceDecodeLimits } from './otlp-validation.js'
+export type * from './metric-types.js'
+export { decodeOtlpMetrics } from './metric-decode.js'
+export { protobufToOtlpMetrics } from './metric-protobuf.js'
+export { MemoryMetricStorage } from './metric-storage.js'
+export { histogramQuantiles, type HistogramQuantile } from './metric-query.js'
