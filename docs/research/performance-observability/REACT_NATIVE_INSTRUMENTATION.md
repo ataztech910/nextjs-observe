@@ -1,5 +1,9 @@
 # React Native instrumentation research
 
+Latest follow-up (12 November 2026): [actual iOS Release Simulator scheduling workload](IOS_SCHEDULING_SCENARIO.md)
+adds idle/blocked JS timer evidence and a native-driver animation request. Native frame/presentation and physical
+acceptance remain open; earlier inventory/status entries below describe their respective implementation stages.
+
 ## Decision
 
 Do not create a dedicated RN instrumentation package for the conference now. Reuse upstream OTel API/SDK primitives and selected manual instrumentation; design a **minimal explicit RN bootstrap/adapter**, initially app-local in the separately developed experiment app. If reusable distribution is justified after device validation, add an optional `next-observe/react-native` subpath rather than a new SDK. Native frame/startup collection still needs native code or external native benchmark artifacts. A JS-only package cannot supply those measurements.
