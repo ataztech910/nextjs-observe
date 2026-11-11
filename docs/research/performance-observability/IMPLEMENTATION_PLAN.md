@@ -1,5 +1,9 @@
 # Implementation roadmap
 
+Latest follow-up (12 November 2026): [actual iOS Release Simulator scheduling workload](IOS_SCHEDULING_SCENARIO.md)
+adds idle/blocked JS timer evidence and a native-driver animation request. Native frame/presentation and physical
+acceptance remain open; earlier inventory/status entries below describe their respective implementation stages.
+
 This roadmap was created during research; implementation was subsequently authorized by the user.
 
 Implementation update, 2026-11-11: the first T1 increment is implemented on `step-performance-otlp-traces`:

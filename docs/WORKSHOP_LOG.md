@@ -6,6 +6,42 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Текущее продолжение экспериментов — 12 ноября: JS stall при native-driver animation
+
+**Чтобы** подготовить JS-часть эксперимента D на выбранном пользователем Simulator, **добавили** в отдельном
+experiment repo idle-контроль, фиксированную работу 8 000 000 iterations (checksum 3644786808), Animated с
+useNativeDriver:true и ограниченный deadline probe: 20 ms, 16 реальных callbacks, новый deadline после каждого
+callback без catch-up samples. Перед сценарием ждём active AppState до 5 s; background во время замера оставляет
+run incomplete. Native animation, timers и subscriptions очищаются. Synthetic timer response явно не touch latency.
+В Observe/Observer runtime изменений нет: app-owned OTel → отдельный packed collector/storage → прежний UI.
+Подробный контракт и команда: [iOS scheduling scenario](research/performance-observability/IOS_SCHEDULING_SCENARIO.md).
+
+**Проверено:** 27 experiment tests pass, web typecheck/build pass, native Xcode Release build pass. Три focused
+mutations (устаревший deadline, отсутствие animation cleanup, приём histogram count=15) пойманы; исходники
+восстановлены, tests повторены. Первые два пилота выявили inactive state при cold launch; добавлено bounded ожидание
+foreground и повторная проверка после subscribe. Пилоты сохранены отдельно с incomplete diagnostic archives.
+
+Финальная session `reports/ios-scheduling-1794440751483`: один Release artifact, 6 свежих процессов
+idle/blocked × disabled/diagnostic/production_like, все finalized. Disabled 0 OTLP requests; diagnostic 2 spans /
+3 metric points, production_like 1 / 3. В каждом случае 16 external samples; delay histogram count=16, work/window
+count=1. Native UI просит анимацию; её presentation не измеряется. Max timer lateness в этом functional smoke:
+idle 13.3–13.5 ms, blocked 391.8–395.6 ms; synthetic response 13.3–13.5 / 375.2–378.9 ms. Это не repeated benchmark
+и не overhead claim. Raw sample sums / 1000 совпали с OTLP seconds, checksum/source-file/event evidence проверены.
+
+Сохранены source manifest body, native .app snapshot, build/backend hashes и log, raw archives, screenshots и полные
+receipts. Source SHA `70fd85973087dd0a75604f9c865f64316794f2887cb35dc7182d5333b337b0be`, bundle SHA
+`d2770e8e7947d25160dd7626a1caa2aa3c6e9cc38d4d027cb592f0ac32e07c4a`. Временный loopback artifact receiver сохраняет
+samples, включая disabled, отдельно от OTLP и закрывается после smoke. Packed backend прежний, dependencies через
+symlink к установленному graph, не clean install. Browser подтвердил Simulator/source metadata, root/body timeline,
+synthetic response/completion events, histogram count 16 и disabled empty; fresh diagnostic page errors=0.
+Bootstrap regression на том же artifact (`ios-bootstrap-1794440766803`) сохраняет 0/4/2 spans и 0/4/4 metric points.
+Старые web sessions не менялись. Collector/Simulator оставлены для просмотра; новых dependencies нет. Experiment commit `f0a4477` локален: remote
+у repo пока отсутствует. AI review commit hook сообщил timeout/unavailable и сам продолжил fail-open; hooks не обходились.
+
+**Дальше:** независимый iOS cadence/hitch источник при заблокированном JS, с исходными native artifacts и clock
+uncertainty; затем physical Release/signing и повторные matched-device runs. Native frames/input/drop accounting,
+calibrated clocks и D/E/F acceptance остаются открытыми. Requested native driver не является presentation proof.
+
 ---
 
 ## Шаг 0. Что умеет `@vercel/otel` из коробки
