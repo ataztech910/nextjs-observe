@@ -32,6 +32,7 @@ import { gunzipSync } from 'node:zlib'
 import type { CheckRunner } from '../checks/runner.js'
 import { CHECK_RULE, type CheckRule, type ChecksReport } from '../checks/types.js'
 import { decodeOtlpJson } from './decode.js'
+import type { PerformanceReports } from './performance-reports.js'
 import { RunCapture } from './capture.js'
 import { CaptureError, RUN_SCHEMA, type RunMetadata } from './run-manifest.js'
 import { decodeOtlpMetrics } from './metric-decode.js'
@@ -72,6 +73,8 @@ export interface CollectorOptions {
   metricLimits?: MetricDecodeLimits
   /** Opt-in local run archives, independent of bounded live stores. */
   capture?: RunCapture
+  /** Read-only external analysis reports with verified artifact/run associations. */
+  performanceReports?: PerformanceReports
   /** Separate from span storage; false disables metric ingest/query. Default bounded MemoryMetricStorage. */
   metricStorage?: MetricStorageAdapter | false
   /** Built UI to serve at /. Default: the package's dist/ui. `false` disables it. */
@@ -359,11 +362,18 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
         .writeHead(401, { 'www-authenticate': 'Basic realm="next-observer", charset="UTF-8"', 'content-type': 'text/plain; charset=utf-8' })
         .end('next-observer: password required')
     }
-    const runRoute = /^\/api\/performance\/runs(?:\/([^/]+)(?:\/(finalize|spans|metrics))?)?$/.exec(url.pathname)
+    if (req.method === 'GET' && url.pathname === '/api/performance/features') return send(res, 200, { runs: Boolean(options.capture), reports: Boolean(options.performanceReports) })
+    const reportRoute = /^\/api\/performance\/reports(?:\/([^/]+))?$/.exec(url.pathname)
+    if (reportRoute && req.method === 'GET') {
+      if (!options.performanceReports) throw new HttpError(503, 'performance reports are disabled')
+      return send(res, 200, reportRoute[1] ? await options.performanceReports.get(reportRoute[1]) : await options.performanceReports.list())
+    }
+    const runRoute = /^\/api\/performance\/runs(?:\/([^/]+)(?:\/(finalize|spans|metrics|traces)(?:\/([0-9a-f]{32}))?)?)?$/.exec(url.pathname)
     if (runRoute) {
       if (!options.capture) throw new HttpError(503, 'run capture is disabled')
       const id = runRoute[1]
       const action = runRoute[2]
+      if (runRoute[3] && action !== 'traces') throw new HttpError(404, 'not found')
       if (req.method === 'POST' && !id) {
         let input: { runId?: unknown; metadata?: unknown }
         try { input = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(await readBody(req, 64 * 1024))) }
@@ -374,6 +384,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
       if (req.method === 'POST' && id && action === 'finalize') return send(res, 200, await options.capture.finalize(id))
       if (req.method !== 'GET') throw new HttpError(404, 'not found')
       if (!id) return send(res, 200, { runs: await options.capture.list() })
+      if (action === 'traces') return send(res, 200, runRoute[3] ? await options.capture.trace(id, runRoute[3]) : await options.capture.listTraces(id, { limit: numberParam(q, 'limit'), offset: numberParam(q, 'offset') }))
       if (!action) return send(res, 200, (await options.capture.read(id)).manifest)
       if (action === 'spans' || action === 'metrics') {
         let where: unknown = []

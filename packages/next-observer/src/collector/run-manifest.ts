@@ -1,4 +1,6 @@
 import { z } from 'zod'
+import type { RunManifest } from './run-types.js'
+export type { RunManifest, RunMetadata, CaptureRecord } from './run-types.js'
 
 export class CaptureError extends Error {
   constructor(readonly status: number, message: string) { super(message) }
@@ -15,13 +17,11 @@ const metadata = z.strictObject({
   artifacts: z.array(artifact).max(100).default([]),
   incompleteReasons: z.array(text.min(1)).max(100).default([]),
 })
-export type RunMetadata = z.input<typeof metadata>
 export const recordSchema = z.strictObject({
   file: z.string().regex(/^\d{8}-(traces|metrics)-(json|protobuf)-[a-f0-9]{64}\.otlp$/),
   signal: z.enum(['traces', 'metrics']), format: z.enum(['json', 'protobuf']),
   sha256: z.string().regex(/^[a-f0-9]{64}$/), bytes: z.number().int().nonnegative(), observations: z.number().int().nonnegative(),
 })
-export type CaptureRecord = z.infer<typeof recordSchema>
 export const draftSchema = z.strictObject({
   schema: z.literal(RUN_SCHEMA), runId: z.string().regex(RUN_ID), createdAt: z.string().datetime(), metadata,
 })
@@ -31,8 +31,7 @@ export const manifestSchema = draftSchema.extend({
   counts: z.strictObject({ requests: z.number().int().nonnegative(), bytes: z.number().int().nonnegative(), spans: z.number().int().nonnegative(), metricPoints: z.number().int().nonnegative() }),
   coverage: z.literal('received-requests-only'),
   deduplication: z.literal('traceId/spanId:first-wins;metric-stream/interval:identical-only'),
-})
-export type RunManifest = z.infer<typeof manifestSchema>
+}) satisfies z.ZodType<RunManifest>
 export function runId(value: string): string {
   if (!RUN_ID.test(value)) throw new CaptureError(400, 'runId must be 1..80 letters, digits, _ or -, starting with a letter or digit')
   return value

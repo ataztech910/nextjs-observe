@@ -1,5 +1,20 @@
 # Unified performance timeline
 
+## Implemented run timeline increment (11 November 2026)
+
+The Performance page now selects an archived run and trace explicitly, with a shareable `trace` URL parameter.
+`GET /api/performance/runs/:id/traces` paginates the full captured trace index;
+`GET /api/performance/runs/:id/traces/:traceId` verifies/replays the run and bounds detail to 2,000 spans / 16 MiB
+of span JSON, with explicit total/truncation. This projection is separate from live trace retention.
+`ui/src/lib/run-timeline.ts` subtracts exact source nanoseconds before converting relative offsets, traverses
+parentage iteratively, keeps cyclic/orphan components visible and flags missing/duplicate/out-of-span observations.
+The UI has real interval bars, zero-duration markers, selectable events (including coincident timestamps), and raw
+resource/scope/link/attribute details. Profiler scalars remain on events. Source clock alignment is explicitly
+unverified; no causal critical-path highlight is used in this run view. Legacy millisecond precision is labeled.
+
+This is the initial tree/event projection. The track table and calibrated clock behavior below remain proposals;
+metric overlays, native tracks, zoom/pan, virtual rows and build-aware source navigation remain open.
+
 ## Reuse the current viewer
 
 Observer already lays out nested multi-service spans, details/events, operation self time and a critical-path highlight ([trace-page.tsx:25–155](../../../packages/next-observer/ui/src/pages/trace-page.tsx#L25), [waterfall.ts:31](../../../packages/next-observer/ui/src/lib/waterfall.ts#L31)). The geometry is runtime-neutral. Extend this viewer with a track projection and viewport; keep its existing tree mode. There is no demonstrated need to replace it.
