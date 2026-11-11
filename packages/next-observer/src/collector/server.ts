@@ -32,6 +32,8 @@ import { gunzipSync } from 'node:zlib'
 import type { CheckRunner } from '../checks/runner.js'
 import { CHECK_RULE, type CheckRule, type ChecksReport } from '../checks/types.js'
 import { decodeOtlpJson } from './decode.js'
+import { RunCapture } from './capture.js'
+import { CaptureError, RUN_SCHEMA, type RunMetadata } from './run-manifest.js'
 import { decodeOtlpMetrics } from './metric-decode.js'
 import { protobufToOtlpMetrics } from './metric-protobuf.js'
 import { histogramQuantiles } from './metric-query.js'
@@ -68,6 +70,8 @@ export interface CollectorOptions {
   /** Bounds decoded traces as well as protobuf parsing. */
   traceLimits?: TraceDecodeLimits
   metricLimits?: MetricDecodeLimits
+  /** Opt-in local run archives, independent of bounded live stores. */
+  capture?: RunCapture
   /** Separate from span storage; false disables metric ingest/query. Default bounded MemoryMetricStorage. */
   metricStorage?: MetricStorageAdapter | false
   /** Built UI to serve at /. Default: the package's dist/ui. `false` disables it. */
@@ -121,7 +125,7 @@ function passwordMatches(header: string | undefined, password: string): boolean 
 const CORS = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'GET, POST, OPTIONS',
-  'access-control-allow-headers': 'content-type, content-encoding, x-api-key',
+  'access-control-allow-headers': 'content-type, content-encoding, x-api-key, x-observe-run-id',
 }
 
 function send(res: ServerResponse, status: number, body: unknown) {
@@ -198,7 +202,16 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     } catch {
       throw new HttpError(400, protobuf ? `body is not a valid OTLP protobuf Export${signal === 'traces' ? 'Trace' : 'Metrics'}ServiceRequest` : 'body is not valid JSON')
     }
-    if (signal === 'metrics') {
+    const run = req.headers['x-observe-run-id']
+    if (run !== undefined) {
+      if (!options.capture) throw new HttpError(503, 'run capture is disabled')
+      if (typeof run !== 'string') throw new HttpError(400, 'invalid x-observe-run-id')
+      // Apply configured protocol limits before the archive's independent replay validation.
+      if (signal === 'metrics') decodeOtlpMetrics(payload, options.metricLimits)
+      else decodeOtlpJson(payload, options.traceLimits)
+      // Tagged requests belong exclusively to this run, never to another run or the live detector.
+      await options.capture.ingest(run, signal, protobuf ? 'protobuf' : 'json', body)
+    } else if (signal === 'metrics') {
       await metricStorage!.insertMetrics(decodeOtlpMetrics(payload, options.metricLimits))
     } else {
       const spans = decodeOtlpJson(payload, options.traceLimits)
@@ -346,6 +359,30 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
         .writeHead(401, { 'www-authenticate': 'Basic realm="next-observer", charset="UTF-8"', 'content-type': 'text/plain; charset=utf-8' })
         .end('next-observer: password required')
     }
+    const runRoute = /^\/api\/performance\/runs(?:\/([^/]+)(?:\/(finalize|spans|metrics))?)?$/.exec(url.pathname)
+    if (runRoute) {
+      if (!options.capture) throw new HttpError(503, 'run capture is disabled')
+      const id = runRoute[1]
+      const action = runRoute[2]
+      if (req.method === 'POST' && !id) {
+        let input: { runId?: unknown; metadata?: unknown }
+        try { input = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(await readBody(req, 64 * 1024))) }
+        catch (e) { if (e instanceof HttpError) throw e; throw new HttpError(400, 'body is not valid JSON') }
+        if (!input || typeof input.runId !== 'string') throw new HttpError(400, 'runId is required')
+        return send(res, 201, await options.capture.create(input.runId, input.metadata as RunMetadata))
+      }
+      if (req.method === 'POST' && id && action === 'finalize') return send(res, 200, await options.capture.finalize(id))
+      if (req.method !== 'GET') throw new HttpError(404, 'not found')
+      if (!id) return send(res, 200, { runs: await options.capture.list() })
+      if (!action) return send(res, 200, (await options.capture.read(id)).manifest)
+      if (action === 'spans' || action === 'metrics') {
+        let where: unknown = []
+        try { if (q.has('where')) where = JSON.parse(q.get('where')!) }
+        catch { throw new HttpError(400, 'where is not valid JSON') }
+        return send(res, 200, await options.capture.query(id, action === 'spans' ? 'traces' : 'metrics', { where, limit: numberParam(q, 'limit'), offset: numberParam(q, 'offset') }))
+      }
+      throw new HttpError(404, 'not found')
+    }
     if (req.method === 'POST' && url.pathname === '/api/chat') return chat(req, res)
     if (req.method === 'POST' && url.pathname === '/api/chat/stop') return stopProactive(req, res)
     if (req.method !== 'GET') throw new HttpError(404, 'not found')
@@ -358,7 +395,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
     }
 
     if (url.pathname === '/health') return send(res, 200, { status: 'ok', spans: await storage.count() })
-    if (url.pathname === '/api/performance/capabilities') return send(res, 200, { metrics: Boolean(metricStorage), metricTypes: metricStorage ? ['sum', 'gauge', 'histogram'] : [] })
+    if (url.pathname === '/api/performance/capabilities') return send(res, 200, { metrics: Boolean(metricStorage), metricTypes: metricStorage ? ['sum', 'gauge', 'histogram'] : [], ...(options.capture ? { runs: { schema: RUN_SCHEMA, capture: true } } : {}) })
     if (url.pathname === '/api/performance/metrics') {
       if (!metricStorage) throw new HttpError(503, 'metric queries are disabled')
       const result = await metricStorage.queryMetrics({ name: stringParam(q, 'name'), service: stringParam(q, 'service'), fromMs: numberParam(q, 'fromMs'), toMs: numberParam(q, 'toMs'), limit: numberParam(q, 'limit'), offset: numberParam(q, 'offset') })
@@ -458,9 +495,9 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
   const server: Server = createServer((req, res) => {
     route(req, res).catch((error: unknown) => {
       if (res.headersSent) return
-      const status = error instanceof HttpError ? error.status : error instanceof OtlpValidationError ? 400 : 500
-      const message = error instanceof HttpError || error instanceof OtlpValidationError ? error.message : 'internal error'
-      if (!(error instanceof HttpError) && !(error instanceof OtlpValidationError)) console.error('[next-observer collector]', error)
+      const status = error instanceof HttpError || error instanceof CaptureError ? error.status : error instanceof OtlpValidationError ? 400 : 500
+      const message = error instanceof HttpError || error instanceof CaptureError || error instanceof OtlpValidationError ? error.message : 'internal error'
+      if (!(error instanceof HttpError) && !(error instanceof CaptureError) && !(error instanceof OtlpValidationError)) console.error('[next-observer collector]', error)
       if (req.method === 'POST' && /^\/v1\/(traces|metrics)$/.test(new URL(req.url ?? '/', 'http://collector').pathname)) {
         const failure = otlpErrorStatus(status, message)
         if (/^application\/(x-)?protobuf(?:;|$)/i.test(req.headers['content-type'] ?? '')) {

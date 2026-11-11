@@ -13,3 +13,7 @@ export { decodeOtlpMetrics } from './metric-decode.js'
 export { protobufToOtlpMetrics } from './metric-protobuf.js'
 export { MemoryMetricStorage } from './metric-storage.js'
 export { histogramQuantiles, type HistogramQuantile } from './metric-query.js'
+
+export { RunCapture, replayRun, hashArtifact, type CaptureOptions, type ReplayedRun } from './capture.js'
+export { CaptureError, RUN_SCHEMA, type RunManifest, type RunMetadata } from './run-manifest.js'
+export { RUN_ATTRIBUTE_ALLOWLIST, type RunPredicate } from './run-predicates.js'
