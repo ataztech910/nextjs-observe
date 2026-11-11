@@ -3336,3 +3336,41 @@ Healthy navigation после проверки — console errors=0; ошибк�
 **Дальше:** richer run timeline/tracks, metric bucket/exemplar navigation и дальнейшие экспериментальные источники;
 RN/native feasibility остаётся ранним отдельным шагом. Это первый UI increment T4/T5/T8, без заявления о прохождении
 conference release gate, fleet-scale throughput, causal critical path или статистической значимости различий.
+
+### 11 ноября — Performance run timeline: action → hook и исходные события
+
+В той же ветке `step-performance-runs-ui` продолжен первый UI increment: выбранный archived run теперь имеет
+явный trace selector с `trace` в URL, дерево interval spans, кликабельные event markers и raw source details.
+Показываются все captured interactions, включая warmup; disabled-run не получает выдуманную шкалу из external samples.
+Profiler actualDuration/commitTime остаются атрибутами события. Parentage не объявляется causal critical path;
+выравнивание Unix clocks разных источников явно не верифицировано. Observe instrumentation не менялась.
+
+**Backend:** run-isolated `GET /api/performance/runs/:id/traces` строит полный индекс после integrity replay,
+пагинирует по 1–1000 traces; detail `/traces/:traceId` ограничен 2,000 spans / 16 MiB span JSON с total/truncated
+и missing-parent count in view. Он не использует legacy recursive waterfall sorting, поэтому циклы не зависают
+и не исчезают. UI Basic auth и run isolation сохранены. При integrity-refetch error cached timeline скрывается.
+
+**Layout:** exact source nanoseconds вычитаются до Number conversion, legacy millisecond projection явно подписана.
+Нулевые spans остаются нулевыми (point marker), orphan/cyclic components видны; duplicates, missing parents и
+out-of-span events считаются явно. Traversal итеративный, проверена цепочка 12,000 spans. Это tree/event projection,
+без calibrated native tracks, metric overlay, zoom/virtualization и без закрытия conference release gate.
+
+**Проверено:** 773 tests passed, 4 skipped; backend/UI typecheck и production build. Новые 9 tests покрывают 101 ns,
+exact events, zero/legacy/empty, cycles/orphans/deep chains/cross-trace IDs, внеинтервальные events, full index,
+run isolation, pagination/detail truncation и HTTP auth. Четыре mutations пойманы: Number conversion до subtraction,
+пропуск cyclic components, удаление events, отключение traceId filter. Mutation runs исключали HTTP test, чтобы
+sandbox port failures не давали ложного результата; все источники восстановлены, focused suite и build повторены.
+
+**Packed/browser:** финальный `/private/tmp/observer-timeline-final-8jp22njo/package`, расширенный
+`e2e/performance-runs.mjs` на frozen hook-repeats-03: 27 runs / 9 groups, diagnostic 7 traces × 2 spans,
+parent-child, commit events и exact source timestamps; disabled — 0 traces. В браузере проверены 2 bars / 2 events,
+выбор обоих совпадающих timestamps, span resource/source details, URL/reload, disabled external 5 measured +
+2 excluded warmup, скрытие cached timeline при намеренном HTTP 400 и восстановление после Refresh.
+Browser обнаружил перекрытие layout-effect/commit markers; исправлено вертикальными event lanes без смещения
+временной позиции, оба события затем выбраны обычными pointer clicks. Screenshot просмотрен. Намеренные 400 и
+первоначальный неверный тестовый run ID дали ожидаемые console errors; успешная навигация не дала page errors.
+Tarball dependencies подключены symlink к установленным node_modules; clean install не проверялся.
+Оба временных packed smoke сервера остановлены после проверки process command; npm publish не выполнялся.
+
+**Дальше:** metric bucket/exemplar navigation и дальнейшие источники для экспериментов; calibrated tracks и ранняя
+RN/native feasibility остаются отдельными незакрытыми пунктами плана.

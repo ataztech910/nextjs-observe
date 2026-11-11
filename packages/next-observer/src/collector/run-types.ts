@@ -16,3 +16,9 @@ export interface RunManifest {
   coverage: 'received-requests-only'
   deduplication: 'traceId/spanId:first-wins;metric-stream/interval:identical-only'
 }
+export interface RunTraceSummary { traceId: string; name: string; spanCount: number; errorCount: number; missingParentCount: number; startTimeMs: number; durationMs: number; services: string[] }
+export interface RunTraceDetail {
+  traceId: string; spans: import('./types.js').NormalizedSpan[]; totalSpans: number; truncated: boolean
+  missingParentCountInView: number
+  run: Omit<RunManifest, 'records'>
+}

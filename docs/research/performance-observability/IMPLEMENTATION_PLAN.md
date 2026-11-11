@@ -118,3 +118,11 @@ Measure receiver/query heap and latency under declared span sizes/metric cardina
 ## Conference release gate
 
 A–F each satisfies its [acceptance criteria](EXPERIMENT_SUPPORT.md), replay produces the same counts/statistics, no metric or link silently disappears, all displayed endpoints/sources/quantile approximations are explicit, and raw observations survive live eviction/restart via capture. Physical-device claims have platform-specific validation. Production suitability remains conditional on measured overhead and operational limits; the conference prototype is not evidence of fleet-scale readiness.
+
+### Run timeline increment — 11 November 2026
+
+T4/T5 now also have archive-isolated paginated trace selection, exact-relative-nanosecond span geometry,
+selectable commit/event markers and raw resource/scope/link details on the Performance page. Partial traces,
+missing parents/cycles, legacy precision and unverified cross-source clock alignment are explicit. Profiler scalars
+are not converted into intervals. Metric overlays/exemplar navigation, calibrated runtime tracks, zoom and
+virtualization remain open; this increment does not close the conference release gate.

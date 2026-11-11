@@ -19,3 +19,5 @@ export { CaptureError, RUN_SCHEMA, type RunManifest, type RunMetadata } from './
 export { RUN_ATTRIBUTE_ALLOWLIST, type RunPredicate } from './run-predicates.js'
 
 export { PerformanceReports, type PerformanceReport, type PerformanceReportHeader, type PerformanceReportList } from './performance-reports.js'
+
+export type { RunTraceSummary, RunTraceDetail } from './run-types.js'

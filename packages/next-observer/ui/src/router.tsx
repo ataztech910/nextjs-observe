@@ -122,7 +122,7 @@ const chatRoute = createRoute({
   component: ChatPage,
 })
 
-const performanceRoute = createRoute({ getParentRoute: () => rootRoute, path: '/performance', validateSearch: (search: Record<string, unknown>): { run?: string; report?: string } => ({ run: typeof search.run === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(search.run) ? search.run : undefined, report: typeof search.report === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(search.report) ? search.report : undefined }), component: PerformancePage })
+const performanceRoute = createRoute({ getParentRoute: () => rootRoute, path: '/performance', validateSearch: (search: Record<string, unknown>): { run?: string; report?: string; trace?: string } => ({ trace: typeof search.trace === 'string' && /^[0-9a-f]{32}$/.test(search.trace) ? search.trace : undefined, run: typeof search.run === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(search.run) ? search.run : undefined, report: typeof search.report === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(search.report) ? search.report : undefined }), component: PerformancePage })
 
 export const router = createRouter({ routeTree: rootRoute.addChildren([indexRoute, performanceRoute, errorsRoute, checksRoute, tracesRoute, traceRoute, operationRoute, chatRoute]) })
 

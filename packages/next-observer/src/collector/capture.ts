@@ -3,6 +3,8 @@ import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { copyFile, mkdir, open, readdir, rename, rm, stat, unlink } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
+import { summarizeRunTraces } from './run-traces.js'
+import type { RunTraceDetail } from './run-types.js'
 import { decodeOtlpJson } from './decode.js'
 import { decodeOtlpMetrics } from './metric-decode.js'
 import { MemoryStorage } from './memory-storage.js'
@@ -239,6 +241,32 @@ export class RunCapture {
         await syncDirectory(dirname(target))
       } finally { await rm(temporary, { recursive: true, force: true }) }
     })
+  }
+  async listTraces(id: string, input: { limit?: number; offset?: number } = {}) {
+    const limit = input.limit ?? 100, offset = input.offset ?? 0
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000 || !Number.isSafeInteger(offset) || offset < 0) throw new CaptureError(400, 'invalid trace page')
+    const state = await this.read(id)
+    const traces = summarizeRunTraces(await state.storage.querySpans({ limit: this.bound.maxObservations }))
+    const page = traces.slice(offset, offset + limit)
+    return { traces: page, total: traces.length, nextOffset: offset + page.length < traces.length ? offset + page.length : null }
+  }
+  async trace(id: string, traceId: string): Promise<RunTraceDetail> {
+    if (!/^[a-f0-9]{32}$/.test(traceId)) throw new CaptureError(400, 'invalid trace ID')
+    const state = await this.read(id)
+    // Avoid legacy waterfall sorting/depth recursion here: malformed cycles must remain visible to the new viewer.
+    const all = (await state.storage.querySpans({ limit: this.bound.maxObservations })).filter((s) => s.traceId === traceId)
+    if (!all.length) throw new CaptureError(404, 'trace not captured in this run')
+    const spans: NormalizedSpan[] = []
+    let bytes = 0
+    for (const span of all) {
+      const size = Buffer.byteLength(JSON.stringify(span))
+      if (size > 16 * 1024 * 1024) throw new CaptureError(413, 'span exceeds timeline response budget')
+      if (spans.length === 2000 || bytes + size > 16 * 1024 * 1024) break
+      spans.push(span); bytes += size
+    }
+    const ids = new Set(spans.map((s) => s.spanId))
+    const { records: _records, ...run } = state.manifest
+    return { traceId, spans, totalSpans: all.length, truncated: spans.length < all.length, missingParentCountInView: spans.filter((s) => s.parentSpanId && !ids.has(s.parentSpanId)).length, run }
   }
   async query(id: string, signal: 'traces' | 'metrics', input: { where?: unknown; limit?: number; offset?: number } = {}) {
     const predicates = validatePredicates(input.where ?? [])

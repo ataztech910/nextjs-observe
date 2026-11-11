@@ -24,11 +24,20 @@ try {
     assert.ok(disabled.samples.count > 0)
     assert.equal((await get(`/api/performance/runs/${disabled.runId}/spans`)).total, 0)
     assert.equal((await get(`/api/performance/runs/${disabled.runId}/metrics`)).total, 0)
+    assert.equal((await get(`/api/performance/runs/${disabled.runId}/traces`)).total, 0)
   }
   const selected = report.runs.find((r) => r.mode === 'diagnostic')
   if (selected) {
     assert.equal((await get(`/api/performance/runs/${selected.runId}/spans`)).total, (selected.warmup + selected.samples.count) * 2)
     assert.ok((await get(`/api/performance/runs/${selected.runId}/metrics`)).total > 0)
+    const index = await get(`/api/performance/runs/${selected.runId}/traces`)
+    assert.equal(index.total, selected.warmup + selected.samples.count)
+    const trace = await get(`/api/performance/runs/${selected.runId}/traces/${index.traces[0].traceId}`)
+    assert.equal(trace.totalSpans, 2)
+    assert.equal(trace.truncated, false)
+    assert.equal(trace.spans.filter((span) => span.parentSpanId).length, 1)
+    assert.ok(trace.spans.some((span) => span.events.some((event) => /commit/.test(event.name))))
+    assert.ok(trace.spans.every((span) => span.startTimeUnixNano && span.endTimeUnixNano))
   }
   const ui = await fetch(collector.url + '/performance')
   assert.equal(ui.status, 200)

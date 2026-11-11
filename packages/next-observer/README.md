@@ -320,6 +320,8 @@ Run management/query uses the configured UI Basic auth; OTLP ingest uses `x-api-
 | `GET /api/performance/runs/:id` | Versioned manifest, exact raw request hashes/inventory and deduplicated span/point counts |
 | `GET /api/performance/runs/:id/spans` | Raw normalized observations, `total`, `truncated`, `nextOffset`, run header |
 | `GET /api/performance/runs/:id/metrics` | Typed metric observations with the same pagination contract |
+| `GET /api/performance/runs/:id/traces` | Whole-archive trace index, `limit` 1–1000, `offset`, `total`, `nextOffset` |
+| `GET /api/performance/runs/:id/traces/:traceId` | Run-isolated spans, `totalSpans`, `truncated`, missing parents in view; detail bounded to 2,000 spans / 16 MiB span JSON |
 | `POST /api/performance/runs/:id/finalize` | Atomically publish the frozen manifest; repeated finalization returns the same manifest |
 
 Both observation endpoints accept `limit` (1–1000, default 100), `offset` (default 0), and JSON-encoded `where`:
@@ -390,6 +392,15 @@ ranges, measured action counts, warmup exclusions and declared endpoint/method/l
 therefore be shown for disabled runs with no OTLP points. Raw spans/metric populations retain warmup; they are not
 presented as the post-warmup statistical sample. Cumulative metric checkpoints remain separate; per-point histogram
 estimates are marked approximate and use the source unit. Reports are hidden if a refresh fails verification.
+
+The selected run also has an interaction timeline with explicit trace selection (`trace` URL parameter), parent/child
+spans, selectable event markers and raw resource/scope/link details. Coincident events use separate vertical lanes
+without shifting their timestamps. Source nanoseconds are subtracted before conversion to relative milliseconds;
+legacy spans explicitly retain millisecond precision. Zero-duration spans use point markers. Missing parents, cycles,
+out-of-span events and bounded partial views are reported. All captured traces, including warmup, remain navigable.
+Profiler work durations stay event attributes. Recorded Unix time alignment across sources remains unverified;
+parentage does not establish a causal critical path. This increment does not implement calibrated native tracks,
+metric overlays, zoom or virtualization.
 
 `PerformanceReports(directory, capture)` reads `<id>.json` and hash-addressed `artifacts/<sha256>` files. Its contract
 is exported as `PerformanceReport`: report ID/title, endpoint, analysis unit/algorithm, protocol reference, per-run

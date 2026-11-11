@@ -368,11 +368,12 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
       if (!options.performanceReports) throw new HttpError(503, 'performance reports are disabled')
       return send(res, 200, reportRoute[1] ? await options.performanceReports.get(reportRoute[1]) : await options.performanceReports.list())
     }
-    const runRoute = /^\/api\/performance\/runs(?:\/([^/]+)(?:\/(finalize|spans|metrics))?)?$/.exec(url.pathname)
+    const runRoute = /^\/api\/performance\/runs(?:\/([^/]+)(?:\/(finalize|spans|metrics|traces)(?:\/([0-9a-f]{32}))?)?)?$/.exec(url.pathname)
     if (runRoute) {
       if (!options.capture) throw new HttpError(503, 'run capture is disabled')
       const id = runRoute[1]
       const action = runRoute[2]
+      if (runRoute[3] && action !== 'traces') throw new HttpError(404, 'not found')
       if (req.method === 'POST' && !id) {
         let input: { runId?: unknown; metadata?: unknown }
         try { input = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(await readBody(req, 64 * 1024))) }
@@ -383,6 +384,7 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
       if (req.method === 'POST' && id && action === 'finalize') return send(res, 200, await options.capture.finalize(id))
       if (req.method !== 'GET') throw new HttpError(404, 'not found')
       if (!id) return send(res, 200, { runs: await options.capture.list() })
+      if (action === 'traces') return send(res, 200, runRoute[3] ? await options.capture.trace(id, runRoute[3]) : await options.capture.listTraces(id, { limit: numberParam(q, 'limit'), offset: numberParam(q, 'offset') }))
       if (!action) return send(res, 200, (await options.capture.read(id)).manifest)
       if (action === 'spans' || action === 'metrics') {
         let where: unknown = []

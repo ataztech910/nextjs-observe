@@ -1,4 +1,4 @@
-import type { RunManifest } from '../../src/collector/run-types'
+import type { RunManifest, RunTraceSummary, RunTraceDetail } from '../../src/collector/run-types'
 import type { PerformanceReport, PerformanceReportList } from '../../src/collector/performance-report-types'
 import type { MetricObservation } from '../../src/collector/metric-types'
 // Types come straight from the collector, so the UI can't drift from the API.
@@ -41,6 +41,8 @@ export const api = {
   performanceFeatures: () => get<{ runs: boolean; reports: boolean }>('/api/performance/features'),
   performanceRuns: () => get<{ runs: Omit<RunManifest, 'records'>[] }>('/api/performance/runs'),
   performanceRun: (id: string) => get<RunManifest>(`/api/performance/runs/${encodeURIComponent(id)}`),
+  performanceTraceList: (id: string, offset: number) => get<{ traces: RunTraceSummary[]; total: number; nextOffset: number | null }>(`/api/performance/runs/${encodeURIComponent(id)}/traces?limit=100&offset=${offset}`),
+  performanceTrace: (id: string, trace: string) => get<RunTraceDetail>(`/api/performance/runs/${encodeURIComponent(id)}/traces/${trace}`),
   performanceReports: () => get<PerformanceReportList>('/api/performance/reports'),
   performanceReport: (id: string) => get<PerformanceReport>(`/api/performance/reports/${encodeURIComponent(id)}`),
   performanceObservations: (id: string, signal: 'spans' | 'metrics', offset: number) => get<{ observations: (NormalizedSpan | MetricObservation)[]; total: number; nextOffset: number | null; truncated: boolean }>(`/api/performance/runs/${encodeURIComponent(id)}/${signal}?limit=50&offset=${offset}`),
