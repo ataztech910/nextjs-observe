@@ -1,8 +1,19 @@
+import type { OtlpSpanData } from './otlp-types.js'
+
 export type AttributeValue = string | number | boolean | null | AttributeValue[] | { [key: string]: AttributeValue }
 export type Attributes = Record<string, AttributeValue>
 
 export type SpanKindName = 'unspecified' | 'internal' | 'server' | 'client' | 'producer' | 'consumer'
 export type SpanStatusName = 'unset' | 'ok' | 'error'
+
+export interface SpanLink {
+  traceId: string
+  spanId: string
+  traceState: string
+  flags: number
+  attributes: Attributes
+  droppedAttributesCount: number
+}
 
 export interface SpanEvent {
   name: string
@@ -28,6 +39,12 @@ export interface NormalizedSpan {
   attributes: Attributes
   resource: Attributes
   events: SpanEvent[]
+  /** Exact source timestamps, independent of the legacy epoch-ms projection. */
+  startTimeUnixNano?: string
+  endTimeUnixNano?: string
+  links?: SpanLink[]
+  /** Typed supported OTLP fields, including scope/schema, dropped counts, flags and int64/bytes tags. */
+  otlp?: OtlpSpanData
 }
 
 export interface TraceFilter {
@@ -118,6 +135,8 @@ export interface ServiceInfo {
 
 export interface StorageAdapter {
   insertSpans(spans: NormalizedSpan[]): Promise<void>
+  /** Optional atomic deduplicating insert; returns only newly accepted spans for detector input. */
+  insertSpansOnce?(spans: NormalizedSpan[]): Promise<NormalizedSpan[]>
   queryTraces(filter: TraceFilter): Promise<TraceSummary[]>
   getTrace(traceId: string): Promise<NormalizedSpan[]>
   getOperationStats(filter: OperationFilter): Promise<OperationStats[]>

@@ -2,37 +2,9 @@
 // OTLP/JSON specifics: ids are hex strings, 64-bit ints (times, intValue) may come as strings, enums as numbers.
 import type { Attributes, AttributeValue, NormalizedSpan, SpanKindName, SpanStatusName } from './types.js'
 
-interface OtlpAnyValue {
-  stringValue?: string
-  boolValue?: boolean
-  intValue?: string | number
-  doubleValue?: number
-  bytesValue?: string
-  arrayValue?: { values?: OtlpAnyValue[] }
-  kvlistValue?: { values?: OtlpKeyValue[] }
-}
-interface OtlpKeyValue {
-  key: string
-  value?: OtlpAnyValue
-}
-interface OtlpSpan {
-  traceId: string
-  spanId: string
-  parentSpanId?: string
-  name: string
-  kind?: number
-  startTimeUnixNano: string | number
-  endTimeUnixNano: string | number
-  attributes?: OtlpKeyValue[]
-  events?: { name: string; timeUnixNano: string | number; attributes?: OtlpKeyValue[] }[]
-  status?: { code?: number; message?: string }
-}
-export interface OtlpTraceRequest {
-  resourceSpans?: {
-    resource?: { attributes?: OtlpKeyValue[] }
-    scopeSpans?: { scope?: { name?: string }; spans?: OtlpSpan[] }[]
-  }[]
-}
+import type { OtlpAnyValue, OtlpKeyValue, OtlpTraceRequest } from './otlp-types.js'
+import { validateOtlpTraceRequest, type TraceDecodeLimits } from './otlp-validation.js'
+export type { OtlpTraceRequest } from './otlp-types.js'
 
 const KINDS: SpanKindName[] = ['unspecified', 'internal', 'server', 'client', 'producer', 'consumer']
 const STATUSES: SpanStatusName[] = ['unset', 'ok', 'error']
@@ -41,7 +13,10 @@ function value(v: OtlpAnyValue | undefined): AttributeValue {
   if (!v) return null
   if (v.stringValue !== undefined) return v.stringValue
   if (v.boolValue !== undefined) return v.boolValue
-  if (v.intValue !== undefined) return Number(v.intValue)
+  if (v.intValue !== undefined) {
+    const n = Number(v.intValue)
+    return Number.isSafeInteger(n) ? n : String(v.intValue)
+  }
   if (v.doubleValue !== undefined) return v.doubleValue
   if (v.bytesValue !== undefined) return v.bytesValue
   if (v.arrayValue) return (v.arrayValue.values ?? []).map(value)
@@ -56,7 +31,8 @@ function attributes(list: OtlpKeyValue[] = []): Attributes {
 // BigInt keeps nanosecond precision until the final division; Number(ns) would lose it.
 const nanosToMs = (ns: string | number) => Number(BigInt(ns) / 1000n) / 1000
 
-export function decodeOtlpJson(request: OtlpTraceRequest): NormalizedSpan[] {
+export function decodeOtlpJson(input: unknown, limits?: TraceDecodeLimits): NormalizedSpan[] {
+  const request: OtlpTraceRequest = validateOtlpTraceRequest(input, limits)
   const spans: NormalizedSpan[] = []
   for (const rs of request.resourceSpans ?? []) {
     const resource = attributes(rs.resource?.attributes)
@@ -68,6 +44,10 @@ export function decodeOtlpJson(request: OtlpTraceRequest): NormalizedSpan[] {
         const durationNs = BigInt(s.endTimeUnixNano) - BigInt(s.startTimeUnixNano)
         spans.push({
           traceId: s.traceId,
+          startTimeUnixNano: String(s.startTimeUnixNano),
+          endTimeUnixNano: String(s.endTimeUnixNano),
+          links: (s.links ?? []).map((l) => ({ traceId: l.traceId, spanId: l.spanId, traceState: l.traceState ?? '', flags: l.flags ?? 0, attributes: attributes(l.attributes), droppedAttributesCount: l.droppedAttributesCount ?? 0 })),
+          otlp: { schemaVersion: 1, resource: rs.resource!, resourceSchemaUrl: rs.schemaUrl!, scope: ss.scope!, scopeSchemaUrl: ss.schemaUrl!, span: s },
           spanId: s.spanId,
           parentSpanId: s.parentSpanId || null,
           name: s.name,

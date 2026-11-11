@@ -80,6 +80,30 @@ marked), no Docker and no external backend, and it accepts OTLP/HTTP from any Op
 
 Requires Node.js 22.18+.
 
+## OTLP trace ingestion
+
+The backend receiver accepts `POST /v1/traces` as OTLP/HTTP JSON or protobuf, optionally gzip-compressed.
+The existing span/query fields remain available. Decoded spans also expose `startTimeUnixNano` / `endTimeUnixNano`
+as exact decimal strings, normalized `links`, and an `otlp` object (`schemaVersion: 1`) containing supported typed
+source fields: attributes (including int64/bytes), resource/scope/schema metadata, flags, trace state, events, links
+and dropped counts. Integers outside JavaScript's safe range are strings in the display attribute projection too.
+This supported-field representation is not a byte-for-byte archive: unknown protobuf/JSON fields are not retained.
+
+Invalid trace batches are rejected atomically with HTTP 400 before insertion. Empty OTLP requests remain valid.
+Failures return OTLP Status code/message in the request encoding; JSON also retains the legacy `error` property.
+Defaults are 10 MiB before/after decompression, 10,000 spans, nesting depth 32 and 250,000 decoded values/wire fields.
+Programmatic `startCollector({ traceLimits: { maxSpans, maxDepth, maxValues } })` adjusts the decoded limits.
+Counts/depth apply independently; a request can hit the value limit before its span-count limit.
+
+MemoryStorage deduplicates `(traceId, spanId)` atomically: the first accepted observation wins while retained.
+Retries do not inflate stats or detector input. Eviction removes the dedup identity, so replay after eviction can be
+accepted again. Custom storage adapters can implement optional `insertSpansOnce()` to provide the same contract;
+legacy `insertSpans()` adapters remain supported and own their deduplication/detector-input behavior.
+
+`GET /api/traces/:id` adds `completeness.historyComplete` (false after any storage eviction) and
+`completeness.missingParentCount` (parents absent from currently stored spans). Neither proves all spans arrived.
+Storage is still volatile; Metrics ingestion and capture/replay are separate upcoming changes.
+
 ## Commands
 
 ```bash

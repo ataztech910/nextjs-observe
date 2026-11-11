@@ -30,6 +30,8 @@ import { gunzipSync } from 'node:zlib'
 import type { CheckRunner } from '../checks/runner.js'
 import { CHECK_RULE, type CheckRule, type ChecksReport } from '../checks/types.js'
 import { decodeOtlpJson, type OtlpTraceRequest } from './decode.js'
+import { encodeOtlpError, otlpErrorStatus } from './otlp-response.js'
+import { OtlpValidationError, type TraceDecodeLimits } from './otlp-validation.js'
 import { protobufToOtlpJson } from './protobuf.js'
 import { computeDefects } from './defects.js'
 import { MemoryStorage } from './memory-storage.js'
@@ -56,6 +58,8 @@ export interface CollectorOptions {
   uiPassword?: string
   /** Default 10 MB. */
   maxBodyBytes?: number
+  /** Bounds decoded traces as well as protobuf parsing. */
+  traceLimits?: TraceDecodeLimits
   /** Built UI to serve at /. Default: the package's dist/ui. `false` disables it. */
   uiDir?: string | false
   /** Agents answering /api/chat (the CLI always provides them); absent → chat disabled. */
@@ -156,8 +160,8 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
   async function ingest(req: IncomingMessage, res: ServerResponse) {
     if (options.apiKey && req.headers['x-api-key'] !== options.apiKey) throw new HttpError(401, 'invalid x-api-key')
     const type = req.headers['content-type'] ?? ''
-    const protobuf = /application\/(x-)?protobuf/.test(type)
-    if (!protobuf && !type.includes('application/json')) {
+    const protobuf = /^application\/(x-)?protobuf(?:;|$)/i.test(type)
+    if (!protobuf && !/^application\/json(?:;|$)/i.test(type)) {
       throw new HttpError(415, `unsupported content-type "${type}": send OTLP as application/json or application/x-protobuf`)
     }
     const encoding = (req.headers['content-encoding'] ?? 'identity').toLowerCase()
@@ -172,18 +176,19 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
         throw new HttpError(tooLarge ? 413 : 400, tooLarge ? `body exceeds ${maxBodyBytes} bytes after gzip` : 'body is not valid gzip')
       }
     }
-    let payload: OtlpTraceRequest
+    let spans: NormalizedSpan[]
     try {
-      payload = protobuf ? protobufToOtlpJson(body) : JSON.parse(body.toString('utf8'))
-    } catch {
+      const payload: OtlpTraceRequest = protobuf ? protobufToOtlpJson(body, options.traceLimits) : JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(body))
+      spans = decodeOtlpJson(payload, options.traceLimits)
+    } catch (error) {
+      if (error instanceof OtlpValidationError) throw new HttpError(400, error.message)
       throw new HttpError(400, protobuf ? 'body is not a valid OTLP protobuf ExportTraceServiceRequest' : 'body is not valid JSON')
     }
-    const spans = decodeOtlpJson(payload)
-    await storage.insertSpans(spans)
+    const inserted = storage.insertSpansOnce ? await storage.insertSpansOnce(spans) : await storage.insertSpans(spans).then(() => spans)
     // A restart of next dev compiles each route on its first request — not an anomaly to investigate.
     // The observer's own check requests are not traffic: counted, they would keep the "silence" rule from ever
     // firing and put expected refusals into the error rate.
-    options.detector?.observe(spans.filter((s) => !storage.isColdStart(s) && !options.checks?.isCheckTrace?.(s.traceId)))
+    options.detector?.observe(inserted.filter((s) => !storage.isColdStart(s) && !options.checks?.isCheckTrace?.(s.traceId)))
     // OTLP answers in the request's format; an empty ExportTraceServiceResponse is zero bytes in protobuf.
     if (protobuf) res.writeHead(200, { ...CORS, 'content-type': 'application/x-protobuf' }).end()
     else send(res, 200, {})
@@ -357,7 +362,9 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
       const spans = await storage.getTrace(traceMatch[1])
       if (spans.length === 0) throw new HttpError(404, 'trace not found')
       // The UI marks the cold request: "671 ms" next to "18 ms" needs its explanation right there.
-      return send(res, 200, { traceId: traceMatch[1], spans: spans.map((s) => (storage.isColdStart(s) ? { ...s, coldStart: true } : s)) })
+      const ids = new Set(spans.map((s) => s.spanId))
+      const completeness = { historyComplete: storage.isHistoryComplete(), missingParentCount: spans.filter((s) => s.parentSpanId && !ids.has(s.parentSpanId)).length }
+      return send(res, 200, { traceId: traceMatch[1], completeness, spans: spans.map((s) => (storage.isColdStart(s) ? { ...s, coldStart: true } : s)) })
     }
     if (url.pathname === '/api/operations') {
       return send(
@@ -427,9 +434,18 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
   const server: Server = createServer((req, res) => {
     route(req, res).catch((error: unknown) => {
       if (res.headersSent) return
-      if (error instanceof HttpError) return send(res, error.status, { error: error.message })
-      console.error('[next-observer collector]', error)
-      send(res, 500, { error: 'internal error' })
+      const status = error instanceof HttpError ? error.status : 500
+      const message = error instanceof HttpError ? error.message : 'internal error'
+      if (!(error instanceof HttpError)) console.error('[next-observer collector]', error)
+      if (req.method === 'POST' && new URL(req.url ?? '/', 'http://collector').pathname === '/v1/traces') {
+        const failure = otlpErrorStatus(status, message)
+        if (/^application\/(x-)?protobuf(?:;|$)/i.test(req.headers['content-type'] ?? '')) {
+          return void res.writeHead(status, { ...CORS, 'content-type': 'application/x-protobuf' }).end(encodeOtlpError(failure))
+        }
+        // Retain the legacy `error` field for callers; code/message are the OTLP JSON Status fields.
+        return send(res, status, { ...failure, error: message })
+      }
+      send(res, status, { error: message })
     })
   })
 

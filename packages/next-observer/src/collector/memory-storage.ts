@@ -54,6 +54,7 @@ function firstRequestKey(span: NormalizedSpan): string | undefined {
 
 export class MemoryStorage implements StorageAdapter {
   private readonly spans: NormalizedSpan[] = []
+  private readonly byId = new Set<string>()
   private readonly byTrace = new Map<string, NormalizedSpan[]>()
   // Earliest server span per (service, instance, route). Kept after eviction so a later request never becomes "cold".
   private readonly firstRequests = new Map<string, NormalizedSpan>()
@@ -65,7 +66,17 @@ export class MemoryStorage implements StorageAdapter {
   }
 
   async insertSpans(spans: NormalizedSpan[]): Promise<void> {
+    await this.insertSpansOnce(spans)
+  }
+
+  /** First completed observation wins while retained. No await between identity check and insert. */
+  async insertSpansOnce(spans: NormalizedSpan[]): Promise<NormalizedSpan[]> {
+    const inserted: NormalizedSpan[] = []
     for (const span of spans) {
+      const identity = `${span.traceId}\u0000${span.spanId}`
+      if (this.byId.has(identity)) continue
+      this.byId.add(identity)
+      inserted.push(span)
       this.spans.push(span)
       const key = firstRequestKey(span)
       if (key) {
@@ -80,10 +91,12 @@ export class MemoryStorage implements StorageAdapter {
     while (this.spans.length > this.maxSpans) {
       this.evicted = true
       const evicted = this.spans.shift()!
+      this.byId.delete(`${evicted.traceId}\u0000${evicted.spanId}`)
       const trace = this.byTrace.get(evicted.traceId)!
       trace.splice(trace.indexOf(evicted), 1)
       if (trace.length === 0) this.byTrace.delete(evicted.traceId)
     }
+    return inserted
   }
 
   async queryTraces(filter: TraceFilter = {}): Promise<TraceSummary[]> {

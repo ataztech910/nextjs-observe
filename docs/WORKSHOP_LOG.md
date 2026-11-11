@@ -3110,3 +3110,36 @@ PR магазина №10 смержен, **теги блоков пересоб
 8. По мелочи: `init` не возвращает ненулевой код при неудачной установке; чат не показывает «ждём лимит модели» в UI (только в терминале); Kitana не уважает `abortSignal`.
 
 **Где искать:** `next-observer` живёт в `packages/next-observer` этого репозитория (`nextjs-observe`); Porto Shop — отдельный репозиторий `~/Desktop/branches/PORTO_HUB_2026/observer/workshop-ai-observability`.
+
+
+---
+
+## 11 ноября 2026 — performance T1: сохранность OTLP traces
+
+**Чтобы** подготовить backend к экспериментам A–F, **делаем** первый отдельный шаг T1 в
+`packages/next-observer/src/collector`. Сбор остаётся в Observe/приложениях, SPA не получает инструментирование.
+
+**Изменено:**
+- Добавлены типизированные поддерживаемые OTLP-поля рядом с прежней проекцией span: точные timestamps строками,
+  links, resource/scope/schema, trace state/flags и dropped counts. Int64 вне safe integer не округляется в атрибутах;
+  `otlp.schemaVersion = 1` сохраняет различие int64/bytes и вложенные значения.
+- JSON/protobuf проходят общую ограниченную валидацию. Невалидный batch целиком получает 400 до записи;
+  пустой корректный OTLP-request допустим. Ошибки кодируются как Status в формате запроса; JSON сохраняет `error`.
+- MemoryStorage атомарно дедуплицирует traceId/spanId, включая вход детектора, пока span хранится.
+  Старые адаптеры сохраняют контракт, новый `insertSpansOnce` необязателен.
+- Trace detail API возвращает консервативные признаки eviction и отсутствующих родителей; это не доказательство
+  получения всего trace. Неизвестные wire-поля не архивируются, disk capture/replay остаётся задачей T3.
+
+**Проверено:** полный backend-прогон — 682 passed, 4 skipped (real-model e2e); typecheck backend/UI и production build
+прошли. Mutation checks намеренно отключали links, дедупликацию и проверку end >= start: тесты обнаружили все три
+регрессии; исходники восстановлены. Нужен был доступ к временным локальным HTTP-портам.
+
+**Packed e2e:** `npm pack --ignore-scripts` после build → распаковка в `/private/tmp/observe-t1-*`;
+`node e2e/otlp-traces.mjs <extracted-package> --serve` использовал upstream SDK/HTTP exporter и оба сериализатора.
+Повторные JSON/protobuf exports оставили 2 spans и count=1 для hook. В браузере проверены built UI, вложенные
+interaction/hook строки, выбор hook, attributes/event details и новые поля query API.
+Зависимости для локального smoke подключались symlink к установленным node_modules; чистая установка из npm
+и физические RN-устройства этим прогоном не проверяются. Публикация/commit/push не выполнялись.
+
+**Дальше:** T2 — OTLP Metrics (Sum/Gauge/explicit Histogram); T3 — run partitions, фильтры и capture/replay.
+После минимального приёма/сохранения подключаем экспериментальные приложения; новый UI расширяем на реальных данных.
