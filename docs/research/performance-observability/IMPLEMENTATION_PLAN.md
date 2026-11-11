@@ -126,3 +126,11 @@ selectable commit/event markers and raw resource/scope/link details on the Perfo
 missing parents/cycles, legacy precision and unverified cross-source clock alignment are explicit. Profiler scalars
 are not converted into intervals. Metric overlays/exemplar navigation, calibrated runtime tracks, zoom and
 virtualization remain open; this increment does not close the conference release gate.
+
+### Metric evidence increment — 11 November 2026
+
+T5 now includes per-point bucket distributions, exact count/value strings, source interval/unit/temporality,
+approximate quantile bounds, and exemplar navigation to the same archived run's trace/span. Empty/missing/unbounded
+and aggregate-only states are explicit; cumulative checkpoints remain separate. No instrumentation, receiver or
+storage behavior changes in this increment. Metric overlays/window aggregation, calibrated/native tracks,
+source/device filtering and conference experiment acceptance remain open.

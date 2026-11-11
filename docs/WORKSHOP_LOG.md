@@ -3374,3 +3374,47 @@ Tarball dependencies подключены symlink к установленным 
 
 **Дальше:** metric bucket/exemplar navigation и дальнейшие источники для экспериментов; calibrated tracks и ранняя
 RN/native feasibility остаются отдельными незакрытыми пунктами плана.
+
+### 11 ноября — Histogram buckets и exemplar → archived trace/span
+
+После merge #94 (`8e1bf21`) создана свежая ветка `step-performance-metric-evidence`. Следующий небольшой T5 increment
+добавляет раскрываемый metric inspector на Performance page: source interval/checkpoint, unit/temporality,
+Gauge/Sum values, Histogram count/sum/min/max, explicit bucket intervals/counts и relative-count bars.
+Границы buckets — lower-exclusive / upper-inclusive; infinity tails явно подписаны. Count/int64 строки не теряют
+точность выше 2^53, BigInt используется для геометрии. Отдельные cumulative checkpoints не объединяются.
+
+Approximate p50/p75/p90/p95/p99 используют существующий `metric-query.ts` и показывают containing-bucket bounds
+с source min/max, когда они заданы. Unbounded tails получают unavailable estimate; empty distribution,
+no-recorded-value flag и count/sum-only point различаются. Исходные resource/scope/attributes остаются доступны.
+Exemplars показывают исходные time/value/filtered attributes и ссылку в **тот же run** на trace/optional span.
+Нулевой/отсутствующий trace ID не создаёт ссылку; trace-only reference не придумывает span. Выбранный captured span
+подсвечивается и раскрывается по `span` URL parameter, в том числе после reload. Отсутствующий span в bounded
+response обозначен явно; нет fallback в live dataset или другой run. Смена run/trace сбрасывает старый span.
+Exemplars не объявляются полной population или causal metric overlay.
+
+Observe, OTLP receiver, storage и их контракты в этом шаге не менялись; новых dependencies нет.
+
+**Проверено:** полный Observer suite — 778 passed, 4 skipped; backend/UI typecheck и production build.
+5 новых tests покрывают upstream-serialized histogram, interval boundaries, exact large counts, zero/empty bars,
+раздельные checkpoint counts, approximate bounds/unbounded/missing semantics, valid/zero/absent exemplar IDs,
+zero/int64/nonfinite value tokens. Четыре mutations (округление count, приём zero trace ID, zero→missing,
+неверная lower boundary) обнаружены; исходники восстановлены, focused tests и build повторены.
+
+**Packed/browser:** `/private/tmp/observer-metric-evidence-5m7h73u_/package`, dependencies через symlink к
+установленным node_modules, без clean install. Новый `e2e/metric-evidence.mjs` начинает с upstream serializer fixtures,
+добавляет явно синтетические OTLP exemplar/edge cases и отправляет их через packed HTTP receiver/capture:
+10 metric points, 7 histogram checkpoints, 5 exemplars, отдельный empty run. Это не экспериментальные measurements.
+Браузер проверил distribution/count 10 и 20 раздельно, count 9007199254740993, missing/empty/aggregate/unbounded,
+5 exemplar cards / 4 valid links, span selection+reload, trace-only/absent-reference states, missing span/trace,
+run isolation и сброс span при смене trace. Screenshot inspector просмотрен. Healthy navigation: page errors=0;
+missing-trace/run-isolation проверки закономерно вызывают HTTP 404.
+
+Тот же artifact прошёл `e2e/performance-runs.mjs` на неизменённом реальном hook-repeats-03 archive/report:
+27 runs / 9 groups, diagnostic 3 histogram points → 3 bucket tables / 3 quantile tables, exemplars=0 честно показаны;
+report selection и external 5 measured / 2 excluded warmup сохранены. Старые captures, sample artifacts и pinned
+analysis не редактировались. Оба временных сервера остановлены после проверки process command;
+синтетический capture удалён smoke cleanup. npm publish не выполнялся.
+
+**Дальше:** перейти к следующему экспериментальному источнику по плану и раннему RN/native feasibility.
+Metric window aggregation/aligned overlays, source/device filtering, calibrated/native tracks и оставшиеся
+conference acceptance gates по-прежнему открыты; текущая визуализация — per-point evidence browsing.

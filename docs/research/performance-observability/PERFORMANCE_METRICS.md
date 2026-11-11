@@ -87,3 +87,17 @@ Randomize/counterbalance variant and instrumentation mode order, repeat on the s
 ## Reference mechanisms
 
 Browser collection references: [INP](https://web.dev/articles/inp), [Event Timing specification](https://www.w3.org/TR/event-timing/), [LoAF specification](https://www.w3.org/TR/long-animation-frames/). Hook and platform API limitations are specified in [hook research](REACT_HOOK_INSTRUMENTATION.md) and [RN research](REACT_NATIVE_INSTRUMENTATION.md). These browser APIs need feature detection; native APIs require pinned OS/SDK availability checks. The measurement contract must emit an unsupported-source flag rather than manufactured zero values.
+
+## Implemented per-point evidence UI — 11 November 2026
+
+The Performance run page now expands each captured metric point into its source interval/checkpoint,
+source unit, exact int64/count strings, explicit bucket counts and relative-count bars. Intervals follow OTLP's
+lower-exclusive/upper-inclusive convention; no buckets are merged across points. Approximate quantiles reuse
+`metric-query.ts` and display their containing-bucket bounds, with unavailable estimates for unbounded tails.
+Empty, no-recorded-value and count/sum-only points remain distinct. Raw resource/scope/attributes stay inspectable.
+
+Exemplars retain source value/time/filtered attributes and navigate by their explicit trace/span reference within
+the same run. Missing/zero trace IDs have no link; trace-only references do not invent a span. Captured target spans
+are selected in the run timeline; uncaptured traces and spans absent from the bounded response are explicit.
+This is evidence navigation, not population reconstruction or temporal/causal metric overlay. Calibrated time-window
+aggregation and aligned runtime/native panels remain proposals.

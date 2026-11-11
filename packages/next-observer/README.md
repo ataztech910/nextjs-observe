@@ -402,6 +402,16 @@ Profiler work durations stay event attributes. Recorded Unix time alignment acro
 parentage does not establish a causal critical path. This increment does not implement calibrated native tracks,
 metric overlays, zoom or virtualization.
 
+Expand a raw metric point to inspect its own source interval, bucket distribution, exact integer counts,
+and approximate p50/p75/p90/p95/p99 with containing-bucket bounds. Source units are retained. Empty,
+no-recorded-value, aggregate-only and unbounded-tail cases have explicit unavailable states; raw cumulative
+checkpoints are never merged. Gauge/Sum values retain int64 strings and nonfinite source tokens.
+Exemplars show their own timestamps/values/filtered attributes. Valid trace references link back into the same
+run timeline (`trace` / optional `span` URL parameters), selecting the span when available. They may reference
+uncaptured traces or spans outside a bounded view; no fallback to live data or another run occurs. Exemplars
+are selected observations, not a reconstruction of the metric population. This is per-point evidence browsing;
+window aggregation, metric/trace clock alignment and native tracks remain open.
+
 `PerformanceReports(directory, capture)` reads `<id>.json` and hash-addressed `artifacts/<sha256>` files. Its contract
 is exported as `PerformanceReport`: report ID/title, endpoint, analysis unit/algorithm, protocol reference, per-run
 sample summaries/artifact and manifest hashes, explicit group membership, externally calculated group summaries,
