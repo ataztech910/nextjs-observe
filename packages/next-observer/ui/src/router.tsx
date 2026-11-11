@@ -11,9 +11,10 @@ import { DashboardPage } from '@/pages/dashboard-page'
 import { ErrorsPage } from '@/pages/errors-page'
 import { OperationPage } from '@/pages/operation-page'
 import { TracePage } from '@/pages/trace-page'
+import { PerformancePage } from '@/pages/performance-page'
 import { TracesPage } from '@/pages/traces-page'
 
-function NavLink({ to, children }: { to: '/' | '/errors' | '/checks' | '/traces' | '/chat'; children: ReactNode }) {
+function NavLink({ to, children }: { to: '/' | '/errors' | '/checks' | '/traces' | '/chat' | '/performance'; children: ReactNode }) {
   return (
     <Link to={to} activeOptions={{ exact: to === '/', includeSearch: false }} className="rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground">
       {children}
@@ -35,6 +36,7 @@ const rootRoute = createRootRoute({
           <NavLink to="/checks">Checks</NavLink>
           <NavLink to="/traces">Traces</NavLink>
           <NavLink to="/chat">Chat</NavLink>
+          <NavLink to="/performance">Performance</NavLink>
           <span className="ml-auto">
             <LiveIndicator />
           </span>
@@ -120,7 +122,9 @@ const chatRoute = createRoute({
   component: ChatPage,
 })
 
-export const router = createRouter({ routeTree: rootRoute.addChildren([indexRoute, errorsRoute, checksRoute, tracesRoute, traceRoute, operationRoute, chatRoute]) })
+const performanceRoute = createRoute({ getParentRoute: () => rootRoute, path: '/performance', validateSearch: (search: Record<string, unknown>): { run?: string; report?: string } => ({ run: typeof search.run === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(search.run) ? search.run : undefined, report: typeof search.report === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(search.report) ? search.report : undefined }), component: PerformancePage })
+
+export const router = createRouter({ routeTree: rootRoute.addChildren([indexRoute, performanceRoute, errorsRoute, checksRoute, tracesRoute, traceRoute, operationRoute, chatRoute]) })
 
 declare module '@tanstack/react-router' {
   interface Register {

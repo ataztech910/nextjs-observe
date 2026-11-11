@@ -370,6 +370,51 @@ replays the run for validation; it is intended for bounded captures, with no thr
 Capacity/latency measurements and indexed storage remain future work. No dependencies or instrumentation APIs
 were added for capture.
 
+## Performance run viewer and external comparisons
+
+The **Performance** page (`/performance`) lists captured runs, filters variant/collection mode and opens a run's
+source/clock/build metadata, paginated spans/events/links and typed metric points. It uses the explicit run archive
+APIs, independently of live trace storage. Finalized means frozen received requests; completeness and producer
+omissions remain visible. Empty OTLP captures are not shown as zero-duration measurements.
+
+External analysis stays in the experiment harness. To display its validated summary, publish the generic
+`observe.performance-report/v1` artifact into a separate report directory, then start:
+
+```sh
+next-observer collector --capture-dir ./session/captures --performance-report-dir ./observer-reports
+```
+
+`OBSERVE_PERFORMANCE_REPORT_DIR` is the equivalent environment variable; capture must be enabled. The Performance
+page requires explicit report selection, with links to its exact run IDs. It shows median-of-run-medians, run median
+ranges, measured action counts, warmup exclusions and declared endpoint/method/limitations. External samples can
+therefore be shown for disabled runs with no OTLP points. Raw spans/metric populations retain warmup; they are not
+presented as the post-warmup statistical sample. Cumulative metric checkpoints remain separate; per-point histogram
+estimates are marked approximate and use the source unit. Reports are hidden if a refresh fails verification.
+
+`PerformanceReports(directory, capture)` reads `<id>.json` and hash-addressed `artifacts/<sha256>` files. Its contract
+is exported as `PerformanceReport`: report ID/title, endpoint, analysis unit/algorithm, protocol reference, per-run
+sample summaries/artifact and manifest hashes, explicit group membership, externally calculated group summaries,
+and limitations. It validates schema/finite values/quantile ordering/unique membership, protocol/sample hashes,
+finalized manifest hashes, raw OTLP replay integrity, variant/mode and protocol association. It checks artifact
+integrity and association, not statistical correctness or authenticity of an untrusted analysis producer. No external
+code/HTML is executed. UI types are browser-safe contracts checked against the backend schemas.
+
+API (same UI Basic auth as other query routes):
+
+- `GET /api/performance/features`: `{runs, reports}`.
+- `GET /api/performance/reports`: report headers plus explicit errors for invalid reports.
+- `GET /api/performance/reports/:id`: verified typed report; disabled returns 503.
+
+Limits: 100 report files per directory listing, 500 runs/100 groups per report, 8 MiB per report/artifact read,
+64 MiB external artifact bytes per report. Capture replay retains its own bounds. This local MVP revalidates files on
+read; no query-throughput claim or persisted statistical database is implied. Existing trace/metric/auth contracts
+remain compatible. Run-specific track visualization and rich histogram/exemplar navigation remain subsequent work.
+
+The sibling experiment repo supplies `npm run observer-report -- <session> <output-directory>` to adapt its frozen
+comparison to this contract. Use the decoder build pinned by that session when exporting; changing the Observer
+backend changes its source fingerprint, so the original harness can intentionally refuse re-analysis with a new
+build. The viewer consumes the resulting artifact and verifies the archived OTLP using its versioned archive schema.
+
 ## Entry points
 
 | Import | For |

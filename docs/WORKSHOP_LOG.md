@@ -3286,3 +3286,53 @@ npm не выполнялась. Новый experiment repo пока локал�
 
 **Дальше:** независимые repeated runs/report protocol и привязка external harness samples, затем run timeline/
 comparison UI T4/T5 на реальных captures; ранний RN bootstrap/native feasibility. Не переносить сбор в Observer UI.
+
+
+---
+
+## 11 ноября 2026 — Observer: просмотр performance runs и внешнего сравнения
+
+**Чтобы** видеть результаты C в продукте, **делаем** первый экран `/performance` на реальных 27 frozen runs.
+Ветка `step-performance-runs-ui` создана от свежего master `d616c6f` (Observe helper уже смержен).
+Инструментирование остаётся в Observe/приложении; математический отчёт и warmup policy остаются в harness.
+
+**UI:** run list, variant/mode filters, явный report selector, ссылки с точными run IDs, source/clock/build metadata,
+paginated spans/events/links и typed metric points. Сравнение показывает externally computed median-of-run-medians
+и диапазон run medians, число measured actions и ограничения. Для выбранного run отдельно видны 5 measured +
+2 excluded warmup; raw OTLP сохраняет все 7. Disabled-run с пустым OTLP получает реальные external samples из
+отчёта; отсутствие телеметрии не превращается в нулевую latency. При отказе повторной integrity-проверки UI скрывает
+cached report/derived samples, Refresh восстанавливает их только после успеха.
+
+**Backend:** отдельный read-only `PerformanceReports`, generic contract `observe.performance-report/v1`, features /
+report list/detail API. CLI `--performance-report-dir` / env OBSERVE_PERFORMANCE_REPORT_DIR требует capture directory.
+Schema/finite values/ordered quantiles/unique membership, bounded stream reads, sample/protocol/manifest hashes,
+variant/mode/protocol associations и raw OTLP replay проверяются до выдачи. Это integrity/association checks, а не
+доказательство статистической корректности чужого producer. API защищён UI Basic auth, старые routes/contracts и
+StorageAdapter не менялись. Run/report типы выделены в browser-safe модули с backend schema type checks: Node-код
+receiver/storage не попадает в UI bundle. Новых зависимостей нет.
+
+**External adapter:** отдельная ветка experiment repo `step-observer-report-export` добавляет
+`tools/observer-report.mjs`; он валидирует frozen session старым pinned decoder, публикует typed summary и
+hash-addressed protocol/sample artifacts вне исходного archive. Источники/manifest/протокол старой сессии не
+редактировались. Для session hook-repeats-03 использован сохранённый T3 tarball
+`/private/tmp/observe-t3-mi1iupyr/package`: новый backend закономерно меняет fingerprint harness.
+
+**Проверено:** полный Observer test run — 764 passed, 4 skipped; backend/UI typecheck и production build.
+Новые tests покрывают hashes, raw OTLP corruption, schema/empty/zero semantics, group membership, association,
+limits, auth, disabled feature API и CLI flags. Четыре mutations (artifact hash, manifest hash, run association,
+zero-vs-missing formatting) обнаружены. Финальная проверка mutations запускалась от passing baseline с исключённым
+HTTP-тестом, чтобы sandbox port permissions не создавали ложный положительный результат; источники восстановлены.
+Внешний experiment repo сохранил 6 passing tests.
+
+**Packed/browser:** `e2e/performance-runs.mjs <package> <captures> <reports> --serve` на финальном artifact
+`/private/tmp/observer-runs-ui-final-sdwda06e/package`: 27 runs / 9 groups, disabled captures пусты при реальных sample
+counts, diagnostic raw spans=14 и metric points=3. Built Performance page проверен в браузере: фильтры 9→3→1,
+переход по run link/reload, source/observations, warmup label, disabled feature state. Искусственный HTTP 400 на
+report refetch скрыл cached table и selected sample stats; после снятия отказа Refresh восстановил данные.
+Healthy navigation после проверки — console errors=0; ошибки намеренного HTTP 400 ожидаемы. Скриншот просмотрен.
+Зависимости tarball smoke подключены symlink к установленным node_modules, clean install tarball не проверялся.
+Тестовые серверы остановлены. npm publish не выполнялся.
+
+**Дальше:** richer run timeline/tracks, metric bucket/exemplar navigation и дальнейшие экспериментальные источники;
+RN/native feasibility остаётся ранним отдельным шагом. Это первый UI increment T4/T5/T8, без заявления о прохождении
+conference release gate, fleet-scale throughput, causal critical path или статистической значимости различий.

@@ -38,6 +38,14 @@ standalone app and all nine variant/mode combinations passed a three-sample brow
 pipeline, not the conference statistical acceptance gate. RN/native bootstrap, bounded instrumentation cost/drop
 accounting, independent-run studies and new timeline/comparison UI remain outstanding. Existing Next-specific
 bootstrap still does not emit these metrics automatically.
+UI increment (`step-performance-runs-ui`): the Observer Performance page now browses explicit archived runs,
+source/clock/build metadata, paginated spans and raw metric points; an optional read-only external report capability
+shows generic run-median comparisons with exact run membership, declared endpoints/limitations and separate external
+sample counts/warmup. Hashes/schema/run association are verified by the backend; statistical computation remains in
+the external harness. Instrumentation remains in Observe. This is an initial T4/T5/T8 presentation increment, not a
+replacement trace viewer or a full track/exemplar/comparison implementation. 764 Observer tests pass (4 skipped),
+typecheck/build and four mutations pass; the packed UI/backend were checked against the real 27-run frozen session.
+
 The task descriptions below retain the target architecture and acceptance criteria.
 
 ## Architecture constraints

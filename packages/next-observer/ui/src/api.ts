@@ -1,3 +1,6 @@
+import type { RunManifest } from '../../src/collector/run-types'
+import type { PerformanceReport, PerformanceReportList } from '../../src/collector/performance-report-types'
+import type { MetricObservation } from '../../src/collector/metric-types'
 // Types come straight from the collector, so the UI can't drift from the API.
 import type { ChatEvent, EvidenceCard, ProactiveEvent, VersionStats } from '../../src/collector/chat'
 import type { StoredTurn } from '../../src/collector/chat-history'
@@ -35,6 +38,12 @@ function query(params: Record<string, string | number | boolean | undefined>): s
 }
 
 export const api = {
+  performanceFeatures: () => get<{ runs: boolean; reports: boolean }>('/api/performance/features'),
+  performanceRuns: () => get<{ runs: Omit<RunManifest, 'records'>[] }>('/api/performance/runs'),
+  performanceRun: (id: string) => get<RunManifest>(`/api/performance/runs/${encodeURIComponent(id)}`),
+  performanceReports: () => get<PerformanceReportList>('/api/performance/reports'),
+  performanceReport: (id: string) => get<PerformanceReport>(`/api/performance/reports/${encodeURIComponent(id)}`),
+  performanceObservations: (id: string, signal: 'spans' | 'metrics', offset: number) => get<{ observations: (NormalizedSpan | MetricObservation)[]; total: number; nextOffset: number | null; truncated: boolean }>(`/api/performance/runs/${encodeURIComponent(id)}/${signal}?limit=50&offset=${offset}`),
   health: () => get<{ status: string; spans: number }>('/health'),
   services: () => get<ServiceInfo[]>('/api/services'),
   traces: (search: TraceSearch & { exactOperation?: boolean; fromMs?: number; limit?: number }) => get<TraceSummary[]>(`/api/traces${query({ limit: 200, ...search })}`),

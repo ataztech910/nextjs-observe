@@ -32,6 +32,7 @@ import { gunzipSync } from 'node:zlib'
 import type { CheckRunner } from '../checks/runner.js'
 import { CHECK_RULE, type CheckRule, type ChecksReport } from '../checks/types.js'
 import { decodeOtlpJson } from './decode.js'
+import type { PerformanceReports } from './performance-reports.js'
 import { RunCapture } from './capture.js'
 import { CaptureError, RUN_SCHEMA, type RunMetadata } from './run-manifest.js'
 import { decodeOtlpMetrics } from './metric-decode.js'
@@ -72,6 +73,8 @@ export interface CollectorOptions {
   metricLimits?: MetricDecodeLimits
   /** Opt-in local run archives, independent of bounded live stores. */
   capture?: RunCapture
+  /** Read-only external analysis reports with verified artifact/run associations. */
+  performanceReports?: PerformanceReports
   /** Separate from span storage; false disables metric ingest/query. Default bounded MemoryMetricStorage. */
   metricStorage?: MetricStorageAdapter | false
   /** Built UI to serve at /. Default: the package's dist/ui. `false` disables it. */
@@ -358,6 +361,12 @@ export async function startCollector(options: CollectorOptions = {}): Promise<Co
       return void res
         .writeHead(401, { 'www-authenticate': 'Basic realm="next-observer", charset="UTF-8"', 'content-type': 'text/plain; charset=utf-8' })
         .end('next-observer: password required')
+    }
+    if (req.method === 'GET' && url.pathname === '/api/performance/features') return send(res, 200, { runs: Boolean(options.capture), reports: Boolean(options.performanceReports) })
+    const reportRoute = /^\/api\/performance\/reports(?:\/([^/]+))?$/.exec(url.pathname)
+    if (reportRoute && req.method === 'GET') {
+      if (!options.performanceReports) throw new HttpError(503, 'performance reports are disabled')
+      return send(res, 200, reportRoute[1] ? await options.performanceReports.get(reportRoute[1]) : await options.performanceReports.list())
     }
     const runRoute = /^\/api\/performance\/runs(?:\/([^/]+)(?:\/(finalize|spans|metrics))?)?$/.exec(url.pathname)
     if (runRoute) {
