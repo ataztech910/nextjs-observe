@@ -134,3 +134,15 @@ approximate quantile bounds, and exemplar navigation to the same archived run's 
 and aggregate-only states are explicit; cumulative checkpoints remain separate. No instrumentation, receiver or
 storage behavior changes in this increment. Metric overlays/window aggregation, calibrated/native tracks,
 source/device filtering and conference experiment acceptance remain open.
+
+### Native bootstrap feasibility increment — 11 November 2026
+
+After merge #95 (`ce5c771`), the separate experiment repo adds an app-local OTel/Observe adapter, explicit runtime-port
+availability, bounded trace batching, serialized lifecycle/manual flush and shutdown, and a Metro iOS / restricted-VM
+transport preflight. It validates the pinned dependency graph and packed backend pipeline; it does not validate RN,
+Hermes or any native API. Node 24.11.1 was selected because Metro 0.88 excludes host Node 25. No native toolchain was
+installed. Native frame/input measurements and queue-drop counts remain unavailable; clock calibration is unverified.
+
+The user has an iPhone, so the next T6 gate is a pinned iOS host plus full Xcode/signing and a physical release run.
+T7 iOS cadence/hitch evidence must be validated independently. Android-first physical validation cannot be performed
+with the presently available device/toolchain. Existing Android and iOS D/E/F acceptance rules remain open.

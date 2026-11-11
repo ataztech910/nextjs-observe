@@ -4,12 +4,24 @@
 
 Do not create a dedicated RN instrumentation package for the conference now. Reuse upstream OTel API/SDK primitives and selected manual instrumentation; design a **minimal explicit RN bootstrap/adapter**, initially app-local in the separately developed experiment app. If reusable distribution is justified after device validation, add an optional `next-observe/react-native` subpath rather than a new SDK. Native frame/startup collection still needs native code or external native benchmark artifacts. A JS-only package cannot supply those measurements.
 
-This is an implementation recommendation, not a tested RN capability. No RN app, native target, Metro configuration or RN instrumentation tests exist in the audited package inventory ([architecture audit](ARCHITECTURE_AUDIT.md#package-inventory)).
+Implementation update (11 November 2026): the separate `performance-observability` experiment repo now has an app-local
+`native/bootstrap.js`, runtime-port probe, serialized lifecycle/flush/shutdown helper and Metro iOS preflight. It uses
+the real Observe performance entry and pinned OTel SDK/exporters, without changing Observer or adding a native SDK
+package. Metro 0.88 / RN Babel transformer 0.88 resolve the tested graph; a restricted Node VM exports to the packed
+Observer and verifies explicit async parentage/errors/events/modes/failure cleanup. This is **not** an RN host app,
+Hermes test, physical-device validation or native measurement source. Native frames/input/clocks/drop counts remain
+unavailable or unverified. The original [audit](ARCHITECTURE_AUDIT.md#package-inventory) describes the earlier snapshot.
+
+The available physical target is an iPhone. The local Mac has Command Line Tools but no full Xcode; Android SDK/JDK
+are absent. iPhone release-build feasibility is now the first device gate, followed by separately validated iOS
+cadence/hitch evidence. Android API31+ remains an unvalidated alternative. No native toolchain installation, signing
+or cloud build was performed. See the experiment repo's `native/README.md` for the exact local command and next gate.
 
 ## Reuse and package boundaries
 
 | Existing surface | Reuse judgment | Evidence |
 |---|---|---|
+| `next-observe/performance` manual helper | App-local Metro iOS dependency/transport preflight passes with explicit providers/contexts. Physical Hermes/iPhone support remains unverified | `packages/next-observe/src/performance.ts`; separate experiment `native/bootstrap.js` |
 | OTel API + selected ordinary function spans | Reusable concept; validate Hermes/runtime | [runtime.ts:47–80](../../../packages/next-observe/src/runtime.ts#L47) only imports OTel API, handles exceptions/thenables; no RN device validation |
 | Existing component path | Unsuitable as RN render support | `isBrowser = typeof window !== 'undefined'`; environment heuristic may select different behavior in RN globals; browser branch is an aggregate rather than renderer integration ([runtime.ts:7](../../../packages/next-observe/src/runtime.ts#L7)) |
 | `next-observe/client` | Cannot use unchanged | document-load/DOM, window/document visibility lifecycle, Response/error capture, build-inlined process.env; top-level auto-registration ([client.ts:27–82](../../../packages/next-observe/src/client.ts#L27)) |
@@ -70,7 +82,7 @@ OTLP timestamps need epoch nanoseconds; interval measurement must use a monotoni
 
 A native input recorded long before blocked JS receives it retains its original native timestamp and conversion uncertainty. Batch delivery time is not event time. Never shift events to make spans fit a desired hierarchy. Keep raw native monotonic stamps and calibration ids in capture metadata; map times for visualization while preserving originals.
 
-Pass serialized W3C trace context or explicit trace/span ids plus flags/state through a typed TurboModule/JSI boundary. Extract into the native SDK before starting child operations; return context when needed. Cross-runtime parent-child is appropriate when one operation initiates a child and ownership is known even if clocks differ. Shared/background/native frame work may serve multiple interactions; use span links and correlation keys, not arbitrary parenting to the latest interaction. A frame can be merely temporally adjacent; show that relationship as correlation, not causation. Current receiver drops links, so preservation is a prerequisite ([decode.ts:59](../../../packages/next-observer/src/collector/decode.ts#L59)).
+Pass serialized W3C trace context or explicit trace/span ids plus flags/state through a typed TurboModule/JSI boundary. Extract into the native SDK before starting child operations; return context when needed. Cross-runtime parent-child is appropriate when one operation initiates a child and ownership is known even if clocks differ. Shared/background/native frame work may serve multiple interactions; use span links and correlation keys, not arbitrary parenting to the latest interaction. A frame can be merely temporally adjacent; show that relationship as correlation, not causation. T1 now preserves source links in the receiver projection and T3 archives raw requests. Native clock/context mapping and physical validation remain prerequisites; see [implementation status](IMPLEMENTATION_PLAN.md).
 
 ## Three options
 
