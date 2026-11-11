@@ -146,3 +146,21 @@ installed. Native frame/input measurements and queue-drop counts remain unavaila
 The user has an iPhone, so the next T6 gate is a pinned iOS host plus full Xcode/signing and a physical release run.
 T7 iOS cadence/hitch evidence must be validated independently. Android-first physical validation cannot be performed
 with the presently available device/toolchain. Existing Android and iOS D/E/F acceptance rules remain open.
+
+### iOS host and Release Simulator gate — 12 November 2026
+
+The separate experiment repo now has an official-template RN 0.88 / React 19.3 iOS app, AppRegistry/runtime
+inspection/export-gate screen, AppState wiring and a guarded create → shutdown → verify → finalize controller.
+Source identities pin code/native configuration/npm/Ruby/pod locks and the imported Observe helper. Xcode preparation
+preserves user Node overrides. CocoaPods resolves 86 pods, and Xcode 26.3 builds the Release Simulator app.
+
+At the user's request, execution moved to iPhone 17 Pro Simulator (runtime reports iOS 26.3.1). Hermes and required
+runtime ports are available without additional polyfills. Fresh processes for disabled / diagnostic / production_like
+finalize with 0/4/2 spans and 0/4/4 metric points. The existing packed backend/UI consumes these real captures without
+Observer runtime changes. Source artifact bodies, build hashes, screenshots and raw archives are retained locally.
+The separate restricted-VM controller model remains labelled as a model.
+
+Next: extend the experiment host with the planned JS scheduling/native-driven animation workload and independently
+validated iOS cadence/hitch source. Physical-device signing/Release validation remains a separate open gate; Simulator
+is useful for functional development but cannot satisfy physical performance acceptance. Clocks remain uncalibrated,
+native input/frames unavailable, drops unknown. T6/T7 and D/E/F conference acceptance remain open.
