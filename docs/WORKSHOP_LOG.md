@@ -3508,3 +3508,53 @@ collectors остановлены после проверки process commands; 
 Сначала runtime/transport/lifecycle/clock availability gate, затем JS scheduling-lateness/native-driven animation
 и независимо проверенные Instruments/XCTest cadence/hitch evidence. CADisplayLink не объявлять presentation proof;
 T6/T7 и D/E/F acceptance остаются открытыми. Инструкции следующего gate записаны в experiment `native/README.md`.
+
+### 12 ноября — RN iOS host и реальный Release Simulator gate
+
+Merge #96 подтверждён (`e6812ab`). В отдельном experiment repo добавлен официальный RN 0.88.0 / React 19.3.0
+host: AppRegistry, iOS project/workspace, runtime/export screen, AppState lifecycle port и controller
+create → shutdown → verify → finalize. Instrumentation остаётся app-local, Observe helper переиспользуется через
+public entry; receiver/storage/UI — отдельный процесс. В монорепо меняются только docs, Observer runtime не тронут.
+
+Пользователь установил Xcode и выбрал Simulator вместо физического iPhone. Xcode 26.3 (17C529), выделенный
+Simulator iPhone 17 Pro, runtime сообщает iOS 26.3.1. System Ruby 2.6 не смог собрать gems против нового SDK;
+установлен keg-only Ruby 3.3.13, Bundler 4.0.23, gems хранятся в ignored vendor/bundle. CocoaPods установил 86 pods;
+Gemfile.lock/Podfile.lock сохраняются. Для доступных bottles обновлены brew metadata, установлены libyaml/OpenSSL4/
+CA certificates; исходные глобальные OpenSSL3 links восстановлены. System Ruby/default PATH не заменены;
+Apple account/signing team не настраивались. Для Simulator используется CODE_SIGNING_ALLOWED=NO.
+
+**Проверено:** 19 experiment tests pass, web typecheck/production build pass, native plist/project lint pass.
+Шесть новых controller cases проверяют input identity/origin до side effects, shutdown перед finalize, corrupted
+parentage, failed shutdown без повторного вызова/finalize, control HTTP failure без SDK init и Simulator provenance.
+Три mutations (убрать parent check, проглотить shutdown failure, убрать identity validation) пойманы; код восстановлен,
+tests повторены. Host Metro 0.87.3 выбран настоящим RN CLI plugin; standalone preflight остаётся на Metro 0.88.0.
+Production host bundle/macOS Hermes compiler и restricted-JS controller model также прошли; модель явно помечена
+restricted-js-host-model и не подменяет следующий native результат.
+
+**Реальный native run:** Xcode Release compile/link прошёл; финальная пересборка включает source identity с npm/Ruby/
+pod lockfiles, native config и фактически импортированным Observe helper. Приложение установлено и запущено на
+Simulator. Hermes обнаружен, все required runtime ports доступны без дополнительных polyfills. Три свежих процесса
+одного Release artifact: disabled 0 OTLP requests / 0 spans / 0 metric points; diagnostic 4 spans / 4 points;
+production_like 2 spans / 4 points. Histogram points — четыре отдельных streams с count=1, не сумма checkpoints.
+Две overlapping actions после await сохраняют разные trace roots/body parents, controlled error и completion marker.
+Все три archives finalized только после shutdown и проверок. Disabled сохраняет UI/runtime/control traffic.
+
+Session `reports/ios-simulator-1794439442864` хранит screenshots, query snapshots, raw archives, matching source
+manifest body, build log и hashes executable/embedded bundle/plist/backend. Source SHA
+`2c79fd59ad5639e961f0891bfd0673b2dab15bb31dbec67f930db3c7f176afa0`; embedded bundle SHA
+`786176d9c7b514fd04afb36694bbb694bb862b70ee346ce39d8b52a7a44a0b12`. Built .app сохранён в ignored reports.
+Packed backend `/private/tmp/observer-metric-evidence-5m7h73u_/package` использует symlink к установленным dependencies,
+не clean install. Browser проверил actual Simulator metadata, diagnostic timeline/event/parentage, disabled empty,
+production-like 2/4; fresh diagnostic page errors=0. Экран Simulator с receipt просмотрен.
+
+npm audit: 4 low findings в CLI/deepmerge path, предложенный forced downgrade CLI несовместим с host pin;
+force fix не применялся. Старые frozen web sessions не менялись, npm publish не выполнялся. Временный VM collector
+остановлен после проверки process command; Simulator и loopback collector `127.0.0.1:4319` оставлены для просмотра.
+
+Experiment repo: local commit `c819f2a` на `step-ios-host`; remote пока отсутствует. Commit hook сообщил, что AI review
+недоступен/истёк timeout, и продолжил по своему fail-open правилу; hooks не обходились.
+
+**Дальше:** JS scheduling-lateness/native-driven animation workload в host, независимый iOS cadence/hitch source.
+Simulator закрывает функциональный bootstrap gate; физический Release/signing, suspend/resume/export-failure delivery,
+calibrated clocks, native input/frames и drop accounting требуют отдельных проверок. T6/T7 и D/E/F conference
+acceptance остаются открытыми; durations из этого smoke не используются как performance/overhead результат.

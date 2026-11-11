@@ -16,16 +16,30 @@ Observer and verifies explicit async parentage/errors/events/modes/failure clean
 Hermes test, physical-device validation or native measurement source. Native frames/input/clocks/drop counts remain
 unavailable or unverified. The original [audit](ARCHITECTURE_AUDIT.md#package-inventory) describes the earlier snapshot.
 
-The available physical target is an iPhone. The local Mac has Command Line Tools but no full Xcode; Android SDK/JDK
-are absent. iPhone release-build feasibility is now the first device gate, followed by separately validated iOS
-cadence/hitch evidence. Android API31+ remains an unvalidated alternative. No native toolchain installation, signing
-or cloud build was performed. See the experiment repo's `native/README.md` for the exact local command and next gate.
+Follow-up (12 November 2026): the experiment repo now contains an official-template RN 0.88.0 / React 19.3.0
+`native/host` iOS app with AppRegistry, runtime/capture-gate screen and AppState lifecycle wiring. Xcode 26.3,
+repo-local CocoaPods dependencies (86 pods) and committed Ruby/pod locks produce a native Release Simulator build.
+The user selected Simulator: iPhone 17 Pro / runtime-reported iOS 26.3.1 detects Hermes, exposes every required port
+without added polyfills and finalizes disabled / diagnostic / production_like captures with 0/4/2 spans and 0/4/4
+metric points. Packed Observer displays the actual captures, explicit parents/events and source/build metadata.
+
+Source manifests pin JS/native configuration, npm/Ruby/pod locks and the actual Observe helper. Xcode prepares the
+identity before bundling; the smoke preserves its artifact body and native executable/embedded bundle hashes.
+Host Metro is RN's selected 0.87.3; standalone restricted-VM preflight remains 0.88.0 with separate receipts. Model
+captures carry `restricted-js-host-model`; actual Simulator captures record `react-native-js` and `isSimulator:true`.
+
+Xcode was installed by the user. Keg-only Ruby 3.3 was installed for repo-local Bundler/CocoaPods after system
+Ruby 2.6 failed against the SDK; the system Ruby/default PATH were not replaced. No device signing/account was
+configured. Physical iPhone execution, calibrated clocks, native input/frames, queue-drop accounting and iOS
+cadence/hitch evidence remain open. Android SDK/JDK are absent. See experiment `native/host/README.md` for the
+repeatable Simulator command and separate future physical-device gate. Simulator functional success is not D/E/F
+conference acceptance or evidence of physical-device performance.
 
 ## Reuse and package boundaries
 
 | Existing surface | Reuse judgment | Evidence |
 |---|---|---|
-| `next-observe/performance` manual helper | App-local Metro iOS dependency/transport preflight passes with explicit providers/contexts. Physical Hermes/iPhone support remains unverified | `packages/next-observe/src/performance.ts`; separate experiment `native/bootstrap.js` |
+| `next-observe/performance` manual helper | App-local transport/context checks pass in actual Release iOS Simulator/Hermes and the separate Metro preflight. Physical iPhone support remains unverified | `packages/next-observe/src/performance.ts`; separate experiment `native/bootstrap.js` |
 | OTel API + selected ordinary function spans | Reusable concept; validate Hermes/runtime | [runtime.ts:47–80](../../../packages/next-observe/src/runtime.ts#L47) only imports OTel API, handles exceptions/thenables; no RN device validation |
 | Existing component path | Unsuitable as RN render support | `isBrowser = typeof window !== 'undefined'`; environment heuristic may select different behavior in RN globals; browser branch is an aggregate rather than renderer integration ([runtime.ts:7](../../../packages/next-observe/src/runtime.ts#L7)) |
 | `next-observe/client` | Cannot use unchanged | document-load/DOM, window/document visibility lifecycle, Response/error capture, build-inlined process.env; top-level auto-registration ([client.ts:27–82](../../../packages/next-observe/src/client.ts#L27)) |

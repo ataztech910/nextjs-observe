@@ -2,12 +2,13 @@
 
 None of A–F is complete end to end today. Current reusable foundations are OTLP/HTTP trace ingestion, events/attributes, bounded span storage, tree timeline and raw-span statistics. Observe has document/network/error instrumentation and selected function/component-call timing. Evidence: [architecture inventory and UI audit](ARCHITECTURE_AUDIT.md), especially [runtime.ts:47](../../../packages/next-observe/src/runtime.ts#L47), [receiver.ts:156](../../../packages/next-observer/src/collector/server.ts#L156), [operation.ts:55](../../../packages/next-observer/src/collector/operation.ts#L55). No applications are implemented by this research.
 
-Implementation status (11 November 2026): the original inventory below is a research snapshot. T1–T3 capture and
-T4/T5 run/comparison/timeline/metric evidence increments are now implemented; experiment C has a repeated local web
-session, without full conference statistical acceptance. App-local native bootstrap now passes a Metro iOS and
-restricted-JS transport preflight only. A physical iPhone is available, but RN host/Xcode/signing/Hermes validation
-and iOS native evidence are still missing. See [current implementation updates](IMPLEMENTATION_PLAN.md) and
-[native status](REACT_NATIVE_INSTRUMENTATION.md). None of A–F is declared conference-complete.
+Implementation status (12 November 2026): the original inventory below is a research snapshot. T1–T3 capture and
+T4/T5 run/comparison/timeline/metric evidence increments are implemented; experiment C has a repeated local web
+session without full conference statistical acceptance. The separate RN 0.88 app now passes a native Release
+Simulator/Hermes functional gate in all three modes, in addition to its restricted-JS preflight. Xcode/native
+libraries and Ruby/pod locks are resolved. Physical iPhone execution, calibrated clocks and native input/frame
+sources remain open. See [current updates](IMPLEMENTATION_PLAN.md) and [native status](REACT_NATIVE_INSTRUMENTATION.md).
+None of A–F is declared conference-complete.
 
 ## Shared prerequisites and acceptance rules
 
