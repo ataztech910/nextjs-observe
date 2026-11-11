@@ -18,7 +18,17 @@ are explicitly rejected. Cumulative checkpoints/resets and late points stay sepa
 or rate conversion is claimed. Shared validation/protobuf primitives are reused by both signal paths.
 731 tests pass (4 real-model tests skipped), typecheck/build pass, four mutation checks detect regressions;
 a real MeterProvider → upstream serializers → packed receiver smoke and browser API check pass.
-T3 run capture/replay, Observe metric collection, new timeline/comparison UI and experimental apps remain unimplemented.
+T1/T2 have since been merged into `master` (merge `046d1c8`).
+T3 implementation update: `step-performance-run-capture` adds explicit header-selected run partitions, typed
+allowlisted same-observation predicates, original decompressed JSON/protobuf request archives, versioned
+manifests with external artifact hash references, atomic finalization and isolated export/replay. Replay verifies
+hashes/inventory/counts; unfinished archives remain incomplete. Run-tagged requests stay separate from live
+storage/detector and the existing UI. Frozen records preserve unknown source fields; decoded projections retain
+the currently supported subset. `coverage: received-requests-only` never asserts complete producer delivery.
+755 tests pass (4 real-model tests skipped), typecheck/build and four mutation checks pass; packed upstream-SDK
+capture → restart → export → repeated replay and browser API checks pass. This is bounded local archive storage,
+with full-run replay on append/query; no capacity/throughput or physical native claim is made.
+Observe metric collection, new timeline/comparison UI and experimental apps remain unimplemented.
 The task descriptions below retain the target architecture and acceptance criteria.
 
 ## Architecture constraints

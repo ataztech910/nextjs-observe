@@ -3183,3 +3183,54 @@ RN-устройства и нагрузочные измерения этим sm
 
 **Дальше:** T3 — run partitions, attribute predicates и versioned capture/replay; затем экспериментальные приложения
 и ручное Observe/RN инструментирование на этом backend. Новая metric visualization относится к T4–T5.
+
+
+---
+
+## 11 ноября 2026 — performance T3: run partitions и capture/replay
+
+**Чтобы** проводить A–F на воспроизводимых данных, **делаем** минимальное сохранение отдельных запусков до
+экспериментальных приложений. Пользователь смержил T1/T2; новая ветка `step-performance-run-capture` создана от
+актуального `origin/master` (`046d1c8`), без переписывания предыдущих веток.
+
+**Изменено:**
+- `--capture-dir` / `OBSERVE_CAPTURE_DIR`, `RunCapture` и `/api/performance/runs`: создать/перечислить/прочитать/
+  finalize запуск. Run manifest содержит experiment/variant/platform, source availability, clock/calibration
+  records, external artifact hashes, counts, schema и правила получения dedup keys из исходных OTLP-полей.
+- `x-observe-run-id` выбирает изолированный partition целого OTLP batch; unknown/disabled run не попадает
+  молча в live store. Авторизация ingest прежняя; управление/запросы run защищены UI Basic auth. Tagged данные
+  не обучают live detector и не зависят от eviction обычных MemoryStorage/MemoryMetricStorage.
+- Span/metric run queries: пагинация, total/truncated/nextOffset, byte budget, allowlisted typed equality
+  predicates на resource и атрибуты одной observation. Нельзя собрать совпадение из разных spans одного trace.
+- На диске исходные decompressed JSON/protobuf bytes (включая неизвестные поля), sequence/hash inventory,
+  атомарная публикация/fsync, финальный marker. Gzip transport bytes и HTTP credentials не сохраняются.
+  Точные request retries не создают новые файлы; эквиваленты JSON/protobuf дедуплицируются при replay.
+- `replayRun()` создаёт свежие изолированные stores, проверяет schema/hash/counts/inventory и отклоняет
+  повреждение/несовместимость. `exportRun()` переносит frozen archive в новую папку; `hashArtifact()` позволяет
+  связать Lighthouse/profile/native report по хешу. External artifact bodies остаются отдельно.
+- Незавершённый archive имеет status=incomplete; `coverage=received-requests-only` явно ограничивает смысл
+  finalized. Producer omissions задаются incompleteReasons. Pending files не считаются принятыми запросами.
+  Per-run queue и filesystem lock защищают запись/finalize; после crash stale lock требует проверки владельца
+  перед удалением, read-only replay доступен без снятия lock.
+
+**Проверено:** 755 passed, 4 skipped (real-model e2e), typecheck backend/UI и production build.
+Четыре mutation checks поймали отключение raw hash validation, request dedup, final count validation и замену
+AND-предикатов на OR; исходники восстановлены. Тесты покрывают concurrent writes/retries/finalize, detached
+buffers, restart/incomplete recovery, разные runs с одинаковыми IDs/intervals, atomic conflict rejection,
+raw unknown fields, corruption, limits, auth, pagination и отсутствие загрязнения live stores/detector.
+
+**Packed e2e:** `e2e/run-capture.mjs <extracted-package> --serve`: реальные TracerProvider/MeterProvider и upstream
+JSON/protobuf serializers через gzip → 2 изолированных runs → restart collector → export → два replay с одинаковыми
+counts/stats/buckets. По 1 span и 1 histogram point на run, 4 raw request records, live spans/points=0. Built UI
+загрузился в браузере; run API, predicate и buckets проверены из page context; console errors=0.
+Packed artifact `/private/tmp/observe-t3-mi1iupyr/package`; dependencies подключены symlink к установленным
+node_modules, clean npm install и физические RN-устройства не проверялись. Первый npm pack упёрся в недоступный
+npm cache; повтор с временным cache прошёл. Публикация версии не выполнялась.
+
+**Ограничения:** bounded local MVP (64 MiB/run, 10k raw requests, 200k decoded observations, 10 MiB/request);
+каждый append/query валидирует replay всего run. Это решение для небольших замороженных экспериментов, без
+заявлений о throughput. Existing UI показывает live dataset; run timeline/comparison относится к T4/T5.
+
+**Дальше:** начать экспериментальное приложение и ручное Observe инструментирование поверх T1–T3, проверить
+Node/browser source contracts, затем ранний RN bootstrap/native feasibility. UI T4/T5 расширять на полученных
+captures, внешние отчёты связывать через manifest. Новых исследовательских спецификаций для старта не требуется.

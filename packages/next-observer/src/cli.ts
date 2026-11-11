@@ -5,7 +5,7 @@ import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
-import { MemoryStorage, startCollector, type Collector, type CollectorOptions } from './collector/index.js'
+import { RunCapture, MemoryStorage, startCollector, type Collector, type CollectorOptions } from './collector/index.js'
 import { seedDemo, startLiveDemo } from './debug/demo.js'
 import { detectPackageManager, init, installArgs, type InitChange, type PackageManager } from './init.js'
 import { CheckRunner } from './checks/runner.js'
@@ -29,6 +29,7 @@ export const HELP = `Usage:
   next-observer collector [--host <host>] [--port <n>] [--api-key <key>] [--ui-password <password>] [--demo]
       Start only the collector (e.g. on a server). Reads OBSERVE_HOST, OBSERVE_PORT, OBSERVE_API_KEY, OBSERVE_UI_PASSWORD.
       --api-key protects ingest (x-api-key); --ui-password protects the UI, API and chat (browser login).
+      --capture-dir <dir> (or OBSERVE_CAPTURE_DIR) enables local run archives and run APIs.
       --demo preloads the workshop "shop" scenario (a regression in v2, 30% inventory errors, an N+1, an error new in v2).
 
 Environment: OBSERVE_ROOT, OBSERVE_PORT (default 4318), OBSERVE_HOST (default 127.0.0.1), OBSERVE_API_KEY,
@@ -49,6 +50,7 @@ export interface CliArgs {
   host: string
   apiKey?: string
   uiPassword?: string
+  captureDir?: string
   demo: boolean
   proxy: boolean
   nextArgs: string[]
@@ -70,6 +72,7 @@ export function parseCliArgs(argv: string[], env: Env, cwd: string): CliArgs {
         host: { type: 'string' },
         'api-key': { type: 'string' },
         'ui-password': { type: 'string' },
+        'capture-dir': { type: 'string' },
         demo: { type: 'boolean' },
         proxy: { type: 'boolean' },
         help: { type: 'boolean', short: 'h' },
@@ -94,6 +97,7 @@ export function parseCliArgs(argv: string[], env: Env, cwd: string): CliArgs {
     host: values.host ?? env.OBSERVE_HOST ?? '127.0.0.1',
     apiKey: values['api-key'] ?? env.OBSERVE_API_KEY,
     uiPassword: values['ui-password'] ?? env.OBSERVE_UI_PASSWORD,
+    ...((values['capture-dir'] ?? env.OBSERVE_CAPTURE_DIR) ? { captureDir: resolve(cwd, (values['capture-dir'] ?? env.OBSERVE_CAPTURE_DIR)!) } : {}),
     demo: values.demo ?? false,
     proxy: values.proxy ?? false,
     nextArgs,
@@ -322,7 +326,7 @@ async function start(args: CliArgs, deps: CliDeps): Promise<{ collector: Collect
       },
       ...(watch ? { rule: watch.rule } : {}),
     }
-    const collector = await startCollector({ port: args.port, host: args.host, apiKey: args.apiKey, uiPassword: args.uiPassword, storage, chat, detector, budget, checks })
+    const collector = await startCollector({ port: args.port, host: args.host, apiKey: args.apiKey, uiPassword: args.uiPassword, storage, chat, detector, budget, checks, ...(args.captureDir ? { capture: new RunCapture(args.captureDir) } : {}) })
     current.runner?.start()
     const stopDemo = args.demo ? startLiveDemo({ storage, detector }) : undefined
 

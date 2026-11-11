@@ -286,11 +286,89 @@ investigated. Questions you ask are not counted. `GET /api/chat` shows how much 
 | `OBSERVE_APP_URL` | `http://localhost:3000` | where the checks from `observe.checks.ts` are sent |
 | `OBSERVE_MODEL_TIMEOUT_MS` | `90000` | how long one model call may take before it is started again |
 | `OBSERVE_API_KEY` | — | require `x-api-key` on ingest (`/v1/traces`) |
+| `OBSERVE_CAPTURE_DIR` | — | opt-in local run capture directory (`--capture-dir`) |
 | `OBSERVE_UI_PASSWORD` | — | require a password for the UI, the query API and the chat (browser login, any user name) |
 | `OBSERVE_PORT`, `OBSERVE_HOST`, `OBSERVE_ROOT` | `4318`, `127.0.0.1`, `.` | same as `--port`, `--host`, `--root` |
 
 Accepts OTLP/HTTP traces from any OpenTelemetry SDK or Collector: `application/json` and `application/x-protobuf`,
 optionally `Content-Encoding: gzip`, on `/v1/traces`.
+
+## Experiment run archives
+
+Enable local capture with `next-observer collector --capture-dir ./captures` (or `OBSERVE_CAPTURE_DIR`).
+Create a run before configuring its exporters:
+
+```sh
+curl -X POST http://localhost:4318/api/performance/runs \
+  -H 'Content-Type: application/json' \
+  -d '{"runId":"hook-baseline-01","metadata":{"experiment":"C","variant":"baseline","platform":"react-web","sources":[{"name":"manual-hook","available":true}],"clocks":[{"source":"performance","uncertaintyNs":null}]}}'
+```
+
+Send OTLP traces/metrics to the usual endpoints with exporter header `x-observe-run-id: hook-baseline-01`.
+The header selects one partition for the entire request; use a separate exporter/batch per run. It is authoritative;
+metadata and telemetry attributes are preserved without rewriting them. Run IDs are case-sensitive. Unknown runs
+are rejected; tagged ingest with capture disabled returns 503. Tagged requests go exclusively to the archive,
+independently of live memory retention and the live anomaly detector. The current UI/legacy trace routes display
+live data; run visualization is a subsequent step. Existing untagged ingest remains the live path.
+
+Run management/query uses the configured UI Basic auth; OTLP ingest uses `x-api-key` when configured.
+
+| Endpoint | Result |
+|---|---|
+| `POST /api/performance/runs` | Create `{runId, metadata}`; existing IDs return 409 |
+| `GET /api/performance/runs` | Run headers/counts, without per-request inventories; at most 100 runs per directory listing |
+| `GET /api/performance/runs/:id` | Versioned manifest, exact raw request hashes/inventory and deduplicated span/point counts |
+| `GET /api/performance/runs/:id/spans` | Raw normalized observations, `total`, `truncated`, `nextOffset`, run header |
+| `GET /api/performance/runs/:id/metrics` | Typed metric observations with the same pagination contract |
+| `POST /api/performance/runs/:id/finalize` | Atomically publish the frozen manifest; repeated finalization returns the same manifest |
+
+Both observation endpoints accept `limit` (1–1000, default 100), `offset` (default 0), and JSON-encoded `where`:
+`[{"target":"resource","key":"service.name","value":{"stringValue":"my-app"}},
+{"target":"observation","key":"observe.perf.phase","value":{"stringValue":"compute"}}]`.
+All equality conditions apply to **one span or point**. Resource and observation attributes are separate; int64
+predicates use `intValue` decimal strings and never coerce to a number. At most 16 predicates are allowed, using
+`RUN_ATTRIBUTE_ALLOWLIST` exported from `next-observer/collector`. Queries have a 16 MiB observation-page budget;
+follow `nextOffset` rather than assuming `limit` observations were returned. Pages are stable for finalized runs;
+active runs may change. Trace-list responses are never used to assemble an experiment dataset.
+
+The `next-observe/run/v1` directory holds `run.json`, numbered original **decompressed OTLP request bytes**
+(`json`/`protobuf`), and an atomically published `finalized.json`. Thus unknown JSON/protobuf fields survive in the
+archive even though current decoders only project supported fields. Gzip transport bytes/HTTP credentials are
+not archived. Each request is validated and conflict-checked before file publication; file and parent directory
+are synced before success. Exact raw request retries are idempotent; JSON/protobuf equivalents may have separate
+files but are deduplicated on replay. Trace identity uses traceId/spanId (first observation wins); metric identity
+uses typed resource/scope/stream/interval, with conflicting values rejected. Keys are derived from the archived
+OTLP fields using these same storage rules. No cumulative differencing or cross-run aggregation is performed.
+
+`finalized` means the accepted archive is frozen and integrity-checked. `coverage: received-requests-only` does
+not assert that the producer exported every observation. Record known producer/harness omissions in metadata
+`incompleteReasons`. Source availability, clock/calibration records and external artifact `{name, sha256,
+sizeBytes, mediaType?}` references stay in metadata; they are declarations, not measurements fabricated by the
+receiver. External artifact bodies remain separate; callers can verify a body with `hashArtifact()`.
+
+```js
+import { RunCapture, replayRun, hashArtifact } from 'next-observer/collector'
+const capture = new RunCapture('./captures')
+// Record await hashArtifact('./lighthouse.json', 'application/json') in metadata when creating the run.
+await capture.finalize('hook-baseline-01')
+await capture.exportRun('hook-baseline-01', './frozen-hook-baseline-01') // new destination directory
+const { manifest, storage, metricStorage } = await replayRun('./frozen-hook-baseline-01')
+// Fresh isolated stores on every replay; no insertion into another run or live storage.
+```
+
+Replay checks schema, sequence, hashes, counts and final inventory, and fails on incompatible versions or
+corruption. Without the final marker it reports `incomplete` and ignores unpublished `.pending-*` files.
+Concurrent operations are serialized per run; a filesystem lock rejects a second process writer with 503.
+After a crash, standalone `replayRun()` can inspect an incomplete run without writing. Check that no writer
+is alive before removing a stale `.write-lock` to resume writes. Never edit finalized captures.
+
+Defaults per run: 64 MiB uncompressed requests, 10,000 distinct raw requests, 200,000 decoded observations
+(including non-identical retries); 10 MiB per request. `RunCapture(directory, options)` and `replayRun(directory,
+options)` enforce these budgets. Raw bodies are read with bounded streams; each request still has the standard
+trace/metric decoder limits. Metadata is bounded by 64 KiB/depth 16. For this local experiment MVP, each append/query
+replays the run for validation; it is intended for bounded captures, with no throughput or fleet-scale claim.
+Capacity/latency measurements and indexed storage remain future work. No dependencies or instrumentation APIs
+were added for capture.
 
 ## Entry points
 
