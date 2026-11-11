@@ -157,10 +157,56 @@ observer accepts both `http/json` and `http/protobuf` (≥ 0.2.0).
 
 Production React profiling: build with `next build --profile` to get component render timings.
 
+## Explicit performance work
+
+`next-observe/performance` provides an opt-in manual helper for selected synchronous callback bodies. It imports
+only the OpenTelemetry API: no Next.js, DOM instrumentation, SDK initialization, React patching or automatic hook
+transform. Configure OTel trace/metric providers in the application first, or inject a `tracer` and `meter`.
+Next is an optional peer for this entry point; Next-specific entries still require a Next app.
+
+```ts
+import { createPerformanceProbe } from 'next-observe/performance'
+const probe = createPerformanceProbe({
+  mode: 'diagnostic',
+  source: { file: 'src/Search.tsx', site: 'Search.useMemo/v1' },
+  // tracer, meter: optionally inject configured SDK instruments without global registration
+})
+const action = probe.startInteraction('search.action')
+// Carry this handle/context explicitly into the render/callback caused by this action.
+const result = action.measureSync('computeResults', 'compute', () => computeResults(query))
+// Call from the observed commit/completion callback, using its actual source:
+action.event('react.commit', { source: 'react-profiler' })
+action.end('committed')
+```
+
+Wrap the computation **inside** useMemo/reducer/custom-hook callbacks, rather than timing hook registration.
+`measureSync` preserves returned values, promise and cleanup-function identity and thrown errors. It measures
+only synchronous execution, without awaiting returned promises. Phases: `compute`, `reducer`, `effect.setup`,
+`effect.cleanup`. Pass the handle/context explicitly across callbacks/awaits; unrelated actions start separate
+root traces by default, without installing an async context manager. `end()` is idempotent; late callbacks run
+without attribution. A measured callback can be an uncommitted attempt; only an actual commit observer should
+mark its action as committed. No render-attempt/commit identity is inferred by this helper.
+
+| Mode | Collection |
+|---|---|
+| `disabled` | Calls work directly; no instrument/provider lookup, timestamps or spans from the helper |
+| `diagnostic` | Interaction spans/events, selected work spans, work/interaction histograms |
+| `production_like` | Interaction spans/events and histograms; omits per-work spans |
+
+Metric names `observe.perf.work.duration` and `observe.perf.interaction.duration` use seconds. Selected work
+histograms bound the callback with monotonic clock calls; work span elapsed includes additional probe/SDK cost.
+Profiler render work may overlap these values and must not be added to them. Caller-declared completion is
+not automatically paint, INP or native presentation. Source names/sites must be static and low-cardinality;
+run/variant/build identity usually belongs on the SDK resource. Configure bounded SDK queues/export policy in
+the application. These modes are collection controls, not measured overhead guarantees. The standalone React
+experiment lives in the sibling `performance-observability` repo; RN bootstrap/native measurement remains to
+be validated separately. Existing client/server/directive behavior is unchanged.
+
 ## Entry points
 
 | Import | For |
 |---|---|
+| `next-observe/performance` | explicit manual selected-work timing; app-owned OTel bootstrap |
 | `next-observe/config` | `withObserve()` for `next.config.ts` |
 | `next-observe/server` | `register()` for `instrumentation.ts` |
 | `next-observe/client` | browser telemetry for `instrumentation-client.ts` |

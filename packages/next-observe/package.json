@@ -50,6 +50,10 @@
     "./proxy": {
       "types": "./dist/proxy.d.ts",
       "default": "./dist/proxy.js"
+    },
+    "./performance": {
+      "types": "./dist/performance.d.ts",
+      "default": "./dist/performance.js"
     }
   },
   "files": [
@@ -91,5 +95,10 @@
     "react-dom": "^19.3.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.2"
+  },
+  "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    }
   }
 }
