@@ -1,5 +1,8 @@
 # Conference experiment support
 
+Latest iOS follow-up: [native callback cadence source](IOS_NATIVE_CADENCE.md) collects independently during JS stalls
+on Release Simulator. It extends the JS portion of D; physical frame/hitch/presentation acceptance remains open.
+
 None of A–F is complete end to end today. Current reusable foundations are OTLP/HTTP trace ingestion, events/attributes, bounded span storage, tree timeline and raw-span statistics. Observe has document/network/error instrumentation and selected function/component-call timing. Evidence: [architecture inventory and UI audit](ARCHITECTURE_AUDIT.md), especially [runtime.ts:47](../../../packages/next-observe/src/runtime.ts#L47), [receiver.ts:156](../../../packages/next-observer/src/collector/server.ts#L156), [operation.ts:55](../../../packages/next-observer/src/collector/operation.ts#L55). No applications are implemented by this research.
 
 Implementation status (12 November 2026): the original inventory below is a research snapshot. T1–T3 capture and

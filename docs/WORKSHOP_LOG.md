@@ -3601,3 +3601,53 @@ Experiment repo: local commit `c819f2a` на `step-ios-host`; remote пока о
 Simulator закрывает функциональный bootstrap gate; физический Release/signing, suspend/resume/export-failure delivery,
 calibrated clocks, native input/frames и drop accounting требуют отдельных проверок. T6/T7 и D/E/F conference
 acceptance остаются открытыми; durations из этого smoke не используются как performance/overhead результат.
+
+### 12 ноября — Независимый native callback cadence при JS stall
+
+Merges #97/#98 подтверждены в master (`af9c4ed`). В отдельном experiment repo добавлен app-local Objective-C++
+CADisplayLink source через проверенный RN 0.88 interop. Main/common run loop сохраняет native callback/display/target
+timestamps без JS dispatch/export на callback. Новый `cadence` scenario расширяет прежний JS workload; старые
+scheduling/bootstrap остаются доступны. Instrumentation/aggregation/OTel exporter принадлежат app, collector/storage
+и Observer UI — отдельному процессу. Монорепо меняется только в docs. Контракт: [native cadence](research/performance-observability/IOS_NATIVE_CADENCE.md).
+
+Native buffer ограничен 1024 records, overflow counter явный; session IDs/generation защищают разные captures.
+Background/invalidated module останавливают source. Monotonic deadline 8 s проверяется tick/stop плюс scheduled cleanup;
+это не hard real-time гарантия при заблокированном main loop. Первое expiry-only self-check не прошло до создания
+experiment capture; проверки deadline усилены. Финальная native проверка реальными bridge methods отклоняет duplicate
+start/wrong-session stop, получает expired, открывает Settings Simulator и возвращается для настоящего background stop,
+затем проверяет restart. Настройки не менялись. Self-check выполняется вне measured workload первого idle-disabled run.
+
+Clock model сохраняет 7 JS/native ping pairs до и 7 после, epoch anchors и body bracket. Intersect native-minus-JS
+offset bounds при constant-offset assumption; несовместимые endpoints отклоняются. Interior callback засчитывается,
+только если весь возможный диапазон его JS-time строго внутри body. Transport half-width не является полной clock
+uncertainty: precision/drift остаются неизвестными. Native timestamp tracks/epoch alignment не объявляются точными.
+
+**Проверено:** 33 experiment tests pass, web typecheck/build pass, Xcode native Release compile/link pass. Новые tests
+покрывают seconds/source/raw bounds, partial/drop/unsupported rejection, несовместимые clocks, strict interior test,
+handshake clocks и missing-module cleanup. Три mutations (игнорировать drops, заменить bounds на midpoint,
+принять несовместимые clocks) пойманы; исходники восстановлены, full tests повторены.
+
+Финальная session `reports/ios-cadence-1794441662289`: 6 свежих процессов одного Release artifact,
+idle/blocked × disabled/diagnostic/production_like. Native callbacks idle 50/51/51, blocked 74/74/74;
+внутри blocked body при принятой модели — 24/25/24 callbacks, buffer drops=0 во всех runs. Это не доказательство
+zero dropped frames/producer losses. Disabled 0 OTLP requests, diagnostic 2 spans/4 metric points, production_like
+1/4; JS delay count=16, native interval count=callbacks−1. Native raw sums совпали с OTLP seconds; native deadline/
+stop bounds/source attributes проверены. Raw acquisition independent of JS; агрегирование/export выполняется через JS
+после сбора. SDK histogram reporting times не являются исходными callback timestamps.
+
+Source SHA `82e7c41ad512dfd0b587c047705a7c1f993109084179d1088f456fd727ce68d8`; native executable SHA
+`0f24380dfb4b67ee2cabeaed5baf0d20eb7fcc92477e1d70ea644ab53569df98`; embedded bundle SHA
+`928b8ff93094451871c5b6cec5483c3e99e55c586bfa4f562f18eef0d289b01a`. Matching source body, .app snapshot, raw
+archives, clock/native receipts, screenshots, build/backend hashes/log сохранены. Packed backend прежний, installed
+dependencies symlinked, не clean install. Browser проверил selected work/root timeline, отдельные JS/native histograms,
+count=73 и explicit buckets в выбранном diagnostic run, ios.cadisplaylink/proxy raw attributes, disabled empty;
+fresh diagnostic page errors=0. Screenshot native UI просмотрен. Временный artifact receiver закрыт.
+
+Регрессии на том же artifact: `ios-scheduling-1794441745819` (6 conditions), `ios-bootstrap-1794441761192` (3 modes)
+pass; raw captures и matching identity сохранены. Старые web sessions не менялись. Experiment commit `70e69cf` локален,
+remote пока отсутствует. AI review hook сообщил unavailable/timeout и сам продолжил fail-open; hooks не обходились.
+Новых pods/JS dependencies, публикаций, physical-device signing/account changes нет. Collector/Simulator оставлены.
+
+**Дальше:** независимая Instruments/XCTest hitch/presentation проверка с исходными system artifacts; physical Release/
+signing и повторные matched-device runs. CADisplayLink здесь — callback cadence proxy. Native input, compositor frames,
+hitches и полноценная calibration остаются открытыми; T7 закрыт частично, D/E/F не объявляются conference-complete.

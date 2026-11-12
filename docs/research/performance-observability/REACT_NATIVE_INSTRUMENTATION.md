@@ -1,5 +1,8 @@
 # React Native instrumentation research
 
+Current native follow-up: [independent iOS callback cadence](IOS_NATIVE_CADENCE.md) now passes on Release Simulator.
+CADisplayLink buffer/clock-pair checks are implemented; compositor presentation/hitch and physical acceptance remain open.
+
 Latest follow-up (12 November 2026): [actual iOS Release Simulator scheduling workload](IOS_SCHEDULING_SCENARIO.md)
 adds idle/blocked JS timer evidence and a native-driver animation request. Native frame/presentation and physical
 acceptance remain open; earlier inventory/status entries below describe their respective implementation stages.
