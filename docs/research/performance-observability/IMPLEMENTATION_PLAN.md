@@ -6,6 +6,10 @@ acceptance remain open; earlier inventory/status entries below describe their re
 
 This roadmap was created during research; implementation was subsequently authorized by the user.
 
+Latest system gate (12 November): [actual Simulator profiler capability/evidence](IOS_SYSTEM_PROFILER_GATE.md).
+Time Profiler + app signposts are recorded and validated; Animation Hitches reports unsupported on this platform.
+Physical hitch/presentation and conference acceptance remain open.
+
 Implementation update, 2026-11-11: the first T1 increment is implemented on `step-performance-otlp-traces`:
 known trace-field preservation (typed source projection, exact timestamps, links/scope/schema/flags/dropped counts),
 bounded atomic validation with OTLP error responses, retained-window deduplication including detector input,
