@@ -168,3 +168,12 @@ Next: extend the experiment host with the planned JS scheduling/native-driven an
 validated iOS cadence/hitch source. Physical-device signing/Release validation remains a separate open gate; Simulator
 is useful for functional development but cannot satisfy physical performance acceptance. Clocks remain uncalibrated,
 native input/frames unavailable, drops unknown. T6/T7 and D/E/F conference acceptance remain open.
+
+
+### Independent iOS callback source — 12 November 2026
+
+[CADisplayLink cadence increment](IOS_NATIVE_CADENCE.md) adds app-local native buffering, explicit overflow/lifecycle/
+session handling and bounded JS/native clock-pair analysis. Six real Release Simulator conditions plus native
+expiry/background/restart checks pass; existing Observer displays the exported callback-interval histogram without
+runtime changes. This is a partial T7 source, not frame presentation or hitch validation. Next gate is independent
+Instruments/XCTest corroboration with original system artifacts, then physical Release and repeated-device acceptance.
