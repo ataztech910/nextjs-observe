@@ -6,6 +6,49 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Системный gate экспериментов — 12 ноября: Instruments на Simulator
+
+**Чтобы** проверить JS/native workload внешним системным инструментом, **записали** настоящий Animation Hitches
+probe и два Time Profiler + Points of Interest диагностических запуска. Animation Hitches завершился exit 2:
+`Hitches is not supported on this platform`. Исходные .trace/log/TOC сохранены, hitch count/ratio остаются unavailable,
+не zero. Наличие XCTHitchMetric в локальном SDK проверено, XCTest не запускался. Physical hitch/presentation gate
+остаётся открытым. Полный контракт: [system profiler gate](research/performance-observability/IOS_SYSTEM_PROFILER_GATE.md).
+
+В отдельном experiment repo добавлены opt-in CadenceWindow/NativeCallback/JSWorkBoundary signposts с run ID, index
+и native time. Native bracket включает bridge handoff/queue overhead, не подменяет selected-body span/CPU duration.
+App signposts происходят из того же callback source, что buffer; сравнение подтверждает external recording/export,
+не даёт второй compositor sensor. Time Profiler CPU sampling — отдельный system source. Observe/collector/storage/
+Observer boundary сохранён; в монорепо меняются только docs, Observer runtime не тронут.
+
+Session `reports/ios-system-1794455821579`: 51 idle / 85 blocked callbacks полностью совпали с system signposts,
+внутри native bridge bracket — 0 / 35 callback events и 1 / 588 running JS/Hermes samples. Native bracket duration
+0.408584 / 589.489583 ms включает handoff overhead. По одному profiled run на condition; статистика/overhead/
+physical performance не заявляются. Source SHA `d1741c309ff7b3ebbd2ec01795a11bef529fceedf29ae3bac0ed3c4285ac9818`,
+bundle SHA `6a0f867972bb98123692eb4ade836c88f8ee523b82524b1c297d23752bcb6c84`. Native .app/dSYM, matching source
+body, raw captures, .trace/XML, build/backend identities и анализ JSON/HTML/screenshot сохранены. Packed backend
+прежний с symlink installed dependencies, не clean install. Observer принимает соответствующий OTLP без изменений.
+
+**Проверено:** 34 JS tests + 6 Python parser tests pass, web typecheck/build и native Release compile/link pass.
+Три mutations (unsupported→zero, игнорировать callback population, принять foreign run) пойманы, код восстановлен.
+Async-marker rejection test подтверждает cleanup без success. Typed XML scalar values/ID refs не заменяются localized
+fmt strings; process/run/source/interval pairing/native timestamps/population/CPU проверяются. Повторный анализ
+byte-identical, SHA `bd19dd0f7eff713b39e2757dfe31ff958a58896ea0e78d31cb1c9fa1adfd6e75`. Standalone timeline проверен
+в браузере: два panels, actual timestamps, unsupported text, page errors=0; screenshot просмотрен (favicon 404 отдельно).
+
+Пилоты с capture HTTP 400 из-за boolean label исправлены по реальному string-label schema с contract assertion;
+нормальный завершённый launch target Instruments теперь допускает следующий terminate с "found nothing to terminate".
+Пилоты сохранены отдельно. Регрессии `ios-cadence-1794456172771` и `ios-bootstrap-1794456200664` pass на том же artifact;
+ordinary cadence receipts systemTracing=false / profiler=off. Старые web sessions не менялись, новых dependencies нет.
+
+**Дальше:** supported physical-device setup/signing и реальная Instruments/XCTest hitch/presentation проверка с
+исходными system artifacts. Текущий Simulator не закрывает Animation Hitches gate; T7/D/E/F acceptance остаются open.
+Phone settings/accounts не менялись. Прежний native cadence шаг документируется отдельно в PR #99.
+Experiment commit `5a19de8` локален (remote у repo отсутствует). AI review hook сообщил unavailable/timeout и сам
+продолжил fail-open, hooks не обходились. Временный HTML preview server остановлен после проверки process command;
+collector и обычный Simulator cadence-сценарий оставлены для просмотра.
+
+---
+
 ## Текущее продолжение экспериментов — 12 ноября: JS stall при native-driver animation
 
 **Чтобы** подготовить JS-часть эксперимента D на выбранном пользователем Simulator, **добавили** в отдельном
