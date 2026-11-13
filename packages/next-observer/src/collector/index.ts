@@ -18,6 +18,6 @@ export { RunCapture, replayRun, hashArtifact, type CaptureOptions, type Replayed
 export { CaptureError, RUN_SCHEMA, type RunManifest, type RunMetadata } from './run-manifest.js'
 export { RUN_ATTRIBUTE_ALLOWLIST, type RunPredicate } from './run-predicates.js'
 
-export { PerformanceReports, type PerformanceReport, type PerformanceReportHeader, type PerformanceReportList } from './performance-reports.js'
+export { PerformanceReports, type PerformanceReport, type ExperimentReport, type ScenarioReport, type PerformanceComparisonReport, type PerformanceReportHeader, type PerformanceReportList } from './performance-reports.js'
 
 export type { RunTraceSummary, RunTraceDetail } from './run-types.js'

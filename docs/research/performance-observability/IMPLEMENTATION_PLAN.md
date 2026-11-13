@@ -54,6 +54,12 @@ the external harness. Instrumentation remains in Observe. This is an initial T4/
 replacement trace viewer or a full track/exemplar/comparison implementation. 764 Observer tests pass (4 skipped),
 typecheck/build and four mutations pass; the packed UI/backend were checked against the real 27-run frozen session.
 
+Runner/report increment (13 November): Observer additionally reads `observe.scenario-report/v1`, with checks,
+passed/failed/incomplete states, explicit unavailable measurements and verified artifact/capture associations.
+The external experiment repo provides a Playwright functional producer and browser verification against the packed
+backend/UI. Maestro is a supported report discriminator; its flow/adapter is the next increment.
+See [scenario reports](SCENARIO_REPORTS.md). This does not close native presentation or repeated-performance gates.
+
 The task descriptions below retain the target architecture and acceptance criteria.
 
 ## Architecture constraints
