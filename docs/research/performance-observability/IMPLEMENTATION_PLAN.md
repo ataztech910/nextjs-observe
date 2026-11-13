@@ -57,7 +57,7 @@ typecheck/build and four mutations pass; the packed UI/backend were checked agai
 Runner/report increment (13 November): Observer additionally reads `observe.scenario-report/v1`, with checks,
 passed/failed/incomplete states, explicit unavailable measurements and verified artifact/capture associations.
 The external experiment repo provides a Playwright functional producer and browser verification against the packed
-backend/UI. Maestro is a supported report discriminator; its flow/adapter is the next increment.
+backend/UI. Maestro has a real Simulator UI flow and external JUnit/commands adapter; see [Maestro gate](MAESTRO_GATE.md).
 See [scenario reports](SCENARIO_REPORTS.md). This does not close native presentation or repeated-performance gates.
 
 The task descriptions below retain the target architecture and acceptance criteria.

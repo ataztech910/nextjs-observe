@@ -6,6 +6,50 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Maestro — 13 ноября: настоящий iOS UI flow и общий JSON report
+
+**Чтобы** запускать native-сценарии внешним runner и читать их рядом с web reports, **добавили** в отдельный
+experiment repo Maestro flow для существующего cadence workload. Orchestrator запускает fresh Release Simulator
+process с autoRun:false; Maestro проверяет run ID, нажимает реальную кнопку и ждёт completion. В host добавлены
+стабильные accessibility IDs/status и optional validated protocol hash. Observe API, instrumentation и Observer
+runtime не менялись; используется прежний packed scenario reader. Контракт: [Maestro gate](research/performance-observability/MAESTRO_GATE.md).
+
+Adapter проверяет single-flow JUnit population/status/run property и command evidence через исходный artifact
+manifest: completed matching app/run config, actual tap и completion assertion. Затем проверяет app receipt/source/
+protocol/variant/mode, 2 spans/4 metric points, 16 JS samples/checksum и повторно анализирует raw CADisplayLink +
+clock pairs. Native hitch count остаётся null/unavailable. Наличие Maestro XCTest driver не является XCTHitchMetric
+measurement. Receipt writes coalesce identical concurrent retries; conflicting bodies/disk errors не заменяют evidence.
+
+**Проверено:** 42 JS tests и 8 Python tests pass, web typecheck/build и native Release build pass. Четыре mutations:
+потерять JUnit run association, игнорировать runner failure, принимать конфликтующий receipt, принимать failed command
+как completed — пойманы, код восстановлен. Mutation concurrency test сначала ожидал собственный unreleased gate;
+исправлен и повторён до финальных runs. Промежуточные sessions сохранены как pilots, итоговая пара снята отдельно.
+
+Финальные `maestro-1794559097407-1a14dc` → passed/exit 0 и `maestro-1794559119640-609fd2` → failed/exit 1 при реальном
+неверном UI completion assertion. Оба OTLP archives finalized, 2 spans/4 metric points, 16 JS samples. В каждом 72
+native callbacks, условно внутри JS body — 22/21 по constant-offset model; max JS timer lateness 364.1/361.7 ms —
+описательные значения functional smoke, не performance/overhead acceptance. Source SHA
+`09ddd01fa8551dc5e73fdb035591bfdc8bdb45216926a57d9f4ee277f13b63d1`, bundle SHA
+`ad3d8e5d3bac2948af9376839222a2fcc1de7d18b2b1f2386e9777af3f42c119`. Исходные JUnit/commands/artifact manifests,
+Maestro/XCTest/simulator logs/screenshots, app receipts, native .app, prepared source manifest и matching source bodies,
+runner/flow source, inventories и raw OTLP сохранены. Observer browser показывает правильный status и unavailable,
+page errors=0; screenshot просмотрен. Native bootstrap regression `ios-bootstrap-1794559241499` на том же artifact:
+0/4/2 spans и 0/4/4 metric points в disabled/diagnostic/production_like, pass.
+
+Первый Maestro flow реально прошёл, но JUnit exporter оставил `${RUN_ID}` буквально: строгий adapter корректно
+оставил incomplete. Исправлено генерацией concrete flow с actual run ID; checks не ослаблены. Maestro 2.12.1 и
+Temurin Java 21 скачаны с official endpoints в /private/tmp с archive hash checks; глобальные PATH/JVM не менялись.
+Новых npm dependencies нет. Packed backend прежний, dependencies через installed-graph symlink, не clean install.
+Временные runner/browser/receipt servers закрыты; отдельный read-only просмотр отчёта оставлен на :4323, web на :4322.
+
+Experiment commit `56ff991` локален (remote у repo отсутствует). AI review hook сообщил unavailable/timeout и сам
+продолжил fail-open; hooks не обходились.
+
+**Дальше:** эксперимент A через Playwright с заранее определённым interaction endpoint и повторными matched runs;
+затем B и native-план. Physical hitch/presentation, calibrated clock precision/drift и D/E/F acceptance остаются open.
+
+---
+
 ## Отчёты сценариев — 13 ноября: Playwright → JSON → Observer
 
 **Чтобы** автоматизировать эксперименты через внешние runners и видеть результаты в одном месте,
