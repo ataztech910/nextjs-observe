@@ -6,6 +6,54 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Эксперимент A — 13 ноября: Lighthouse load score и последующий input
+
+**Чтобы** проверить A по заранее заданному протоколу, **добавили** отдельный `/a.html` в experiment repo: одна
+production-profiling сборка, одинаковое начальное содержимое, selected work отсутствует при mount. После trusted
+click baseline/degraded выполняют 16/6000 redundant passes с одинаковым checksum. App-local web bootstrap получил
+optional experiment/source identity; C сохраняет прежние defaults. Observe/Observer/receiver runtime в монорепо не
+менялись. Полный протокол/результаты: [A gate](research/performance-observability/EXPERIMENT_A_GATE.md).
+
+Четыре matched блока, чередование порядка, три клика без warmup exclusions. Load и interaction — отдельные fresh
+Chrome/profile с одинаковыми executable/flags/UA/1280×800/DPR1 и без запрошенного CPU/network throttling; Lighthouse
+provided desktop. Navigation не нажимает кнопку и пропускает capture-control request. Две дополнительные profiled
+диагностики исключены из primary comparison. Fixed criteria: все paired score gaps ≤5 points, все scores ≥90, каждый
+paired handler median gap ≥50 ms. Отрицательная гипотеза остаётся demonstrated=false, не превращается в lost data.
+
+**Получили:** session `load-a-1794560947170-6c40`, все 8 load scores 100/100. Baseline handler→commit run medians
+1.6–2.2 ms; degraded 203.0–215.8 ms. Paired gaps 214.2/200.8/213.3/213.6 ms. Actual page-lifecycle web-vitals INP
+baseline 16 ms, degraded 296/224/216/232 ms. Browser Long Tasks/LoAF 0/0 против 3/3 на каждом primary page. Это
+локальное описательное наблюдение controlled workload, не mobile/field score и не population significance.
+
+App handler/Profiler endpoint не подменяет Event Timing или INP. После finalize — настоящая navigation в about:blank;
+visibilitychange-hidden отправляет loopback receipt, с run/timeOrigin/loss checks. Synthetic hidden events не используются.
+Raw Event Timing threshold 16 ms и supported/unsupported distinction сохранены. CPU diagnostics дали 4/490 samples,
+сопоставленных через source maps именно с `src/load-workload.ts`; max main-thread RunTask 6.891/216.968 ms. Их timing
+не входит в primary distributions. Trace marks остаются в CDP clock, epoch alignment/CPU duration не выдумывается.
+
+**Проверено:** 49 JS tests + 8 Python pass, web typecheck/build pass. Четыре mutations (игнорировать throttling,
+сфабриковать INP из handler, насильно подтвердить hypothesis, приписать чужие CPU frames) пойманы; code restored до
+финального сбора. Шесть corruption checks на временной копии отклоняют изменённые LHR/samples/lifecycle/source-map/
+OTLP и missing run membership; original files не менялись. Frozen replay byte-identical, analysis SHA
+`35f4c6c3402c652fea10a4e3d39b4726ef3cb42d442ae1447ce3da7fba0ce02f`. Raw reports/metrics, lifecycle receipts,
+source/build/lock/maps, OTel archives, CDP trace/CPU profiles, standalone JSON/HTML и screenshots сохранены.
+
+Packed Observer показал все 10 result rows, browser page errors=0; standalone analysis screenshot просмотрен.
+C regression `web-scenario-1794561202710-7ff5f9` на той же новой сборке pass: прежние checksum, 6 spans/3 metric points.
+Прежние C/native archives не менялись; 2-block A pilot отдельно. Пилотный trace не содержал RunTask в выбранных
+categories; перед финальным сбором добавлены explicit toplevel/disabled timeline и source-map CPU verification.
+Lighthouse/launcher/trace-mapping — pinned dev deps, web-vitals — pinned app dep. Packed backend прежний, dependencies
+через installed-graph symlink, не clean install. Временные measurement/browser/receipt servers закрыты; saved report
+доступен на отдельном :4324. Native/Xcode в этом web-шаге не проверялись.
+
+Experiment commit `9b634e3` локален (remote у repo отсутствует). AI review hook сообщил unavailable/timeout
+и сам продолжил fail-open; hooks не обходились.
+
+**Дальше:** B — заранее определить tolerance для размера, сохранить реальные bundle/compressed/transfer/cache bytes
+и сравнить повторные startup/readiness/execution distributions. Physical native presentation и D/E/F остаются open.
+
+---
+
 ## Maestro — 13 ноября: настоящий iOS UI flow и общий JSON report
 
 **Чтобы** запускать native-сценарии внешним runner и читать их рядом с web reports, **добавили** в отдельный

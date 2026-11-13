@@ -29,6 +29,12 @@ Standard OTLP traces/metrics can carry all proposed values as custom names/attri
 
 **Acceptance:** same pinned load protocol is repeated across variants, raw score distributions retained; nominated post-load interaction repeatedly exhibits a measurable difference with exact start/completion definition; main-thread/hook/render evidence is associated explicitly and caveated. If load scores are not comparable, report that result instead of forcing a paradox. Inspect raw timelines and independent browser recording for at least one representative run.
 
+**Implementation update (13 November):** a local four-block A study now preserves pinned Lighthouse navigation
+reports, trusted post-load actions, lifecycle web-vitals INP, Event Timing/Long Tasks/LoAF, explicit OTel hook/render
+context and separate CDP CPU/timeline diagnostics. All load scores were 100/100 while paired handler median gaps
+were 200.8–214.2 ms. See [protocol, raw evidence and scope](EXPERIMENT_A_GATE.md). These are descriptive results
+on one unthrottled desktop/local-network setup; diagnostic timing is excluded, field/mobile/overhead inference is open.
+
 ## B. Bundle Size vs Execution Cost
 
 **Required:** artifact raw/compressed bytes, ResourceTiming transfer bytes/cache flags, selected startup JS work, blocking observations, app readiness, optional parsing/evaluation diagnostic profile. **Existing:** page/network/custom function tracing and storage. **Missing:** size/build metadata, separate transfer/execution schema, readiness markers, metrics/run queries. **Dependencies:** T1–T5, T8/T9; manual instrumentation sufficient, no native code. Bundle/transfer values use OTLP metric observations plus source artifact references.
