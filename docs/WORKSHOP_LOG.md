@@ -6,6 +6,50 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Эксперимент B — 13 ноября: реальные JS-байты и стоимость старта
+
+После merge #103 (`67ea8ec`) создана свежая ветка `step-experiment-b-notes`. **Чтобы** проверить зависимость
+размера от времени выполнения, **сделали** B в отдельном experiment repo: один production-profiling artifact,
+две runtime-конфигурации selected startup work (16/6000 redundant passes), одинаковый checksum. Допуск 2% для
+шести byte measures и минимум 50 ms для paired compute/readiness gaps зафиксированы до сбора. Четыре matched
+блока с чередованием порядка, fresh Chrome/process/context на condition, один startup без warmup exclusions.
+Два gated CPU/timeline запуска исключены из primary comparison. Отрицательный результат не скрывается.
+Полный протокол/данные/границы: [B gate](research/performance-observability/EXPERIMENT_B_GATE.md).
+
+**Получили:** final session `bundle-b-1794566743221-443a`. Все 18 загруженных JS ресурсов имеют одинаковые hashes;
+во всех primary pairs raw/decoded 368651 B, gzip/encoded 117765 B, Brotli artifact 112098 B, browser transfer
+123165 B — разница 0%. Server сохраняет реальные gzip/Brotli bytes и SHA; Network cache flags/no-store/Content-Length
+и ResourceTiming проверяются совместно. Brotli не передавался; transferSize содержит browser header accounting,
+это не число socket bytes. OS filesystem cache не сбрасывался, thermal/power unmeasured, CPU/network throttling
+не запрашивался. Desktop/DPR1/1280×800 одинаковы, вывод локальный описательный.
+
+Selected compute baseline 1.4–3.2 ms, degraded 348.7–354.3 ms; navigation→first App.useLayoutEffect baseline
+82.2–146.3 ms, degraded 424.4–448.1 ms. Paired compute gaps 345.5/348.2/352.9/349.6 ms, readiness gaps
+296.1/334.3/365.9/344.2 ms. Long Tasks/LoAF 0/0 против 1/1 на каждом primary page. Module→ready сохраняется
+отдельно; включает SDK/manifest/capture-control и React scheduling. Ни один elapsed endpoint не назван total
+bundle CPU/parse time, paint или INP. CDP diagnostics: max RunTask 7.784/355.534 ms, 18/318 CPU samples mapped
+к `src/load-workload.ts`; samples не CPU duration, clock alignment с OTLP не выдумывается.
+
+**Проверено:** 57 JS + 8 Python tests pass, build/typecheck pass. Четыре mutations пойманы: игнорировать encoded
+body size, disk cache, насильно сделать comparison valid, приписать другой CPU source. Исходники восстановлены до
+финальных замеров. Шесть corruption checks на временной копии отклоняют gzip body/samples/Network/source map/OTLP/
+missing membership. Оригиналы не менялись. Replay byte-identical, analysis SHA
+`8d8894ac07683ce3c69a12c806b22b80db2a7e51f86037c465b2ad36b5255d82`. Старый A replay сохраняет прежний SHA.
+C regression `web-scenario-1794566774159-a535ac` pass на новой общей сборке. Packed Observer browser проверил
+10 passed rows, 4 explicit unavailable gated readiness values, page errors=0; screenshots просмотрены. Backend
+тот же packed 0.3.35 с installed-graph symlink, не clean install. Report доступен на отдельном :4325; временные
+measurement servers закрыты. Instrumentation в app/Observe, ingestion/archive в backend, Observer только показывает.
+
+Три неполных пилота сохранены отдельно: trace >64 MiB; слишком узкие categories без RunTask; неправильный уровень
+чтения gauge attributes в анализаторе. Исправления покрыты тестом/успешным two-block pilot до final collection.
+Новых dependencies/native builds нет. Experiment commit `2239d0c` локален, remote отсутствует. AI review hook сообщил
+unavailable/timeout и сам продолжил fail-open; hooks не обходились.
+
+**Дальше:** отдельный web F gate: независимые CPU/memory и disabled/diagnostic/production-like, export/queue/drop/
+flush cost. Native physical presentation и repeated-device D/E/F acceptance остаются открытыми.
+
+---
+
 ## Эксперимент A — 13 ноября: Lighthouse load score и последующий input
 
 **Чтобы** проверить A по заранее заданному протоколу, **добавили** отдельный `/a.html` в experiment repo: одна

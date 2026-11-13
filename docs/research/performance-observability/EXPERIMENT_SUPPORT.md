@@ -43,6 +43,13 @@ on one unthrottled desktop/local-network setup; diagnostic timing is excluded, f
 
 **Acceptance:** predetermined size-comparability tolerance declared before collecting results, actual size/transfer distributions shown, cache/network conditions matched, and repeated startup/readiness/execution distributions reported. A failure to achieve comparable transfer sizes invalidates that comparison. No claim that bundles “weigh the same” solely from file names or one network response.
 
+**Implementation update (13 November):** [B local gate](EXPERIMENT_B_GATE.md) uses identical JS artifacts with
+baseline/degraded startup configuration. Raw/gzip/Brotli artifact and browser encoded/decoded/transfer bytes match
+exactly across four primary pairs, with CDP cache/service-worker flags and encoded response receipts verified.
+Selected compute is 1.4–3.2 versus 348.7–354.3 ms, navigation-to-first-layout-effect 82.2–146.3 versus 424.4–448.1 ms.
+These endpoints are distinct from whole-bundle CPU/parse cost and paint. Two gated source-mapped diagnostics are
+excluded. The result is local/descriptive; F cost sources and physical native gates remain separate.
+
 ## C. Hook-Level Bottleneck
 
 **Required:** nominated useMemo/reducer/custom-hook computation duration/count, explicit action context, Profiler committed render-work observations, completion latency and before/after distributions. **Existing:** directive whole-function spans/relative source metadata and generic waterfall; component aggregate cannot provide per-interaction render duration. **Missing:** callback-body timing/phase identity, explicit attribution, commit markers, run comparison, source-aware hook row. **Dependencies:** T1–T5, T8/T9; manual selected body instrumentation is sufficient. No native code on web; RN JS can share measurement logic after T6.
