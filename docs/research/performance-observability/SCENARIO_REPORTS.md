@@ -86,9 +86,18 @@ Open `/performance?report=<session>&run=<session>` on that collector. The origin
 The web scenario is a functional acceptance check with diagnostic tracing enabled, not repeated performance,
 overhead, physical-device or conference acceptance evidence. Archived earlier experiment sessions remain untouched.
 
-## Next producer: Maestro
+## Maestro producer
 
-The reader accepts the Maestro discriminator; no actual Maestro flow has run in this increment. Add an external
-adapter for original JUnit/commands JSON/screenshots and app/system measurements, using the same run/protocol
-association and failure semantics. Preserve runner-specific originals alongside the normalized report. Native
-hitches/presentation still require a supported measurement source; a passed UI flow does not establish smoothness.
+The sibling experiment repository now supplies a real `maestro/cadence.yaml` flow and `npm run scenario:ios`.
+It installs/launches a fresh Simulator Release process with `autoRun:false`; Maestro brings it forward, checks run
+identity, taps the workload button and asserts completion. The external adapter preserves raw JUnit, command
+artifacts, screenshots/logs, app receipt, source/native app and OTLP capture, then uses the unchanged scenario-report
+reader. Completed tap/assertion evidence is required independently of JUnit/exit status.
+
+The observed Maestro 2.12.1 exporter leaves environment placeholders literal in JUnit properties, so the orchestrator
+writes a concrete flow with the actual run ID before launch. Run attribution remains strict. An actual failed UI
+assertion produces failed JUnit/JSON/UI and nonzero exit despite finalized telemetry. No Observer runtime extension
+was needed for this producer. See [Maestro gate and validation](MAESTRO_GATE.md).
+
+This remains Simulator functional evidence. Native hitches/presentation require a supported measurement source;
+a passed UI flow or use of Maestro's XCTest driver does not establish native smoothness or measure XCTHitchMetric.
