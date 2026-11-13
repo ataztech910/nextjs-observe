@@ -420,6 +420,13 @@ finalized manifest hashes, raw OTLP replay integrity, variant/mode and protocol 
 integrity and association, not statistical correctness or authenticity of an untrusted analysis producer. No external
 code/HTML is executed. UI types are browser-safe contracts checked against the backend schemas.
 
+The same reader also accepts `ScenarioReport` (`observe.scenario-report/v1`): runner-neutral Playwright/Maestro
+checks, passed/failed/incomplete states, source-labeled measurements with explicit unavailable reasons, artifact
+references and verified capture associations. `ExperimentReport` is the union; the original `PerformanceReport`
+comparison type remains unchanged. Failed/incomplete scenarios may reference draft captures. The UI displays
+checks/measurements and links to run telemetry; it does not execute runners or external HTML. See
+[scenario contract and commands](../../docs/research/performance-observability/SCENARIO_REPORTS.md).
+
 API (same UI Basic auth as other query routes):
 
 - `GET /api/performance/features`: `{runs, reports}`.

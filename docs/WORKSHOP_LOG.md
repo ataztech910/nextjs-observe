@@ -6,6 +6,41 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Отчёты сценариев — 13 ноября: Playwright → JSON → Observer
+
+**Чтобы** автоматизировать эксперименты через внешние runners и видеть результаты в одном месте,
+**добавили** `observe.scenario-report/v1` рядом с прежним comparison contract. `PerformanceReport` type сохранён;
+новый `ExperimentReport` — union comparison/scenario. Backend проверяет schema, artifact/manifest hashes, raw OTLP
+replay и run/variant/mode/protocol association. Observer показывает checks, passed/failed/incomplete, source/unit,
+null с причиной вместо ложного zero и ссылку в run timeline. Schema допускает Playwright/Maestro; Maestro flow/adapter
+ещё не реализован. Контракт и команды: [scenario reports](research/performance-observability/SCENARIO_REPORTS.md).
+
+В отдельном experiment repo runner на Playwright library выполняет три baseline/diagnostic действия существующего
+production-profiling React Web приложения. Проверяет run/protocol, checksum, page errors, finalization и ожидаемые
+6 spans/3 metric points. Сохраняет original samples, normalized result/protocol, source/build snapshots с hash index,
+HEAD/dirty identity, trace.zip и app/Observer screenshots. Время приложения берётся из app-owned performance.now →
+Profiler callback, не из длительности runner click/wait. Presentation явно unavailable. Collector launcher получил
+optional report directory; Observe/app instrumentation и OTLP ingestion не менялись.
+
+**Проверено:** 786 Observer tests pass (4 skipped), 36 experiment tests pass, typecheck/build обоих проектов pass.
+Два backend mutations (убрать unavailable consistency, убрать hash validation) и checksum mutation в runner пойманы;
+код восстановлен. Финальный packed backend/UI проверен Chrome: `web-scenario-1794557695710-194ff3` → passed;
+`web-scenario-1794557699780-8fce26` с намеренно неверным expected checksum → failed в JSON/UI, exit 1 при finalized
+capture. Browser page errors=0. Оба имеют исходные artifacts/screenshots; source snapshot фиксирует dirty checkout,
+один HEAD не выдаётся за полную идентичность исходников. Прежний frozen comparison `hook-repeats-03` (27 runs/9 groups)
+прошёл API/archive regression и browser UI (9 rows, page errors=0). Старые sessions не менялись. Новых dependencies нет;
+tarball extracted с symlink к установленному dependency graph, не clean install. Временные runner/regression servers
+закрыты. Sandbox отказал npm cache/loopback listen: использованы tmp cache и разрешённый запуск серверов. Pre-capture
+pilot с пустым backend path сохранил runner-error; финальные runs используют явно выбранный packed backend.
+
+**Дальше:** Maestro flow для существующего iOS workload и адаптер исходных reports в тот же contract; затем повторные
+web A/B и matched native эксперименты. UI pass не закрывает physical hitch/presentation, statistical или overhead gates.
+Arbitrary log/HTML reader, uploads и attachment download API в этот шаг не входят.
+Experiment commit `fabfe0f` локален (у repo нет remote). AI review hook сообщил unavailable/timeout и сам
+продолжил fail-open; hooks не обходились. Для просмотра нового report поднят отдельный packed collector на :4322.
+
+---
+
 ## Системный gate экспериментов — 12 ноября: Instruments на Simulator
 
 **Чтобы** проверить JS/native workload внешним системным инструментом, **записали** настоящий Animation Hitches

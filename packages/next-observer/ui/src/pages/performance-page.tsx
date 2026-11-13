@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { MetricEvidence } from '@/components/metric-evidence'
 import { RunTimelineCard } from '@/components/run-timeline'
+import { ScenarioResult } from '@/components/scenario-result'
 import { performanceNumber } from '@/lib/performance'
 
 export function PerformancePage() {
@@ -24,11 +25,13 @@ export function PerformancePage() {
   const [variant, setVariant] = useState('')
   const [mode, setMode] = useState('')
   const list = (runs.data?.runs ?? []).filter((r) => (!variant || r.metadata.variant === variant) && (!mode || r.metadata.labels.mode === mode))
-  const selectedSamples = report.isError ? undefined : report.data?.runs.find((r) => r.runId === search.run)
+  const comparison = !report.isError && report.data?.schema === 'observe.performance-report/v1' ? report.data : undefined
+  const scenario = !report.isError && report.data?.schema === 'observe.scenario-report/v1' ? report.data : undefined
+  const selectedSamples = comparison?.runs.find((r) => r.runId === search.run)
   const choose = (key: 'run' | 'report', value: string) => void navigate({ search: (prev) => ({ ...prev, [key]: value || undefined }) })
   const selectClass = 'h-9 max-w-full rounded-md border bg-background px-3 text-sm'
   return <div className="space-y-6">
-    <PageHeader title="Performance runs" subtitle="Frozen experiment captures and externally computed comparisons. Select the runs and report explicitly." />
+    <PageHeader title="Performance runs" subtitle="Frozen experiment captures and externally supplied reports. Select the runs and report explicitly." />
     {features.isError && <p role="alert">Could not load performance features.</p>}
     {features.data && !features.data.runs && <Card className="p-6"><h2 className="font-medium">Run archives are not enabled</h2><p className="text-sm text-muted-foreground">Start the observer with a capture directory to browse experiment runs.</p></Card>}
     {features.data?.runs && <>
@@ -41,18 +44,19 @@ export function PerformancePage() {
       {runs.isLoading && <p className="text-muted-foreground">Loading runs…</p>}
       {runs.data && !runs.isError && <Card className="max-h-80 overflow-auto p-0"><table className="w-full text-left text-sm"><thead className="sticky top-0 border-b bg-background text-xs text-muted-foreground"><tr>{['Run', 'Experiment / variant', 'Mode', 'State', 'Spans', 'Metric points'].map((s) => <th key={s} className="p-3 font-medium">{s}</th>)}</tr></thead><tbody>{list.map((run) => <tr key={run.runId} className={`border-b last:border-0 ${search.run === run.runId ? 'bg-muted' : ''}`}><td className="p-3"><Link to="/performance" hash="selected-run" search={{ ...search, run: run.runId, trace: undefined, span: undefined }} className="font-mono text-xs text-signal hover:underline">{run.runId}</Link></td><td className="p-3">{run.metadata.experiment} / {run.metadata.variant}</td><td className="p-3">{run.metadata.labels.mode ?? 'Unspecified'}</td><td className="p-3">{run.status}{run.incompleteReasons.length > 0 && ' · incomplete evidence'}</td><td className="p-3 tabular-nums">{run.counts.spans}</td><td className="p-3 tabular-nums">{run.counts.metricPoints}</td></tr>)}</tbody></table>{list.length === 0 && <p className="p-5 text-muted-foreground">No matching runs.</p>}</Card>}
     </>}
-    {features.data?.runs && !features.data.reports && <p className="text-sm text-muted-foreground">External comparison reports are not connected to this observer.</p>}
+    {features.data?.runs && !features.data.reports && <p className="text-sm text-muted-foreground">External experiment reports are not connected to this observer.</p>}
     {features.data?.reports && <section className="space-y-4">
-      <label className="grid gap-1 text-sm">Comparison report<select aria-label="Comparison report" className={selectClass} value={search.report ?? ''} onChange={(e) => choose('report', e.target.value)}><option value="">Select a report</option>{reports.data?.reports.map((r) => <option key={r.id} value={r.id}>{r.title} · {r.runCount} runs</option>)}</select></label>
-      {(reports.isError || report.isError) && <p role="alert">Could not verify the comparison report and its artifacts.</p>}
+      <label className="grid gap-1 text-sm">Experiment report<select aria-label="Comparison report" className={selectClass} value={search.report ?? ''} onChange={(e) => choose('report', e.target.value)}><option value="">Select a report</option>{reports.data?.reports.map((r) => <option key={r.id} value={r.id}>{r.title} · {r.runCount} runs</option>)}</select></label>
+      {(reports.isError || report.isError) && <p role="alert">Could not verify the experiment report and its artifacts.</p>}
       {reports.data?.errors.map((e) => <p key={e.id} role="alert" className="text-sm text-destructive">Report {e.id}: {e.message}</p>)}
-      {report.data && !report.isError && <Card className="gap-4 p-5" data-testid="performance-comparison">
-        <h2 className="text-lg font-semibold">{report.data.title}</h2>
-        <p className="text-sm text-muted-foreground">{report.data.endpoint}. Each value summarizes run medians after the declared warmup.</p>
+      {comparison && <Card className="gap-4 p-5" data-testid="performance-comparison">
+        <h2 className="text-lg font-semibold">{comparison.title}</h2>
+        <p className="text-sm text-muted-foreground">{comparison.endpoint}. Each value summarizes run medians after the declared warmup.</p>
         <p className="text-xs text-muted-foreground">Artifact hashes and capture associations checked. Statistical analysis is provided by the external harness.</p>
-        <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b text-xs text-muted-foreground"><tr>{['Variant', 'Mode', 'Runs', 'Measured actions', 'Median of run medians (ms)', 'Run median range (ms)'].map((s) => <th key={s} className="p-3 font-medium">{s}</th>)}</tr></thead><tbody>{report.data.groups.filter((g) => (!variant || g.variant === variant) && (!mode || g.mode === mode)).map((g) => <tr key={`${g.variant}/${g.mode}`} className="border-b last:border-0"><td className="p-3">{g.variant}</td><td className="p-3">{g.mode}</td><td className="p-3"><details><summary className="cursor-pointer">{g.runIds.length}</summary><div className="grid gap-2 py-2">{g.runIds.map((id) => <Link key={id} to="/performance" hash="selected-run" search={{ ...search, run: id, trace: undefined, span: undefined }} className="font-mono text-xs text-signal hover:underline">{id}</Link>)}</div></details></td><td className="p-3 tabular-nums">{report.data!.runs.filter((r) => g.runIds.includes(r.runId)).reduce((n, r) => n + r.samples.count, 0)}</td><td className="p-3 tabular-nums">{performanceNumber(g.medianOfRunMediansMs)}</td><td className="p-3 tabular-nums">{performanceNumber(g.minRunMedianMs)}–{performanceNumber(g.maxRunMedianMs)}</td></tr>)}</tbody></table></div>
-        <details className="text-sm"><summary className="cursor-pointer">Method, protocol and limitations</summary><p className="mt-3 font-mono text-xs break-all">{report.data.algorithm}<br />Protocol SHA-256: {report.data.protocol.sha256}</p><ul className="my-3 list-disc space-y-1 pl-5 text-muted-foreground">{report.data.limitations.map((s) => <li key={s}>{s}</li>)}</ul></details>
+        <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b text-xs text-muted-foreground"><tr>{['Variant', 'Mode', 'Runs', 'Measured actions', 'Median of run medians (ms)', 'Run median range (ms)'].map((s) => <th key={s} className="p-3 font-medium">{s}</th>)}</tr></thead><tbody>{comparison.groups.filter((g) => (!variant || g.variant === variant) && (!mode || g.mode === mode)).map((g) => <tr key={`${g.variant}/${g.mode}`} className="border-b last:border-0"><td className="p-3">{g.variant}</td><td className="p-3">{g.mode}</td><td className="p-3"><details><summary className="cursor-pointer">{g.runIds.length}</summary><div className="grid gap-2 py-2">{g.runIds.map((id) => <Link key={id} to="/performance" hash="selected-run" search={{ ...search, run: id, trace: undefined, span: undefined }} className="font-mono text-xs text-signal hover:underline">{id}</Link>)}</div></details></td><td className="p-3 tabular-nums">{comparison.runs.filter((r) => g.runIds.includes(r.runId)).reduce((n, r) => n + r.samples.count, 0)}</td><td className="p-3 tabular-nums">{performanceNumber(g.medianOfRunMediansMs)}</td><td className="p-3 tabular-nums">{performanceNumber(g.minRunMedianMs)}–{performanceNumber(g.maxRunMedianMs)}</td></tr>)}</tbody></table></div>
+        <details className="text-sm"><summary className="cursor-pointer">Method, protocol and limitations</summary><p className="mt-3 font-mono text-xs break-all">{comparison.algorithm}<br />Protocol SHA-256: {comparison.protocol.sha256}</p><ul className="my-3 list-disc space-y-1 pl-5 text-muted-foreground">{comparison.limitations.map((s) => <li key={s}>{s}</li>)}</ul></details>
       </Card>}
+      {scenario && <ScenarioResult report={scenario} search={search} />}
     </section>}
     {manifest.isError && <p role="alert">Could not verify the selected run.</p>}
     {manifest.data && !manifest.isError && <section id="selected-run" className="scroll-mt-20 space-y-4" key={manifest.data.runId}>
