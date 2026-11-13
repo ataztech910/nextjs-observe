@@ -6,6 +6,54 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Первый шаг F — 13 ноября: независимые renderer CPU/RSS
+
+Merge #104 подтверждён (`c5449a8`); ветка `step-performance-cost-source-notes` от свежего origin/master.
+**Чтобы** получить независимые от Observe process cost sources до полного overhead study, **сделали** external
+CDP/macOS ps adapter и source gate на существующем C без изменения app/Observe/Observer runtime. CPU — cumulative
+seconds всех threads всех renderer-процессов одного fresh dedicated Chrome, включая spare/default; browser/GPU/
+collector/harness исключены. RSS — endpoint sum из ps, 1024-byte units проверены по установленному man ps; shared
+pages могут учитываться повторно. Это не private heap, peak memory, allocation volume или точный CPU одного tab.
+Контракт: [F process sources](research/performance-observability/F_PROCESS_SOURCES.md).
+
+Raw CDP process lists/ps stdout/projections и monotonic acquisition brackets сохранены. Invalid/missing source,
+PID churn, backwards CPU/clocks, противоречивые units/projections отклоняются. CDP/ps CPU delta agreement — coarse
+sanity bound max(50 ms, 25%), не accuracy estimate; источники читаются последовательно. Snapshot wall latency
+6.18–22.68 ms, это не измеренная monitor distortion. CPU endpoints лежат внутри сохранённых host brackets;
+workload wall включает Playwright gaps/React/UI, не называется CPU time. Отрицательный RSS change сохраняется.
+
+**Калибровка:** отдельная SDK-free страница, ≥700 ms busy и удерживаемый page-touched Uint8Array 64 MiB; predeclared
+response gates CPU ≥.2s и RSS rise ≥32 MiB. В финале CPU .710990s CDP / .71s ps, RSS +77168640 B (73.59 MiB).
+Это проверка реакции источника, не точности/бюджета. После successful pilot — отдельная final session
+`cost-source-1794606600135-3f62`: 3 Latin-rotation блока × disabled/diagnostic/production_like, 9 fresh Chrome
+processes/profiles/contexts, по 10 trusted actions C degraded, zero warmup exclusion. Одна profiling сборка,
+1280×800/DPR1, no requested CPU/network throttling; thermal/power/OS cache не контролировались.
+
+**Получили:** renderer CPU disabled .214333/.209836/.209145 s, diagnostic .268598/.295093/.211172 s,
+production_like .210903/.212103/.214021 s. Endpoint RSS after 279.08–279.98 / 281.19–281.42 / 281.52–282.98 MiB.
+Медленные diagnostic/flush runs не исключались. App shutdown/flush после второго process snapshot, 0.1–0.2 /
+32.0–97.4 / 26.5–36.4 ms; это не pure serialization cost. Browser POST body counts/bytes совпали с capture,
+received bytes 0 / 23822–23873 / 17016–17032 B, не HTTP/socket totals. Finalized populations 0/20/10 spans,
+0/3/3 metric points; каждый enabled final histogram count=10. Disabled не запрашивает source-map-indexed SDK
+assets и не экспортирует. Captures остаются experiment=C, отчёт явно обозначает F prerequisite.
+
+**Проверено:** 64 JS + 8 Python tests pass, build/typecheck pass. 4 mutations пойманы: неверные RSS units,
+отключённый calibration CPU gate, разрешить disabled SDK loading, игнорировать span count. Code восстановлен до
+сбора. 6 corruption checks на временной копии отклоняют calibration/process receipt/app samples/map/OTLP/membership.
+Originals не менялись. Raw replay byte-identical, analysis SHA
+`d79213b4e8a70d716616b696d9acf9e8a64aa7e2d70eb1801d5accfd812101fd`. Старые A/B replay hashes прежние.
+Packed Observer browser проверил 9 passed rows, 18 explicit unavailable queue/drop/peak-memory values, page errors=0;
+final screenshots просмотрены. Temporary measurement servers закрыты; saved viewer на :4326. Backend прежний packed
+0.3.35 с installed-graph symlink, не clean install. Новых dependencies/native changes нет.
+
+Experiment commit `bbc1bf0` локален, remote отсутствует. AI review unavailable/timeout, hook сам продолжил fail-open;
+hooks не обходились. **Дальше:** producer queue/high-water/drop/serialization/export/flush accounting и deliberate
+saturation/failure gate; затем steady/burst, independent monitor on/off, auxiliary modes/stripped build и run-level
+uncertainty. Overhead percentage/budget не объявлен; полный F, native CPU/memory/presentation и D/E/F physical
+acceptance остаются открытыми.
+
+---
+
 ## Эксперимент B — 13 ноября: реальные JS-байты и стоимость старта
 
 После merge #103 (`67ea8ec`) создана свежая ветка `step-experiment-b-notes`. **Чтобы** проверить зависимость

@@ -88,6 +88,13 @@ Head sampling reduces recording/export but does not eliminate already executed t
 
 **Acceptance:** CPU/memory have validated independent sources in all modes; dropped/unsupported data is explicit; latency/startup and resource distributions plus telemetry cost are reported with counts and run-level uncertainty. Declare acceptable overhead only after measured results and product requirements; no arbitrary percentage passes this gate. Compare monitor-disabled and monitor-enabled cases to estimate probe distortion itself.
 
+**First source gate (13 November):** [independent renderer CPU/RSS](F_PROCESS_SOURCES.md) now passes calibration
+and three balanced mode blocks on the existing C app. CDP process CPU is cross-checked with macOS ps; RSS is an
+endpoint sum of all dedicated-browser renderer processes, not private heap or peak memory. Disabled loads no SDK
+assets and sends no OTLP. Raw process/app/capture associations replay deterministically. Queue/drop and peak-memory
+values remain explicitly unavailable; no overhead percentage/budget is computed. Producer counters and saturation,
+monitor on/off, auxiliary/stripped-build studies and physical native validation remain open.
+
 ## Interpretation and report location
 
 Use a minimal built-in comparison for navigation and median/p75/p95/count plus source/completeness. Generate statistical analysis and reproducibility report externally from versioned captures. This avoids adding a large statistics dependency to Observer for the talk, while preserving useful reusable run filtering. Report algorithm/version, run-level confidence intervals where defensible, device segmentation, predeclared exclusions, outliers and failures. Existing version-regression detection is useful product behavior, not a replacement for this experimental protocol.
