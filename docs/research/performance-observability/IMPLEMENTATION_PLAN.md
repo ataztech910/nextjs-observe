@@ -65,6 +65,13 @@ CPU/timeline diagnostics run through the unchanged scenario reader. Pinned Light
 observations, source maps and raw OTLP are retained with deterministic replay and mutation/corruption checks.
 See [A gate](EXPERIMENT_A_GATE.md). This does not close field/mobile, statistical inference or native/overhead gates.
 
+Experiment B increment (13 November): one identical artifact, different configured startup work, four matched
+blocks and two excluded gated CPU/timeline diagnostics. All six JS byte measures have 0% paired difference against
+a predeclared 2% tolerance; selected compute and navigation-to-ready differ consistently. Artifact gzip/Brotli bytes,
+ResourceTiming, Network cache flags, server receipts and raw OTLP are verified on replay. The unchanged Observer
+reads ten scenario rows. See [B gate](EXPERIMENT_B_GATE.md). Next web step is F with independent cost sources;
+physical native presentation and D/E/F acceptance remain open.
+
 The task descriptions below retain the target architecture and acceptance criteria.
 
 ## Architecture constraints
