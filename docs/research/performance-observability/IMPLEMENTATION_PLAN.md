@@ -60,6 +60,11 @@ The external experiment repo provides a Playwright functional producer and brows
 backend/UI. Maestro has a real Simulator UI flow and external JUnit/commands adapter; see [Maestro gate](MAESTRO_GATE.md).
 See [scenario reports](SCENARIO_REPORTS.md). This does not close native presentation or repeated-performance gates.
 
+Experiment A increment (13 November): four matched desktop navigation/interaction blocks plus two excluded CDP
+CPU/timeline diagnostics run through the unchanged scenario reader. Pinned Lighthouse JSON, lifecycle INP/browser
+observations, source maps and raw OTLP are retained with deterministic replay and mutation/corruption checks.
+See [A gate](EXPERIMENT_A_GATE.md). This does not close field/mobile, statistical inference or native/overhead gates.
+
 The task descriptions below retain the target architecture and acceptance criteria.
 
 ## Architecture constraints
