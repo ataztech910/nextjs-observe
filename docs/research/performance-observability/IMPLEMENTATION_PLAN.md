@@ -117,6 +117,14 @@ contrasts replay with exploratory bootstrap intervals. This endpoint is handler-
 paint/INP; earlier C data are not a matched control. No saturation or accepted overhead is claimed. Steady-state,
 auxiliary/monitor/stripped-build comparisons, startup CPU and physical native gates remain open.
 
+F auxiliary configurations (14 November): [six conditional probe/SDK/serializer/export states](F_AUXILIARY_STUDY.md)
+compare disabled, counted probe clocks/API no-op instruments, real aggregates, held spans, serializer-only and stock
+export on one artifact. Six cyclic blocks/36 fresh browsers retain independent workload/selected-finish CPU/RSS;
+evidence projection/base64/finalization happen afterwards. SDK inputs reproduce original serializer bytes or stock
+HTTP bodies. Forty exploratory paired run-endpoint contrasts are configuration differences, not additive pure-clock/
+network CPU costs. Probe state is not bare performance.now; these are app experiments, not new public Observe modes.
+Steady-state, monitor-on-off/stripped builds, startup CPU and overhead/native acceptance remain open.
+
 The task descriptions below retain the target architecture and acceptance criteria.
 
 ## Architecture constraints

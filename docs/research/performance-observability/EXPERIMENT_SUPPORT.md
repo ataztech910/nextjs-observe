@@ -135,6 +135,15 @@ independent workload/finish CPU/RSS and exploratory 95% bootstrap intervals. Pla
 is not React commit/paint/INP and cannot be directly compared to earlier C endpoints. Steady-state, auxiliary,
 monitor-on-off/stripped builds, startup CPU and accepted overhead/native gates remain open.
 
+**Auxiliary configuration study (14 November):** [six real probe/SDK states](F_AUXILIARY_STUDY.md) adds counted
+Observe clocks with API no-op instruments, aggregate-only SDK, held spans without export, serializer-only and stock
+trace/metric export alongside disabled. All enabled probes use diagnostic; the labels are experimental app settings,
+not new library modes. Local/no-export archives intentionally contain no OTLP; public SDK witnesses retain one
+work count=128/interaction count=1 checkpoint. Projection/base64/finalization follow both process windows. Original
+serializer/HTTP bytes match offline upstream replay, and concurrent drain/evidence share completion. Six cyclic
+blocks balance positions, not carryover; forty exploratory paired-run contrasts cannot isolate additive pure-clock/
+network cost. Steady-state, monitor/stripped builds, startup CPU and accepted overhead/native gates remain open.
+
 ## Interpretation and report location
 
 Use a minimal built-in comparison for navigation and median/p75/p95/count plus source/completeness. Generate statistical analysis and reproducibility report externally from versioned captures. This avoids adding a large statistics dependency to Observer for the talk, while preserving useful reusable run filtering. Report algorithm/version, run-level confidence intervals where defensible, device segmentation, predeclared exclusions, outliers and failures. Existing version-regression detection is useful product behavior, not a replacement for this experimental protocol.
