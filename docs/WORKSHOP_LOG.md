@@ -6,6 +6,43 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Визуальная презентация — 15 ноября: отдельный offline deck
+
+Merge #117 подтверждён (`7a339c7`); ветка `step-performance-visual-deck` от свежего origin/master.
+**Чтобы** показывать новый performance-доклад, сохранив старую презентацию там, где она есть,
+**сделали** самостоятельную [презентацию](../presentations/profiler-to-production/index.html) в
+`presentations/profiler-to-production/`. Это отдельная папка монорепо; sibling `workshop-slides` не менялся,
+не импортируется и не участвует в сборке. Контрольные SHA всех 276 source/assets файлов старого deck совпали
+до/после; исходный untracked `.DS_Store` остался. Никаких переносов, переименований или замены старой презентации.
+
+**Получили:** 8 основных слайдов + 2 appendix, независимое оформление 16:9, inline CSS/JS и встроенный текст/notes,
+переключение arrows/PageUp/PageDown/Space/Home/End, deep links/history, overview dialog, notes toggle и fullscreen.
+HTML открывается напрямую без сети/сервера/CDN/fonts/npm install. Notes показываются в том же окне, это не private
+presenter monitor. Browser Print/PDF включает все 10 audience slides без notes/controls; для core-only — pages 1–8.
+[Инструкция](../presentations/profiler-to-production/README.md). Стандартный Python builder читает прежний reviewed
+Markdown; generated `index.html` tracked для открытия после checkout. Linked research docs требуют checkout,
+raw experiment reports по-прежнему local/ignored и не включены в deck. Observe/Observer runtime не меняли.
+
+**Проверено:** 3 renderer unit tests (audience/notes boundary, escaped HTML/local evidence links, deterministic
+inline build). Две temporary-copy mutations — подставить notes в audience и снять HTML escaping — пойманы;
+оригинал сохранён. Node syntax check pass. Real Chrome проверил все 10 слайдов, overlap/overflow/notes hidden,
+keyboard/overview/deep-link/history/bounds/invalid hash, 1280×720 controls, mobile width, print isolation и offline
+file navigation; page errors=0/network dependencies=0. На первом layout pass таблица 02 заходила в footer:
+уменьшили padding/размер и повторили final browser check. Скриншоты просмотрены. Test ожидания End/Home уточнены
+до завершения hashchange/render, без ослабления disabled-bound assertion.
+
+PDFKit проверил final PDF: ровно 10 страниц, значения 1871 B / 8275 B присутствуют, Speaker notes/Evidence cue отсутствуют.
+PDF и screenshots/verification находятся в `/private/tmp/profiler-to-production-check`; локальный generated PDF
+скопирован рядом с deck и ignored. Source numeric/state checks прежнего Markdown pass; hashes 8 ранее rehearsed
+reports не менялись. Новых performance measurements/native launches и SDK/backend builds не выполняли.
+Отдельный preview работает на :4348; старая презентация и Observer viewers не затрагивались.
+
+**Дальше:** посмотреть визуальный draft и отрепетировать тайминг под подтверждённый слот; content правим в Markdown,
+затем rebuild. PDF/HTML можно использовать без новых измерений. Более сильные product/native claims остаются
+зависимыми от своих measurement gates, а не от оформления deck.
+
+---
+
 ## Черновик слайдов — 14 ноября: текст, speaker notes и evidence cues
 
 Merge #116 подтверждён (`d94c9b8`); ветка `step-conference-slide-draft` от свежего origin/master.
