@@ -1,5 +1,7 @@
 # Conference demonstration plan
 
+Visual version: [separate offline slide deck](../../../presentations/profiler-to-production/index.html), with notes and audience-only PDF printing. [Controls and rebuild instructions](../../../presentations/profiler-to-production/README.md).
+
 Editorial companion: [slide copy and speaker notes](CONFERENCE_SLIDES.md), with eight core slides and two optional appendices. The confirmed talk slot and final rendering remain open.
 
 Working proposal after merge #115 (`d6ac3ab`), 14 November 2026. This selects a bounded story from existing

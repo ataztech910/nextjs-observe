@@ -1,5 +1,7 @@
 # Conference slides — editorial draft
 
+Visual companion (15 November): [standalone presentation](../../../presentations/profiler-to-production/index.html) and [editing/preview instructions](../../../presentations/profiler-to-production/README.md). The sections below remain the editorial source; the visual deck is built separately from them.
+
 Draft after merge #116 (`d94c9b8`), 14 November 2026. English slide copy and speaker notes for
 **From Profiler to Production: Measuring What Actually Matters in React & React Native**.
 This is a content draft, not a rendered deck or a confirmed full-length talk. The four evidence scenes retain
