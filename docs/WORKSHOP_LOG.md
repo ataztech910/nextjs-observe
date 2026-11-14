@@ -6,6 +6,37 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Черновик слайдов — 14 ноября: текст, speaker notes и evidence cues
+
+Merge #116 подтверждён (`d94c9b8`); ветка `step-conference-slide-draft` от свежего origin/master.
+**Чтобы** перенести утверждённый demo plan в материал выступления, **подготовили**
+[Markdown-черновик](research/performance-observability/CONFERENCE_SLIDES.md): восемь основных слайдов и два optional
+appendices (native callback cadence, Maestro outcome/archive state). В каждом отделены audience copy, speaker notes
+и exact evidence cue. Язык слайдов английский; session/endpoint/boundary остаются видимыми рядом с результатом.
+12 минут — прежняя оценка четырёх evidence scenes, не подтверждённая длительность всего доклада.
+
+**Получили:** переход от endpoint model к A/B, затем разделение Observe/app → OTLP → backend collector/archive →
+Observer display и внешний harness/statistics, далее F delivery/cost и вопросы acceptance. В native appendix нет
+заявления о smooth FPS/physical presentation; Simulator hitches unavailable. C baseline smoke не выдаём за
+optimization result. Failed/incomplete delivery сохранены; full F/acceptable-overhead budget остаются открыты.
+Существующий `workshop-slides` описывает другой доклад AI-Native Observability, поэтому здесь самостоятельный
+переносимый content draft. Rendered deck, embed screenshots, PDF/export и финальную визуальную вёрстку не заявляем.
+
+**Проверено:** значения A block deltas, B primary compute/readiness ranges, F loaded gzip bytes/readiness interval/
+CPU interval и trace overflow status/drop count сверены непосредственно с retained analysis JSON. Оба Maestro
+statuses сверены с reports и finalized manifests. Три изменения временной in-memory копии текста (wrong bytes,
+wrong interval, promoted overflow) отвергнуты; оригинал не менялся. Проверены 10 полных slide sections, local links,
+whitespace и прежний evidence-index SHA. Hashes восьми reports из browser rehearsal #116 (44 rows) остались прежними.
+Новый browser run, unit-suite rerun, performance collection, native launch и build для редакционного шага не запускали;
+проверки 114 JS + 8 Python и packed 0.3.35/Chrome относятся к предыдущему шагу #116, не объявляются свежими.
+Raw evidence/оригинальные screenshots локальны и ignored; experiment remote отсутствует. Код/зависимости неизменны.
+
+**Дальше:** определить длительность слота и формат слайдов, перенести draft в визуальный deck и отрепетировать
+устный тайминг. При недоступности исходного screenshot/report результат пропускаем по согласованному fallback,
+не дорисовываем данные. Дополнительные product/native-performance claims требуют собственных measurement gates.
+
+---
+
 ## План доклада — 14 ноября: выбранные claims и репетиция сохранённых отчётов
 
 Merge #115 подтверждён (`d6ac3ab`); ветка `step-conference-demo-plan` от свежего origin/master.
