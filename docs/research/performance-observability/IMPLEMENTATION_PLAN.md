@@ -1,5 +1,14 @@
 # Implementation roadmap
 
+Current F checkpoint — 14 November 2026: [evidence matrix and remaining acceptance gates](F_EVIDENCE_MATRIX.md)
+consolidates ten scoped protocols and 140 original report rows. The [index](F_EVIDENCE_INDEX.json) pins original
+analysis/report/protocol identities and preserves 137 passed/1 incomplete/2 failed delivery rows. This is an inventory,
+not a pooled success rate or an overhead budget. Existing Observe, collector/archive and report UI support these
+fixtures; this consolidation changes no runtime. Use the scoped conference evidence now with its limitations.
+Next: select the intended claim and only its required acceptance contract/protocol; do not automatically extend
+Observer or run another benchmark. Physical native claims and startup CPU/private-peak memory/general cost claims
+remain open where needed. Earlier dated increments below retain their historical implementation stages.
+
 Latest follow-up (12 November 2026): [actual iOS Release Simulator scheduling workload](IOS_SCHEDULING_SCENARIO.md)
 adds idle/blocked JS timer evidence and a native-driver animation request. Native frame/presentation and physical
 acceptance remain open; earlier inventory/status entries below describe their respective implementation stages.
