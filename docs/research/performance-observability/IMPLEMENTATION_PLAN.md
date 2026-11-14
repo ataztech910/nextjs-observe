@@ -72,6 +72,13 @@ ResourceTiming, Network cache flags, server receipts and raw OTLP are verified o
 reads ten scenario rows. See [B gate](EXPERIMENT_B_GATE.md). Next web step is F with independent cost sources;
 physical native presentation and D/E/F acceptance remain open.
 
+First F source gate (13 November): an external CPU/RSS adapter validates renderer process scope against CDP and
+macOS ps, detects a known busy/retained-allocation workload, then records three balanced mode blocks on unchanged C.
+Disabled has independent process data and no SDK asset loading/export; actual raw OTLP and browser body counts
+reconcile. See [F process sources](F_PROCESS_SOURCES.md). This is a T10 prerequisite, not overhead acceptance:
+producer queues/drops, steady/burst workload, serialization/export decomposition, monitor on/off and stripped build
+remain next; native physical-device gates are unchanged.
+
 The task descriptions below retain the target architecture and acceptance criteria.
 
 ## Architecture constraints
