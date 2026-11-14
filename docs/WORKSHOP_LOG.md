@@ -6,6 +6,51 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Одиннадцатый шаг F — 14 ноября: единый реестр evidence и границы выводов
+
+Merge #114 подтверждён (`a923623`); ветка `step-performance-f-evidence-notes` от свежего origin/master.
+**Чтобы** выбрать следующий шаг по подтверждённым данным, **свели** десять scoped F протоколов в
+[матрицу покрытия](research/performance-observability/F_EVIDENCE_MATRIX.md) и
+[документальный JSON-индекс](research/performance-observability/F_EVIDENCE_INDEX.json).
+Индекс фиксирует исходные session/commits, protocol/analysis/report SHA, membership и ожидаемые состояния.
+Это не новый report schema, алгоритм статистики или pooled benchmark. Новых измерений не запускали;
+runtime, instrumentation, dependencies и native builds не меняли.
+
+**Получили:** 140 строк отчётов: 137 passed, 1 incomplete (trace overflow), 2 failed (trace/metric HTTP400).
+Архивы: 137 finalized, 3 incomplete. Fault-validation complete не превращает потери/отказ доставки в passed.
+Первый source gate сохраняет experiment=C как prerequisite F на прежнем приложении. Calibration/pilots/C regressions
+и A/B не входят в эти 140 строк. Full F acceptance=false, acceptable-overhead budget=null. Десять протоколов
+нельзя объединять в процент успеха или общую оценку overhead; cumulative checkpoints/overlapping phases не суммируем.
+
+Observe/app собирают telemetry, внешний harness измеряет и считает uncertainty, backend collector/archive
+принимает OTLP и хранит/replays, Observer UI показывает typed reports. Текущего reader достаточно для этих demos.
+Обновили current checkpoint в summary/plan/F support; исходные architecture/OTel findings явно обозначены как
+исторический аудит 11 ноября. Scoped comparisons уже можно показывать с источниками/endpoints/builds/ограничениями;
+все открытые строки матрицы не становятся автоматически блокерами конференции.
+
+**Проверено:** 114 JS + 8 Python tests pass. Все 10 F и отдельные A/B analyses replay byte-identical (12 всего).
+Пять намеренных изменений временной копии индекса отвергнуты: full acceptance, missing dataset, erased failure,
+wrong analysis hash, failed→passed. Исходники и оригинальные datasets не менялись. SHA индекса:
+`f59f8144c370c0be58d24cdd3e2fd188830326f63afcb47088cec7cea6acea11`.
+Packed-reader/browser audit проверяет все 10 reports/140 statuses, unavailable values, dropdown/list, alerts=0,
+page errors=0; финальные screenshots просмотрены. Packed backend 0.3.35 использует installed-graph symlink,
+не clean install. Новый build не заявляем: изменения только документационные.
+
+Общий audit-copy из 140 captures превышает существующий list limit=100. Runtime не меняли: для штатного просмотра
+сделаны две byte-identical подборки в ignored `reports/f-evidence-audit-1794683490367/groups/`:
+`sources-and-components` (7 reports/98 runs, viewer :4336) и `paced-monitor-builds` (3 reports/42 runs, :4337).
+Плоская копия пригодна только для explicit-ID report validation. Подборки не заменяют полные original sessions
+с sources/builds/raw data и не создают объединённый scientific dataset. Старые viewers оставлены.
+
+Experiment commit `86982fe` локален, remote отсутствует; raw reports ignored, индекс их не публикует.
+Experiment pre-commit сообщил AI review unavailable/timeout и сам продолжил fail-open; hooks не обходились.
+**Дальше:** выбрать утверждения доклада и только необходимые им acceptance contract/target protocol. Для scoped
+web demo новая доработка Observer не требуется. Startup CPU/private-peak memory, wider monitoring/compression/
+receiver cost, sustained convergence и physical native D/E/F остаются неподтверждёнными там, где их хотят заявить;
+новый benchmark или допустимый процент overhead по умолчанию не выбираем.
+
+---
+
 ## Десятый шаг F — 14 ноября: установленный Observe disabled против stripped output
 
 Merge #113 подтверждён (`c7f2ad4`); ветка `step-performance-stripped-notes` от свежего origin/master.

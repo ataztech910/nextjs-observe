@@ -1,5 +1,32 @@
 # Research summary and decisions
 
+## Current implementation checkpoint — 14 November 2026
+
+After merge #114 (`a923623`), executable web experiments and bounded performance data paths exist. The original
+11 November baseline below is retained as historical research; its “missing” inventory is not today's status.
+The [F evidence matrix](F_EVIDENCE_MATRIX.md) and [pinned index](F_EVIDENCE_INDEX.json) are the current F entry point.
+
+| Responsibility | Implemented evidence now | Remaining scope |
+| --- | --- | --- |
+| Observe/app instrumentation | Framework-independent [manual performance entry](../../../packages/next-observe/src/performance.ts), explicit contexts and three modes; app-local SDK/bootstrap and selected browser/native sources. | Manual sync work does not expose all React internals, automatic native presentation or a universal RN instrumentor. Existing Next bootstrap remains separate. |
+| Receiver/storage | Backend [trace/metric routes](../../../packages/next-observer/src/collector/server.ts), [metric storage](../../../packages/next-observer/src/collector/metric-storage.ts), [raw capture/replay](../../../packages/next-observer/src/collector/capture.ts), validation/preservation and run partitions. | Bounded implemented signal subset, not full OTLP conformance. No log ingestion; ExponentialHistogram/Summary remain unsupported. Received-only archives do not prove complete production. |
+| Observer frontend | [Typed scenario reports](SCENARIO_REPORTS.md), [run timeline](PERFORMANCE_TIMELINE.md), [metric evidence](PERFORMANCE_METRICS.md) and explicit unavailable/failed/incomplete states display actual captures. | Calibrated native presentation, metric/window analytics and general capacity claims remain separate. Instrumentation and F statistical computation stay outside the frontend. |
+| Web experiments | Executable [A](EXPERIMENT_A_GATE.md), [B](EXPERIMENT_B_GATE.md), selected [C hook work](REACT_HOOK_INSTRUMENTATION.md) and [ten scoped F protocols](F_EVIDENCE_MATRIX.md), with frozen sources/raw artifacts and replay. | These are declared fixture/endpoints; they do not establish universal production performance, pure phase CPU or acceptable overhead. Do not pool protocols. |
+| React Native | An app-local adapter, actual Release Simulator/Hermes runs, [callback cadence](IOS_NATIVE_CADENCE.md), [system profiler](IOS_SYSTEM_PROFILER_GATE.md) and [Maestro scenario](MAESTRO_GATE.md) have scoped functional evidence. | Physical Release/native frame-hitch/clock/CPU-memory D/E/F acceptance remains open. A dedicated RN SDK package is still not justified; keep the adapter and validate the target. |
+
+**Decision now:** the existing Observer reader can present the F evidence; another frontend extension is not a
+prerequisite for these comparisons. There are 10 F protocols/140 presentation rows, including expected failures,
+not 140 pooled benchmark replications. Full F acceptance and an agreed overhead budget remain open. Use the bounded
+conference facts with their limits, then choose the intended claim/requirements and only the further measurement
+gates that it needs. No general acceptable-overhead or physical native smoothness claim is supported yet.
+
+## Original research baseline — 11 November 2026
+
+The research answers, external-tool survey, priority sequence and original decision matrix below describe the
+specified audited checkout. Historical statements such as “no metrics” or “no experimental app” apply to that
+original research task, not the subsequently authorized implementation summarized above. External comparisons
+were checked on their original date and are not re-audited by this local evidence consolidation.
+
 Research date: 2026-11-11; audited commit `c7278c4b514182efc91dad95413391dbde922de2`.
 
 ## Executive answers
@@ -78,11 +105,11 @@ See [detailed tasks, acceptance and migration](IMPLEMENTATION_PLAN.md). No imple
 - [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md): phased tasks, complexity, package/module changes, migration/tests.
 - [RESEARCH_SUMMARY.md](RESEARCH_SUMMARY.md): decisions, competitive findings and final matrix.
 
-## Final decision matrix
+## Original decision matrix — 11 November 2026
 
 Effort uses S/M/L/XL relative complexity from the plan. Native physical validation remains the highest uncertainty; estimates are not measured delivery times.
 
-| Capability | Current status | Required for talk | Effort | Recommendation |
+| Capability | Status at original audit | Required for talk | Effort | Original recommendation |
 |---|---|---|---|---|
 | OTLP Traces | HTTP JSON/protobuf/gzip implemented; incomplete fidelity/validation | Yes | L | Keep receiver; extend preservation, validation, dedup |
 | OTLP Metrics | No endpoint/model/store/query/UI; SDK dependency alone | Yes | L | Add Sum/Gauge/explicit Histogram pipeline; preserve/reject other types explicitly |

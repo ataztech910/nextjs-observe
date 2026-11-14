@@ -1,5 +1,7 @@
 # OpenTelemetry compatibility
 
+Historical baseline: this document describes the11 November audited checkout. Subsequent implementation is summarized in the [current research checkpoint](RESEARCH_SUMMARY.md) and [F evidence matrix](F_EVIDENCE_MATRIX.md). Original missing-feature statements and line references below are dated audit findings, not today's implementation inventory.
+
 Status as audited 2026-11-11. Repository evidence is relative to the root identified in [architecture audit](ARCHITECTURE_AUDIT.md). Supported means implemented by this checkout, not merely available in an installed SDK.
 
 ## Versions

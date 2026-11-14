@@ -76,7 +76,11 @@ excluded. The result is local/descriptive; F cost sources and physical native ga
 
 ## F. Instrumentation Overhead
 
-**Required:** identical workload/artifact policy, disabled/diagnostic/production-like measurements, wall duration/startup, process/thread CPU source, memory scope, telemetry bytes/records/queues/drops, serialization/send/flush costs. **Existing:** batching and development-noise filtering; no measured overhead study or full performance schema ([Observe server batching](../../../packages/next-observe/src/server.ts#L25), [browser batching](../../../packages/next-observe/src/client.ts#L62)). **Missing:** mode controls, cost counters, bounded buffers, external measurements and run comparison. **Dependencies:** T1–T9 plus T10; native profiler/harness needed for RN CPU/memory; manual instrumentation sufficient for nominated work.
+**Required:** declared workload/artifact policy, disabled/diagnostic/production_like comparisons, execution/startup wall, validated CPU/memory scope, telemetry populations and export cost with run-level uncertainty.
+
+**Implemented checkpoint, 14 November:** manual Observe modes, calibrated renderer CPU/endpoint RSS, raw run capture/replay, typed external scenario reports, trace/metric delivery fault gates and scoped repeated/burst/paced/auxiliary/monitor/stripped comparisons. [Current F matrix](F_EVIDENCE_MATRIX.md) links the ten original protocols and [their pinned index](F_EVIDENCE_INDEX.json). Failed/incomplete fault cases remain failed/incomplete. App instrumentation, external statistics, collector ingestion/storage and Observer display remain separate; no frontend instrumentation is proposed.
+
+**Still open for broader claims:** an agreed product budget/decision rule, representative sustained/convergence conditions, startup CPU, private/peak memory, wider monitoring/compression/receiver-load costs and physical native acceptance. These are unsupported claims to scope explicitly, not an automatic list of blockers for showing the existing bounded demos. Earlier dated updates below describe their respective stages.
 
 ### Method
 
