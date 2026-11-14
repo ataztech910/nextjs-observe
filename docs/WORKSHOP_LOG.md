@@ -6,6 +6,59 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Второй шаг F — 14 ноября: настоящие SDK queue/drop/export counters
+
+Merge #105 подтверждён (`3a654df`); ветка `step-performance-pipeline-notes` от свежего origin/master.
+**Чтобы** проверить счётчики потерь/экспорта до overhead comparison, **сделали** отдельный `/f.html` в experiment
+repo с upstream OTel SDK 2.11 BatchSpanProcessor/OTLP exporter. App собирает SDK self-observation, public exporter
+wrapper отслеживает вызовы/callbacks, внешний HTTP gate удерживает ответы или возвращает HTTP400, packed backend
+принимает/архивирует, Observer показывает существующий typed scenario report. Instrumentation в UI не переносилась;
+Observe/Observer runtime и dependencies монорепо не менялись. [Полный gate](research/performance-observability/F_PIPELINE_GATE.md).
+
+Параметры намеренно тестовые: queue capacity 16, batch 4, exporter concurrency 16, schedule 30s, exporter/processor
+5/5.5s timeout. Это не production defaults и не observed production loss rate. Real ManualReader/MeterProvider
+получает SDK `.queue.capacity`, `.queue.size`, `.processed`, error.type=queue_full/export errors. Private fields
+не читаются, queue/transport не переписываются. Original cumulative snapshots — sidecar artifacts; capture
+metricPoints=0 ожидаемо. SDK code/build/maps сохранены, runtime selfObs config проверен реальными тестами.
+
+Перед shutdown ждём queue forceFlush **и все** ранее начатые exporter callbacks; concurrent finish разделяют одну
+операцию. Предшествующая отправка может пережить queue flush; предшествующая ошибка может завершиться раньше flush.
+Delivery-error ledger поэтому отдельно от SDK flushError. Exporter event order восстанавливает in-flight high-water;
+queue high-water — только max двух наблюдений, lower bound. SDK queue excludes in-flight. Callback latency включает
+transport/намеренное ожидание/receiver; synchronous exporter call не называется isolated serialization. Flush включает
+drain/self-metric collection/shutdown; durations пересекаются, не складываются. Cross-clock alignment не заявлен.
+
+**Финал:** `pipeline-1794641370737-5d72`, 4 fresh Chrome/profile/context функциональных cases, не timing study:
+
+- disabled: нет SDK imports/initialization, produced/OTLP=0; SDK queue/drop/flush unavailable, не fake measured zero;
+- healthy: 8 produced / 8 received, drops=0, passed;
+- overflow: 40 produced, queue=16, 20 queue_full drops, 20 received; incomplete/unfinalized;
+- rejected: 8 failed spans, HTTP400 ×2, 0 received; failed/unfinalized.
+
+Overflow gate ждёт 5 pending четырёх-span HTTP batches и app phase=draining до release; same finish Promise проверен.
+Produced IDs = dropped + failed + successful; exported IDs/batches/raw wire/received IDs и body bytes сверены.
+Healthy/overflow/rejected wire bytes 4536/11375/4546, received bytes 4536/11375/0; headers/preflight/socket не включены.
+Max in-flight 8/20/4; final observed queue=0. Drain/collection/shutdown 50.1/100.4/1.5ms — controlled local receipts,
+не exporter-overhead estimates. Rejected SDK flushError=null, но deliveryError хранит обе реальные HTTP400 ошибки.
+Fault-validation pass не подменяет actual incomplete/failed delivery; reader показал правильные 4 states.
+
+**Проверено:** 71 JS + 8 Python tests pass, typecheck/build pass. 4 mutations (убрать callback barrier, сменить
+capacity, насильно сделать incomplete→passed, игнорировать queue_full) пойманы; sources restored до сбора.
+6 temporary-copy corruption checks отклоняют SDK/exporter samples, wire, HTTP log, upstream SDK source, OTLP и
+missing membership. Replay byte-identical, analysis SHA
+`4d1d9702c4e7a11fce895119156a4853d46748d0d31e1f9c80821f2e8dfa18a9`. Старые A/B/CPU-source replay hashes прежние.
+C regression `web-scenario-1794641490889-dc8afa` на новой сборке pass. Packed Observer states checked, page errors=0;
+final screenshots просмотрены. Ранний pilot не прошёл property-order сравнение manifest; заменено на deep equality.
+Development captures отдельно; disabled flush placeholder перед финалом заменён на explicit unavailable.
+
+Experiment commit `d1a0e0e` локален, remote отсутствует. Новых dependencies/native builds нет. Packed 0.3.35 backend
+с installed-graph symlink, не clean install. Temporary collection servers закрыты, saved viewer :4327 оставлен.
+AI review unavailable/timeout, hook сам продолжил fail-open; hooks не обходились. **Дальше:** isolated serialization/
+export phase costs, metric-exporter/retry validation, затем repeated modes/auxiliary/monitor on-off/stripped build
+с независимыми CPU/RSS. Полный F, acceptable overhead budget и native physical D/E/F остаются открытыми.
+
+---
+
 ## Первый шаг F — 13 ноября: независимые renderer CPU/RSS
 
 Merge #104 подтверждён (`c5449a8`); ветка `step-performance-cost-source-notes` от свежего origin/master.
