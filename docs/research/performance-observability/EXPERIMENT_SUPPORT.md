@@ -163,6 +163,16 @@ longtask/LoAF. Quiet-source cost, not high-volume callbacks/full A lifecycle/INP
 Work-CPU interval spans zero; no speedup/equivalence/acceptable budget. Stripped build, wider monitoring and full F/
 physical native acceptance remain open.
 
+The [two-build stripped-output study](F_STRIPPED_STUDY.md) compares direct work with real Observe disabled,
+retaining identical common DOM/work/scheduler source hashes.6 alternating pairs/12 fresh Chrome/768 jobs, zero
+SDK loading/OTLP in both. Stripped1 JS contains zero Observe/OTel modules; installed16 JS includes lazy SDK output.
+Loaded gzip1871 versus8275B is distinct from emitted gzip1871 versus44100B; original HTTP/body/server/catalog/
+ResourceTiming evidence and compression roundtrips reconcile. Browser adapter-ready before build-index/archive
+setup differs+21.433ms[1.450,44.650]; host harness-ready additionally includes metadata/automation. Work CPU interval
+spans zero, no startup-CPU/equivalence/acceptable-cost claim.114 JS+8 Python tests/5 mutations/8 corruption checks,
+11 unchanged prior replays/C regression/packed reader pass. This is two-artifact bundling/loading/initialization,
+not pure probe cost, npm installation, React profiling/release or native acceptance. Consolidation/full F gates remain.
+
 ## Interpretation and report location
 
 Use a minimal built-in comparison for navigation and median/p75/p95/count plus source/completeness. Generate statistical analysis and reproducibility report externally from versioned captures. This avoids adding a large statistics dependency to Observer for the talk, while preserving useful reusable run filtering. Report algorithm/version, run-level confidence intervals where defensible, device segmentation, predeclared exclusions, outliers and failures. Existing version-regression detection is useful product behavior, not a replacement for this experimental protocol.

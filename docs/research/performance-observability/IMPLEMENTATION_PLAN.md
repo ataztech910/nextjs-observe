@@ -146,6 +146,17 @@ reader12 passed/54 unavailable. Work-CPU interval spans zero; no acceptable budg
 INP, other JS/native monitoring and external harness on/off remain separate. Next: stripped-build comparison;
 longer-duration convergence, startup CPU/full F/native physical acceptance remain open.
 
+F two-build output comparison (14 November): [installed Observe disabled versus stripped](F_STRIPPED_STUDY.md),
+6 alternating adjacent pairs/12 fresh Chrome/64 paced jobs each. Identical archived common DOM/work/scheduler sources;
+compile alias selects direct adapter or real disabled probe/bootstrap with lazy SDK output. Stripped1 JS/zero Observe/
+OTel modules; installed16 JS retains actual probe/API/SDK graph, no runtime SDK assets or OTLP in either policy.
+Loaded raw/gzip3711/1871B versus19623/8275B; emitted raw3711 versus130848B. Browser/server/original body/catalog hashes
+and gzip/Brotli roundtrips reconcile; emitted unused chunks are not downloaded bytes. Pre-archive adapter-ready
+mean difference+21.433ms[1.450,44.650], work CPU-0.933ms[-31.797,31.921], exploratory95% intervals; no pure CPU/
+accepted-budget claim.114 JS+8 Python tests/5 mutations/8 corruption checks,11 unchanged prior analyses, C regression,
+packed reader12 passed/48 unavailable. Next: consolidate F scoped evidence and remaining acceptance gates; startup CPU,
+broader monitoring/convergence/retry matrix/full F/native physical acceptance remain open.
+
 The task descriptions below retain the target architecture and acceptance criteria.
 
 ## Architecture constraints

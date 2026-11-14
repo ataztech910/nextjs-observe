@@ -6,6 +6,78 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Десятый шаг F — 14 ноября: установленный Observe disabled против stripped output
+
+Merge #113 подтверждён (`c7f2ad4`); ветка `step-performance-stripped-notes` от свежего origin/master.
+**Чтобы** отделить runtime disabled от удаления instrumentation из output, **сделали** отдельный
+`strip.vite.config.js`:2 production artifacts одного `strip.html`, общие `strip-main/strip-work/workload` имеют
+byte-identical source hashes против archived originals. Alias выбирает real Observe disabled adapter/bootstrap
+с lazy SDK graph или direct callback без Observe/OTel imports. Vite/minification/esnext/maps/API dedupe одинаковые.
+[Метод и evidence](research/performance-observability/F_STRIPPED_STUDY.md). Это намеренно разные builds со всеми
+bundling/loading/JIT/layout effects, **не isolated probe CPU** и не same-artifact mode switch. Общие closures/timers/
+checksums/harness остаются; React/profile/native builds и npm install/disk footprint здесь не измерены.
+
+Observe/app выполняют probe только в установленной группе, external harness измеряет CPU/RSS/statistics;
+collector принимает/архивирует, Observer UI читает прежний typed report/attachments. Runtime/dependencies монорепо
+не менялись, новых dependencies/native builds нет. Обе runtime modes disabled:0 SDK-bearing assets loaded,
+0 OTLP requests/spans/points; empty finalized archives intentional, не delivery failure. Source maps проверяют
+Observe/OTel absence в stripped, real performance/API/lazy SDK presence в installed, сохранность common sources.
+Каждый archive привязан к собственному build index. Общий source identity одинаковый, build fingerprints разные.
+
+Gzip9 реально served с no-store; Brotli5 artifact-only. Loaded JS GETs сверяют original response headers/decoded
+body SHA, server encoded-body hash/length/catalog и ResourceTiming encoded/decoded lengths. Emitted JS totals
+включают unused lazy chunks, исключают maps/non-JS, не выдаются за downloaded bytes. transferSize browser-reported,
+не socket/TLS total. Сохраняем exact raw/gzip/Brotli bodies/roundtrips. Stripped1 JS/1 linked map,0 Observe/OTel modules;
+installed16 JS/14 maps,1 Observe/192 unique OTel source modules/6 mapped SDK-bearing chunks.2 unmapped pure re-export
+facades указывают на mapped SDK/resource chunks, ни один не loaded; ancillary coverage check сохранён.
+
+Browser adapter-ready marker ставится **до** variable-sized build-index fetch/archive creation. Navigation start0→
+adapter-ready включает dependency loading/evaluation/setup, не paint/INP/CPU. Module entry после dependency evaluation.
+Host navigation→harness-ready дополнительно включает metadata/archive/automation. Разные endpoints не подменяем
+друг другом; startup CPU unavailable. Work и no-op finish CPU/RSS отдельно, response-body hashing/evidence/archive
+после обоих окон. Concurrent drain и evidence/finalize каждый разделяют Promise, checked в каждом browser run.
+
+6 alternating adjacent pairs (по3 каждого порядка),12 fresh Chrome/profile/context,64 degraded jobs/run с100ms
+absolute targets. All first/late/quantized retained, без skip/parallel/timing exclusions/selected reruns. Plain DOM
+body completion, не React commit/paint/INP/throughput/stationarity. Visible1280×800/DPR1/settle250ms, no requested
+throttling; fixed order/no randomization/thermal-power-cache unmeasured. External calibrated CDP/macOS ps covers
+all threads/all renderers incl.spares, не browser/GPU/collector/harness. Stable PIDs/coarse agreement mandatory;
+RSS sum double-count shared pages possible, не private heap/peak/leak. Clocks не aligned.13 descriptive contrasts,
+6 independent run pairs, all6^6 empirical paired-block bootstrap exploratory95% nearest-rank mean CI с exchangeable
+blocks assumption; small n/no p-values/multiplicity correction/accepted budget. Byte repeats — факты2 builds,
+не6 build replications; collapsed byte intervals не population uncertainty. Старые studies не matched controls.
+
+**Финал:** `stripped-1794680848671-8f54`,12 passed/finalized/768 jobs/0 SDK loads/0 OTLP.
+Stripped versus installed_disabled JS body bytes:
+
+- loaded raw3711→19623 (+15912), loaded gzip1871→8275 (+6404);
+- emitted raw3711→130848 (+127137), emitted gzip1871→44100 (+42229);
+- emitted Brotli1756→42596 (+40840), artifact-only.
+
+Installed-minus-stripped mean[exploratory95%]: adapter-ready+21.433[1.450,44.650]ms,
+harness-ready+32.424[7.234,62.874]ms; work CPU-0.933[-31.797,31.921]ms; RSS-2.836[-8.180,0.872]MiB;
+paced body-0.233[-3.950,2.717]ms. Startup difference про2 local artifacts, не isolated parse/probe CPU.
+Work CPU/body intervals span0, не speedup/equivalence/acceptable overhead. RSS не retained-memory savings.
+Calibration0.708911s CPU/+73.641MiB RSS; все13 contrasts/paired endpoints/byte joins в attachments.
+
+**Проверено:**114 JS+8 Python tests, обычный и оба isolated builds/typecheck pass. Real disabled/direct adapters
+сохраняют64 jobs/results/errors; reject foreign module/common source/body/cache/encoding/SDK load/build/archive/
+clock/membership.5 mutations:remove pacing,allow OTel in stripped,ignore common hash,ignore original response hash,
+allow disabled SDK load; caught/restored до первой финальной collection. Pilot/selected primary rerun нет.
+8 temporary-copy corruptions: sample/readiness/resources, HTTP/process receipt, manifest, frozen adapter, map,
+gzip,catalog,membership; originals unchanged. Replay byte-identical SHA
+`518f6fc78885bb58c92bc6b02f005063251d55da6f01222e0b728bd583cd02d4`. Старые11 A/B/CPU/pipeline/serializer/metric/
+mode/burst/auxiliary/paced/monitor hashes прежние. C regression `cost-source-1794681004877-ae95`:9 fresh runs/90 actions/
+3 modes pass, disabled no SDK/export. Packed reader12 passed/48 explicit unavailable/page errors0; screenshots просмотрены.
+
+Experiment commit `0a24e1c` локален, remote отсутствует; raw reports ignored, сохраняем весь session.
+Packed0.3.35 с installed-graph symlink, не clean install. Temporary collection servers закрыты; viewer :4335 оставлен,
+старые viewers не менялись. AI review unavailable/timeout: experiment hook сам продолжил fail-open, hooks не обходились.
+**Дальше:** свести scoped F evidence и explicit remaining acceptance gates. Startup CPU, broader JS/native/external
+monitoring, longer-duration convergence, compression/wider retries, agreed budget/full F/native physical D/E/F открыты.
+
+---
+
 ## Девятый шаг F — 14 ноября: браузерные PerformanceObserver on/off
 
 Merge #112 подтверждён (`9014ce8`); ветка `step-performance-monitor-notes` от свежего origin/master.
