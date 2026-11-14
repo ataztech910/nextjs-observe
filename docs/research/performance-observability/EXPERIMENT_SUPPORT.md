@@ -109,6 +109,14 @@ reach the collector. Input span creation timestamps are not phase timers. Stock 
 calls and is warmed; callback latency includes its own serialization. Subtracting auxiliary time cannot isolate
 network cost. Metrics/retry/compression and repeated mode/monitor-on-off/stripped-build acceptance remain open.
 
+**Metric delivery gate (14 November):** [actual reader/retry/HTTP errors](F_METRIC_DELIVERY_GATE.md) now exercises
+upstream metric collection/export in five fresh-browser cases. HTTP503 + exposed Retry-After: 1 triggers identical
+body retries; HTTP400 keeps both callback errors despite reader forceFlush resolving. Rejected archive remains
+unfinalized with failed report status. Held response verifies shared finish waits before shutdown's second export.
+Counter/histogram cumulative checkpoints retain exact timestamps/buckets and must not be summed as independent
+records. No natural periodic tick, queue saturation/drop count, retry exhaustion/compression cost or F overhead
+acceptance is claimed. Repeated overhead/mode/monitor/stripped-build studies remain next.
+
 ## Interpretation and report location
 
 Use a minimal built-in comparison for navigation and median/p75/p95/count plus source/completeness. Generate statistical analysis and reproducibility report externally from versioned captures. This avoids adding a large statistics dependency to Observer for the talk, while preserving useful reusable run filtering. Report algorithm/version, run-level confidence intervals where defensible, device segmentation, predeclared exclusions, outliers and failures. Existing version-regression detection is useful product behavior, not a replacement for this experimental protocol.

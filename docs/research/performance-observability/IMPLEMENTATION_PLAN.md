@@ -93,6 +93,14 @@ zero-duration samples remain included. See [F serializer evidence](F_SERIALIZER_
 export; callback time includes its own serialization and is not pure transport. This is auxiliary evidence, not
 full F overhead acceptance. Metric-exporter/retry/compression and repeated modes/monitor/stripped builds remain.
 
+F metric delivery gate (14 November): the real PeriodicExportingMetricReader and stock browser metric exporter
+now preserve callback failures separately from resolved reader flushes, retry actual HTTP503 with byte-identical
+bodies, and wait for a held initial callback before shared shutdown. Healthy/retry/held receive two distinct
+cumulative checkpoints (four points each, never summed); HTTP400 stays failed/unfinalized with zero received.
+See [F metric delivery](F_METRIC_DELIVERY_GATE.md). No queue/drop values, compression cost or accepted overhead
+are inferred. Next is repeated mode/steady-burst/auxiliary/monitor-on-off and stripped-build comparison; full F
+and physical native acceptance remain open.
+
 The task descriptions below retain the target architecture and acceptance criteria.
 
 ## Architecture constraints

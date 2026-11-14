@@ -6,6 +6,63 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Четвёртый шаг F — 14 ноября: metric reader, реальные retry и ошибки доставки
+
+Merge #107 подтверждён (`ef5b8bd`); ветка `step-performance-metric-delivery-notes` от свежего origin/master.
+**Чтобы** проверить метрики при сбоях перед overhead comparison, **сделали** отдельный `/metric.html` в experiment
+repo с upstream SDK metrics 2.11 PeriodicExportingMetricReader и stock browser OTLPMetricExporter 0.222.0.
+Instrumentation остаётся в app/Observe, HTTP fault control во внешнем harness, ingestion/archive в collector,
+Observer показывает существующий scenario report. Runtime/dependencies монорепо не менялись.
+[Полный метод и evidence](research/performance-observability/F_METRIC_DELIVERY_GATE.md).
+
+Reader interval=30s, timeout=6s; exporter timeout=5s. Initial provider.forceFlush, затем общий finish ждёт его и
+делает provider.shutdown с повторным сбором. Это не natural periodic tick study. 8 значений 1..8 записываются в
+cumulative counter (36) и histogram (count=8, sum=36, min=1, max=8). Два checkpoints имеют разные end timestamps,
+но содержат те же underlying records: counts/values **не складываются**. Public wrapper сохраняет selectors,
+SDK input witnesses, callback/error/times/pending/duplicates. Private queue/delegate не читаются и не патчатся.
+Offline public serializer должен воспроизвести каждый исходный HTTP body; query points сверяются по resource,
+scope, typed attributes, exact timestamps, values и histogram buckets. Transformer/build/source identity сохранены.
+
+В установленном SDK reader forceFlush может разрешиться после callback failure. Поэтому flushError отдельно от
+persistent delivery-error ledger. Даже успешно завершившийся shutdown не стирает прежнюю ошибку. Concurrent finish
+разделяет один Promise; held gate проверяет initialSettled=false, phase=draining и 1 pending HTTP до release.
+Shutdown export не может опередить callback начальной отправки. No metric queue/drop source — explicit unavailable.
+
+**Финал:** `metric-1794646414485-258d`, 5 fresh Chrome/profile/context, fixed functional order:
+
+- disabled: SDK не инициализируется/не загружается, HTTP/received=0; SDK counters/timing unavailable;
+- healthy: 2 exports / 2 HTTP / 4 received metric points, passed;
+- retry: HTTP503 + CORS-exposed Retry-After: 1 на первой попытке каждого body, затем HTTP200; 2 exports / 4 attempts /
+  2 retries / 4 received points, passed; исходные и retry bytes совпадают;
+- rejected: HTTP400 ×2, 2 callback failures, received=0, report failed / archive unfinalized, хотя flushError=null;
+- held: response держится до внешней проверки finish barrier; 2 exports / 4 received points, passed.
+
+Wire/received bytes healthy 2356/2356, retry 4688/2344, rejected 2362/0, held 2338/2338. Retry gaps на host clock
+1008.742/1003.539ms; это 2 controlled observations, не backoff distribution. Finish remaining-drain+shutdown
+44.9/2041.3/5.0/31.0ms; timer начинается при finish, не при первом export. Callback latency включает SDK/HTTP/fault/
+receiver/scheduling; cross-clock alignment и pure-network cost не заявлены. Browser JSON uncompressed;
+headers/preflight/socket cost исключены. Это functional validation, не overhead budget/CPU/RSS study.
+
+**Проверено:** 82 JS + 8 Python tests, typecheck/build pass. Real upstream reader failures/held callbacks,
+actual HTTP receiver, shared shutdown и fixture replay покрыты тестами. 4 mutations пойманы: стереть delivery
+errors, убрать общий finish, игнорировать checkpoint identity, сломать temporality selector. Sources restored до
+финала. 6 temporary-copy corruptions отклонены: SDK input/callbacks, wire, HTTP receipt, upstream retry source, OTLP,
+missing membership; originals unchanged. Replay byte-identical, SHA
+`8a107742ae5ac774366d9913b231ed58fd414d22b2e03c9833a64722cfa93ae9`.
+Старые A/B/CPU-source/trace-pipeline/serializer hashes прежние. C regression `cost-source-1794646429706-f2c0`:
+9 fresh runs / 90 actions / 3 modes pass, disabled SDK loading/export отсутствует. Packed Observer states
+passed/passed/passed/failed/passed, page errors=0; final screenshots просмотрены. Первый pilot обнаружил typed
+attributes projection mismatch, исправлен до финала; successful development pilot сохранён отдельно.
+
+Experiment commit `4203cfa` локален, remote нет; raw reports ignored, сохраняем весь session.
+Новых dependencies/native builds нет. Packed backend 0.3.35 с installed-graph symlink, не clean install.
+Temporary collection servers закрыты; viewer :4329 оставлен, старые viewers не менялись. AI review unavailable/timeout: hook сам продолжил fail-open; hooks не обходились.
+**Дальше:** repeated F mode/steady-burst/auxiliary/monitor on-off с независимыми CPU/RSS и stripped-build comparison,
+затем overhead acceptance по явным требованиям. Compression, retry exhaustion/network abort/429/full 5xx matrix
+не измерены. Полный F и native physical D/E/F остаются открытыми.
+
+---
+
 ## Третий шаг F — 14 ноября: отдельный serializer и штатная доставка
 
 Merge #106 подтверждён (`0c93c14`); ветка `step-performance-serializer-notes` от свежего origin/master.
