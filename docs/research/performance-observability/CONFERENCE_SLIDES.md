@@ -4,10 +4,11 @@ Visual companion (15 November): [standalone presentation](../../../presentations
 
 Draft after merge #116 (`d94c9b8`), 14 November 2026. English slide copy and speaker notes for
 **From Profiler to Production: Measuring What Actually Matters in React & React Native**.
-This is a content draft, not a rendered deck or a confirmed full-length talk. The four evidence scenes retain
-about 12 minutes from the [demo plan](CONFERENCE_DEMO_PLAN.md); opening, transitions, closing and optional appendix
-need their own allocation once the slot is known. Each numbered section is one slide. Only **On screen** content
-belongs on the audience slide; keep the source/session/endpoint and boundary visible with the result.
+The confirmed total slot is 30 minutes. The [run of show](CONFERENCE_RUN_OF_SHOW.md) allocates 25 minutes to
+slides 01–08 and 5 minutes to Q&A, including transitions and saved-report visits. A1/A2 are question-support
+appendices, with no extra slot. These are rehearsal targets; actual spoken timing remains unmeasured.
+Each numbered section is one slide. Only **On screen** content belongs on the audience slide; keep the
+source/session/endpoint and boundary visible with the result.
 **Speaker notes** and **Evidence cue** are presenter material. Figures below are retained observations, not new runs.
 
 ---
@@ -23,6 +24,8 @@ Measuring What Actually Matters in React & React Native
 Start with the interaction. Name the endpoint. Preserve the evidence.
 
 **Speaker notes**
+
+Timing: 00:00–01:30 elapsed; budget 1:30. State the question and scoped local evidence; move to the endpoint model at 01:30.
 
 “When we say an app is fast, which observation do we mean: load, selected JavaScript work, React completion,
 or pixels presented? I will show controlled cases where these observations answer different questions.
@@ -51,6 +54,8 @@ User action → handler → selected JS work → React completion → visible re
 React completion and readiness leave presentation unmeasured in these app markers.
 
 **Speaker notes**
+
+Timing: 01:30–04:30 elapsed; budget 3:00. Finish endpoint definitions by 04:30; the arrow is conceptual, not a measured critical path.
 
 “This arrow is a conceptual sequence, not a measured critical path. Intervals can overlap, work can repeat,
 and asynchronous or concurrent operations need explicit context. Our Profiler endpoint records an app-defined
@@ -83,6 +88,8 @@ Endpoint: handler start → React Profiler callback.
 Boundary: one local unthrottled Mac; four primary matched blocks; descriptive result.
 
 **Speaker notes**
+
+Timing: 04:30–08:30 elapsed; budget 4:00. Use at most 60 seconds for the saved report; skip diagnostics if late. Finish A at 08:30.
 
 “Here the navigation score stays at 100 in all eight load reports. Then the user performs the nominated
 interaction. Every matched block shows a larger handler-to-Profiler median with the deferred expensive work.
@@ -118,6 +125,8 @@ Boundary: four primary matched pairs on one Mac; ranges are observed run values,
 
 **Speaker notes**
 
+Timing: 08:30–12:30 elapsed; budget 4:00. Use at most 60 seconds for saved byte evidence; finish B at 12:30.
+
 “The same compiled code is configured to do different amounts of redundant startup work, with the same result.
 The preserved response bodies and browser/cache receipts establish byte comparability. This is a controlled
 same-artifact example; it does not compare the parse cost of two different equal-size bundles.”
@@ -152,6 +161,8 @@ External Playwright / Maestro harness → preserved observations and analysis �
 
 **Speaker notes**
 
+Timing: 12:30–15:30 elapsed; budget 3:00. Use the four responsibility rows. Omit the optional C walkthrough if late. Finish at 15:30.
+
 “OpenTelemetry is the interoperability boundary. The backend collector lives in the next-observer package,
 while its ingestion and storage responsibilities are separate from the frontend. We do not move app
 instrumentation or experiment statistics into the visualization.”
@@ -185,6 +196,8 @@ Endpoint: produced spans → SDK queue → exporter → receiver.
 Boundary: controlled faults; no production loss-rate claim.
 
 **Speaker notes**
+
+Timing: 15:30–19:30 elapsed; budget 4:00. Use at most 60 seconds for the trace report; reserve metric retry details for questions. Finish at 19:30.
 
 “The fault-validation check succeeds when it accurately preserves the fault. It cannot promote delivery to passed.
 The overflow archive remains unfinalized and the rejected export remains failed. A received-only archive tells us
@@ -224,6 +237,8 @@ Boundary: two build artifacts, six local alternating run pairs; no accepted over
 
 **Speaker notes**
 
+Timing: 19:30–23:00 elapsed; budget 3:30. Keep byte/readiness/CPU boundaries; defer statistical-method details. Start the closing slide at 23:00.
+
 “Both groups are disabled. One build removes Observe and OTel; the other retains the installed adapter and lazy SDK
 graph. Source maps and the actual loaded response bodies verify the difference. These are loaded gzip body bytes,
 not emitted totals, installation footprint or total wire traffic.”
@@ -256,6 +271,8 @@ Next step: choose the target claim, then measure its missing endpoint.
 
 **Speaker notes**
 
+Timing: 23:00–25:00 elapsed; budget 2:00. Close at 25:00 and leave 5 minutes for Q&A. Stay here; do not automatically advance to A1.
+
 “The examples show why the metric name alone is insufficient. We can already show these bounded comparisons in
 Observer. A product overhead guarantee would need a workload, target devices/builds, validated cost sources,
 a budget and a declared decision rule. Those are still open. We have ten different scoped F protocols, not a
@@ -268,8 +285,7 @@ Release target. We should state that gap explicitly rather than infer frame smoo
 
 [Full coverage, boundaries and closure order](F_EVIDENCE_MATRIX.md),
 [pinned index](F_EVIDENCE_INDEX.json), [demo fallback/rehearsal](CONFERENCE_DEMO_PLAN.md).
-Close here for the short version. The native and runner slides below are optional appendices, outside the four-scene
-12-minute allocation. No claim that all A–F or production performance acceptance is complete.
+Close here for the short version. The native and runner slides below are optional appendices, within the five-minute Q&A allocation. No claim that all A–F or production performance acceptance is complete.
 
 ---
 
@@ -288,6 +304,8 @@ Source: `ios-cadence-1794441662289`; diagnostic corroboration `ios-system-179445
 Boundary: Simulator functional evidence; no physical smoothness or dropped-frame conclusion.
 
 **Speaker notes**
+
+Timing: Q&A only (25:00–30:00); no extra slot. Open only for a relevant native question; preserve unavailable presentation and stop by 30:00.
 
 “The app-local CADisplayLink buffer acquires without calling JS per callback. Raw native timestamps and pre/post
 clock pairs are retained. The constant-offset model permits a conditional count inside the selected JS bracket;
@@ -321,6 +339,8 @@ Endpoint: JS scheduling and native callback proxy; presentation unavailable.
 
 **Speaker notes**
 
+Timing: Q&A only (25:00–30:00); no extra slot. Open only for a relevant runner/archive question; keep the answer inside the remaining Q&A time.
+
 “Maestro actually triggers the app and checks completion. The negative scenario intentionally fails its UI assertion,
 while the app's telemetry can still be completely archived. Finalization does not make the runner pass.
 The harness preserves both results with original JUnit, command evidence, app receipts and raw OTLP.
@@ -339,9 +359,8 @@ as a question-and-answer example rather than displacing a core comparison.
 
 The [demo plan](CONFERENCE_DEMO_PLAN.md) owns viewer startup, exact report IDs, rehearsal and fallback instructions.
 The [F evidence matrix](F_EVIDENCE_MATRIX.md) owns current F claim coverage; the method docs own statistical details.
-This draft adds neither a new protocol nor new measurements. It deliberately leaves talk length and final visual
-design undecided. Next editorial step: select the slide renderer, settle the slot and rehearse spoken timing before
-freezing audience-visible slides. Retain source/session/endpoint/boundary text in the eventual rendering.
+This draft adds neither a new protocol nor new measurements. The total slot is 30 minutes; the separate visual deck is available. Next editorial step: rehearse the
+25-minute main route and five-minute Q&A allocation before freezing audience-visible slides. Retain source/session/endpoint/boundary text in the eventual rendering.
 
 Original screenshots and raw reports remain ignored local artifacts in the sibling experiment repository with no
 remote. This Markdown alone is not a portable offline evidence bundle. Use the saved original screenshot/analysis

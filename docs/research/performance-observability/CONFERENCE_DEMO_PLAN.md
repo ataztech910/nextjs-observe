@@ -2,27 +2,27 @@
 
 Visual version: [separate offline slide deck](../../../presentations/profiler-to-production/index.html), with notes and audience-only PDF printing. [Controls and rebuild instructions](../../../presentations/profiler-to-production/README.md).
 
-Editorial companion: [slide copy and speaker notes](CONFERENCE_SLIDES.md), with eight core slides and two optional appendices. The confirmed talk slot and final rendering remain open.
+Editorial companion: [slide copy and speaker notes](CONFERENCE_SLIDES.md), with eight core slides and two optional appendices. The total slot is 30 minutes; the [run of show](CONFERENCE_RUN_OF_SHOW.md) allocates 25 minutes presentation and 5 minutes Q&A.
 
 Working proposal after merge #115 (`d6ac3ab`), 14 November 2026. This selects a bounded story from existing
 local evidence for **From Profiler to Production: Measuring What Actually Matters in React & React Native**.
-The proposed timing below is an editing allocation, not the confirmed talk length. It does not declare all A–F
+Updated timing, 15 November: the speaker confirmed 30 minutes total; our working split is 25 minutes presentation and 5 minutes Q&A. It does not declare all A–F
 accepted, a product overhead budget, production generality or physical native presentation. No new measurements
 or Observer features are prerequisites for this version of the story. The speaker can change this scope before
 freezing slides; a stronger claim requires its own declared measurement contract first.
 
 ## Selected claims and screens
 
-Use approximately 12 minutes for the core evidence sequence, embedded in the eventual talk. Show frozen reports
+The four evidence scenes use 15 minutes 30 seconds inside the 25-minute main route, including saved-report transitions; the other slides use 9 minutes 30 seconds. Show frozen reports
 rather than trying to reproduce timing live. Display the session ID and the measurement endpoint on each slide.
 The actual original protocols and limitations remain authoritative; these are speaker cues, not replacement analyses.
 
 | Scene / suggested time | Screen and original evidence | Claim to say aloud | Boundary to keep on screen |
 | --- | --- | --- | --- |
-| A / 3 min | [A gate](EXPERIMENT_A_GATE.md), `load-a-1794560947170-6c40`: load scores, paired handler-to-Profiler run medians and separate lifecycle INP. | “In this controlled local case all eight navigation scores were 100, while the deliberately deferred work increased each paired handler-to-commit median by 200.8–214.2 ms.” | Four primary matched blocks on one unthrottled Mac; load and post-load endpoints differ. Three-click lab lifecycle INP is separate from handler duration and field INP. Diagnostic profiles are excluded from primary timing. |
-| B / 3 min | [B gate](EXPERIMENT_B_GATE.md), `bundle-b-1794566743221-443a`: matching artifact/response bytes, selected compute and navigation-to-first-layout-effect. | “The same downloaded JS performed different configured startup work. Equal bytes did not imply equal execution or readiness in this fixture.” | One artifact, different configuration; not two different equal-size bundles. Selected compute, startup wall and presentation are distinct. Gzip was served; Brotli is artifact-only. |
-| F delivery / 3 min | [Trace fault gate](F_PIPELINE_GATE.md), `pipeline-1794641370737-5d72`: healthy, overflow and HTTP400 rows. Show [metric fault gate](F_METRIC_DELIVERY_GATE.md), `metric-1794646414485-258d`, if useful for the retry/flush question. | “A report must preserve failed and incomplete delivery. A completed validation session or resolved flush does not prove every record arrived.” | Trace overflow stays incomplete with 20 deliberate queue drops; trace and metric HTTP400 stay failed. These are controlled fault cases, not production loss rates. Cumulative metric checkpoints are not additive. |
-| F cost / 3 min | [Stripped build gate](F_STRIPPED_STUDY.md), `stripped-1794680848671-8f54`: loaded versus emitted bytes, adapter-ready endpoint and work CPU uncertainty. | “In these two builds, loaded gzip JS was 1871 B stripped and 8275 B with Observe installed but disabled. Readiness and work CPU answer different questions.” | Six local alternating run pairs, two build artifacts. Adapter-ready wall difference is +21.433 ms [1.450, 44.650] under the original exploratory interval; work-CPU interval spans zero. No general acceptable-overhead, equivalence, speedup or pure probe CPU claim. |
+| A / 4 min | [A gate](EXPERIMENT_A_GATE.md), `load-a-1794560947170-6c40`: load scores, paired handler-to-Profiler run medians and separate lifecycle INP. | “In this controlled local case all eight navigation scores were 100, while the deliberately deferred work increased each paired handler-to-commit median by 200.8–214.2 ms.” | Four primary matched blocks on one unthrottled Mac; load and post-load endpoints differ. Three-click lab lifecycle INP is separate from handler duration and field INP. Diagnostic profiles are excluded from primary timing. |
+| B / 4 min | [B gate](EXPERIMENT_B_GATE.md), `bundle-b-1794566743221-443a`: matching artifact/response bytes, selected compute and navigation-to-first-layout-effect. | “The same downloaded JS performed different configured startup work. Equal bytes did not imply equal execution or readiness in this fixture.” | One artifact, different configuration; not two different equal-size bundles. Selected compute, startup wall and presentation are distinct. Gzip was served; Brotli is artifact-only. |
+| F delivery / 4 min | [Trace fault gate](F_PIPELINE_GATE.md), `pipeline-1794641370737-5d72`: healthy, overflow and HTTP400 rows. Show [metric fault gate](F_METRIC_DELIVERY_GATE.md), `metric-1794646414485-258d`, if useful for the retry/flush question. | “A report must preserve failed and incomplete delivery. A completed validation session or resolved flush does not prove every record arrived.” | Trace overflow stays incomplete with 20 deliberate queue drops; trace and metric HTTP400 stay failed. These are controlled fault cases, not production loss rates. Cumulative metric checkpoints are not additive. |
+| F cost / 3 min 30 s | [Stripped build gate](F_STRIPPED_STUDY.md), `stripped-1794680848671-8f54`: loaded versus emitted bytes, adapter-ready endpoint and work CPU uncertainty. | “In these two builds, loaded gzip JS was 1871 B stripped and 8275 B with Observe installed but disabled. Readiness and work CPU answer different questions.” | Six local alternating run pairs, two build artifacts. Adapter-ready wall difference is +21.433 ms [1.450, 44.650] under the original exploratory interval; work-CPU interval spans zero. No general acceptable-overhead, equivalence, speedup or pure probe CPU claim. |
 
 For A/B, open both primary measurements and diagnostic source evidence if asked where the work occurred.
 Do not turn a selected source match into complete automatic hook attribution. For F cost, retain all contrasts and

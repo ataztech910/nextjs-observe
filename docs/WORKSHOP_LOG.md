@@ -6,6 +6,34 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Тайминг доклада — 15 ноября: слот 30 минут вместе с вопросами
+
+Merge #118 подтверждён (`b27ff63`); ветка `step-conference-30-minute-timing` от свежего origin/master.
+Пользователь подтвердил **30 минут на всё**. **Чтобы** уложить presentation + Q&A в этот лимит,
+**подготовили** [run of show](research/performance-observability/CONFERENCE_RUN_OF_SHOW.md): 25 минут на восемь
+основных слайдов и 5 минут на вопросы. Разделение 25/5 — рабочий план внутри общего слота, не отдельное требование
+организаторов. Старую provisional 12-minute evidence-only оценку заменили текущей: evidence scenes 15:30,
+остальные основные слайды 9:30. Переходы и просмотр сохранённых reports уже включены.
+
+**Получили:** elapsed windows/budgets в notes каждого слайда и пересобранном HTML, checkpoints 08:30/15:30/23:00,
+закрытие 25:00 и hard stop 30:00. A1/A2 только для релевантных вопросов, отдельного времени им не добавляем.
+Есть spoken bridges, Q&A prompts и recovery: пропускаем viewer/diagnostics/optional C/metric details, сохраняем
+источники/endpoints/ограничения и заключение. На 08 остаёмся для Q&A; overview позволяет выбрать appendix.
+Никаких timer/auto-advance/runtime features не добавляли. Audience copy поблочно совпадает с merge #118.
+
+**Проверено:** восемь непрерывных окон, бюджеты/notes совпадают, сумма 25+5=30. Временные изменения (разрыв окна,
+лишняя минута Q&A) отвергнуты, исходник сохранён. Три renderer unit tests pass; final build deterministic.
+Chrome check пересобранного deck: все 10 слайдов, layout/navigation/history/bounds/notes/overview, 720p/mobile,
+print isolation/offline file pass, page errors 0. PDFKit: 10 pages, timing cues/Speaker notes отсутствуют в audience PDF.
+Артефакты `/private/tmp/performance-deck-30min-check`, локальный PDF рядом с deck обновлён и ignored.
+Slide numerical/state check pass, links/diff checks pass. Все 276 source/assets hashes старого `workshop-slides`
+совпадают. CSS/JS/build algorithms/dependencies и экспериментальные данные не менялись.
+
+**Дальше:** настоящая устная репетиция с часами и фиксацией finish times. Здесь задан план, а не измеренное время
+речи. При отставании используем согласованный recovery; новая benchmark/native collection не нужна для тайминга.
+
+---
+
 ## Визуальная презентация — 15 ноября: отдельный offline deck
 
 Merge #117 подтверждён (`7a339c7`); ветка `step-performance-visual-deck` от свежего origin/master.

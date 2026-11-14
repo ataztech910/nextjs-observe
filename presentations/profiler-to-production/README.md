@@ -1,5 +1,9 @@
 # From Profiler to Production — standalone presentation
 
+Slot: **30 minutes total**. The [run of show](../../docs/research/performance-observability/CONFERENCE_RUN_OF_SHOW.md)
+allocates 25 minutes to slides 01–08 and 5 minutes to questions; A1/A2 support Q&A. Timing cues appear only in notes.
+Actual spoken timing still needs rehearsal. Stop advancing at 08; use the overview to open a relevant appendix.
+
 A separate 10-slide visual deck for **Measuring What Actually Matters in React & React Native**:
 eight core slides and two optional appendices. The existing sibling `workshop-slides` presentation stays in place;
 this folder does not read, import or write it.
