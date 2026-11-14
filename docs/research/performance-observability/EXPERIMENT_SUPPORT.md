@@ -95,6 +95,13 @@ assets and sends no OTLP. Raw process/app/capture associations replay determinis
 values remain explicitly unavailable; no overhead percentage/budget is computed. Producer counters and saturation,
 monitor on/off, auxiliary/stripped-build studies and physical native validation remain open.
 
+**Trace pipeline gate (14 November):** [SDK queue/drop/export validation](F_PIPELINE_GATE.md) now exercises the
+actual batch processor and upstream OTLP exporter with held responses and HTTP400. Healthy receives 8/8; a small
+16-span test queue drops 20 of 40 while 20 reach the collector; rejection fails 8 exports with zero received. SDK
+cumulative counters, public exporter callbacks, original wire IDs and raw OTLP reconcile. Observer preserves
+incomplete/failed delivery. This validates counters and drain semantics; the deliberately constructed loss rate
+is not a production result. Isolated serialization, retry/backoff/metric queues and repeated overhead studies remain.
+
 ## Interpretation and report location
 
 Use a minimal built-in comparison for navigation and median/p75/p95/count plus source/completeness. Generate statistical analysis and reproducibility report externally from versioned captures. This avoids adding a large statistics dependency to Observer for the talk, while preserving useful reusable run filtering. Report algorithm/version, run-level confidence intervals where defensible, device segmentation, predeclared exclusions, outliers and failures. Existing version-regression detection is useful product behavior, not a replacement for this experimental protocol.

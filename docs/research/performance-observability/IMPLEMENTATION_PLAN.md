@@ -79,6 +79,13 @@ reconcile. See [F process sources](F_PROCESS_SOURCES.md). This is a T10 prerequi
 producer queues/drops, steady/burst workload, serialization/export decomposition, monitor on/off and stripped build
 remain next; native physical-device gates are unchanged.
 
+F trace-pipeline gate (14 November): upstream SDK self-observation, public exporter callbacks and original HTTP
+bodies now reconcile produced/queued/dropped/failed/received spans under actual held responses and HTTP400.
+Queue=16/batch=4 are deliberate test settings. Overflow and rejected archives remain unfinalized; Observer displays
+passed/passed/incomplete/failed. A callback drain barrier preserves earlier in-flight completion and prior errors.
+See [F pipeline validation](F_PIPELINE_GATE.md). Isolated serialization, retries/metric-exporter queues, monitor
+on/off/auxiliary/stripped-build comparisons and full overhead/native acceptance remain open.
+
 The task descriptions below retain the target architecture and acceptance criteria.
 
 ## Architecture constraints
