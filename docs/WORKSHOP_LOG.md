@@ -6,6 +6,73 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Шестой шаг F — 14 ноября: настоящий synchronous burst из 128 jobs
+
+Merge #109 подтверждён (`bf62563`); ветка `step-performance-burst-notes` от свежего origin/master.
+**Чтобы** измерить burst без Playwright gaps между вычислениями, **сделали** отдельный `/burst.html`: один trusted
+click выполняет 128 deterministic degraded jobs синхронно, без await/yield/per-job UI. App использует существующий
+framework-independent Observe performance probe. Instrumentation в app/Observe, external process sampling/statistics
+в harness, ingestion/archive в collector, Observer показывает прежний typed report. Runtime/dependencies монорепо
+не менялись. [Метод, evidence и ограничения](research/performance-observability/F_BURST_STUDY.md).
+
+Plain DOM entry не рендерит React. Endpoint — synchronous handler-body completed, не React Profiler commit/paint/INP.
+Ранние C timings имеют другие endpoint/build и не являются matched control. Independent performance.now сохраняет
+128 seed/checksum/job clocks и полный burst body, включая root/probe/timers/result-array work; DOM updates после
+body timer. Diagnostic: 1 root + 128 children; production_like: 1 root и агрегаты; disabled: clocks/checksums/no-op
+Observe, без SDK asset loading/export. Все modes на одном frozen artifact; это не monitor/stripped-build comparison.
+
+Shared app/harness settings: queue 2048, batch 512, delay 30s, document-hide flush disabled, metrics interval 60s.
+129-span trace ниже обоих limits; zero actual HTTP exports before finish проверено во всех runs. Это bounded many-span
+burst, не saturation/max trace/loss-rate study или production defaults. После finish проверяются exporter failures,
+затем capture finalize. Два final cumulative histograms: work count=128, interaction count=1; не подменяются и не
+складываются как independent runs. Queue/drop/peak/startup CPU/accepted budget здесь unavailable, не fake zeros.
+
+6 fixed mode permutations × fresh Chrome/profile/context = 18 runs, 768 jobs/mode; unit inference — run/block.
+Все first/zero/quantized observations сохранены, timing exclusions нет. External SDK-free calibration: CPU 0.703755s,
+RSS +73.641MiB для busy/page-touched retained64MiB. CDP+macOS ps snapshots дают отдельные workload/finish интервалы:
+all renderer threads/processes (включая spare), без browser/GPU/collector/harness CPU. RSS endpoint sum может дважды
+учесть shared pages, не private heap/peak/leak. Finish включает SDK shutdown/export, archive/download/UI/automation,
+не pure network/SDK-flush CPU. App shutdown wall пересекается с finish; не складываем. Startup только ready host
+wall; host/browser clocks не aligned. Stable PIDs/coarse CDP/ps agreement обязательны.
+
+**Финал:** `burst-study-1794650515193-73b6`, 18 passed integrity/finalized, 2304 jobs, 780 spans и 24 metric points.
+Burst body ranges disabled 978.1–995.2ms, diagnostic 986.0–997.8ms, production_like 980.7–999.6ms. OTLP bytes/run:
+0 / 95676–95715 / 3924–3974, не полный HTTP/socket cost. 8 endpoints × 2 modes = 16 descriptive contrasts с точными
+paired run IDs; все 6^6=46656 empirical paired-block bootstrap resamples, exploratory95% nearest-rank percentile
+interval mean difference. Exchangeable-block assumption/n=6/fixed order/unmeasured thermal/power/cache явно указаны;
+нет job pooling/p-values/multiplicity correction или overhead threshold. Selected-minus-disabled:
+
+- workload CPU: diagnostic +13.671ms [6.666, 19.391], production_like +3.563ms [-3.636, 11.273];
+- finish CPU: +7.330ms [6.590, 8.526] / +5.098ms [4.768, 5.605], включает external finish work;
+- burst body: +7.233ms [1.717, 11.433] / +4.800ms [-0.217, 9.900];
+- RSS sum after burst: +3.188MiB [1.656, 4.466] / +1.607MiB [-0.182, 2.745];
+- app shutdown timer: +36.300ms [32.717, 40.800] / +27.433ms [25.867, 29.133].
+
+Округлённые job-median contrasts=0 из-за quantization/малой выборки не означают zero cost. Disabled shutdown timer
+измеряет no-op app flush и может дать measured0; это не SDK timing. Ни положительный diagnostic contrast, ни пересечение
+нуля production_like не задают acceptable budget/causal population claim/equivalence/speedup.
+
+**Проверено:** 90 JS + 8 Python tests, typecheck/build pass. Real installed Observe probe во всех modes проверяет
+синхронность/128 calls/span counts/distinct histogram counts/first-zero retention. 4 mutations пойманы: потерять job,
+accept untrusted click, ignore early export, ignore parent. Sources restored до финала. 6 temporary-copy corruptions
+отклоняют job samples, process/HTTP receipt, OTLP, manifest, frozen build и missing membership; originals unchanged.
+Replay byte-identical, SHA `6639af9f24a082dc9a18a245a6a3caf06433bf606e9728b02d88cb2c29c7c990`.
+A/B/CPU-source/trace-pipeline/serializer/metric-delivery/repeated-mode old replay hashes прежние. C regression
+`cost-source-1794650685588-8609`: 9 fresh runs/90 actions/3 modes pass, disabled no SDK/export. Первая отдельная
+попытка `cost-source-1794650603119-e56b` отклонена RSS calibration до действий (runs=[]), сохранена incomplete,
+причина не установлена. Regression retry не включён в final burst dataset. Pilot отдельно; primary timing runs
+не исключались и не пересобирались по результату. Packed reader:18 passed/72 unavailable/page errors=0;
+final analysis/UI screenshots просмотрены.
+
+Experiment commit `66d86ca` локален, remote отсутствует; raw reports ignored, сохраняем весь session.
+Новых dependencies/native builds нет. Packed 0.3.35 с installed-graph symlink, не clean install. Temporary servers
+закрыты, saved viewer :4331 оставлен; старые viewers не менялись. AI review unavailable/timeout: hook сам продолжил fail-open; hooks не обходились.
+**Дальше:** steady-state, auxiliary clock/aggregate/spans-without-export, monitor on-off и stripped-build comparison,
+затем overhead acceptance по явным требованиям. Startup CPU, compression/wider retry faults, full F и native physical
+D/E/F остаются открытыми.
+
+---
+
 ## Пятый шаг F — 14 ноября: повторные сравнения режимов и неопределённость
 
 Merge #108 подтверждён (`391e853`); ветка `step-performance-repeated-modes-notes` от свежего origin/master.

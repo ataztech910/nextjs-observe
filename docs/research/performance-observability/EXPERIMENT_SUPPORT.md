@@ -126,6 +126,15 @@ exchangeable-block assumption. Workload CPU intervals span zero; no speedup, equ
 claimed. App shutdown and external finish CPU overlap and have different scopes. This is neither a true burst/
 steady-state study nor monitor/stripped-build comparison; these, startup CPU and full/native acceptance remain open.
 
+**Synchronous burst study (14 November):** [128 jobs in one trusted click](F_BURST_STUDY.md) compares three modes
+on one frozen artifact across six paired permutation blocks. Diagnostic produces one root + 128 selected-work spans;
+production_like one root; disabled loads no SDK assets/exports. Two final histograms preserve distinct work=128 and
+interaction=1 populations. Test batching (queue 2048/batch 512/delay 30s, metrics 60s) keeps all exports after the
+burst; no saturation/loss-rate or production-default claim. Sixteen run-level paired contrasts preserve all jobs,
+independent workload/finish CPU/RSS and exploratory 95% bootstrap intervals. Plain DOM synchronous-body completion
+is not React commit/paint/INP and cannot be directly compared to earlier C endpoints. Steady-state, auxiliary,
+monitor-on-off/stripped builds, startup CPU and accepted overhead/native gates remain open.
+
 ## Interpretation and report location
 
 Use a minimal built-in comparison for navigation and median/p75/p95/count plus source/completeness. Generate statistical analysis and reproducibility report externally from versioned captures. This avoids adding a large statistics dependency to Observer for the talk, while preserving useful reusable run filtering. Report algorithm/version, run-level confidence intervals where defensible, device segmentation, predeclared exclusions, outliers and failures. Existing version-regression detection is useful product behavior, not a replacement for this experimental protocol.
