@@ -102,6 +102,13 @@ cumulative counters, public exporter callbacks, original wire IDs and raw OTLP r
 incomplete/failed delivery. This validates counters and drain semantics; the deliberately constructed loss rate
 is not a production result. Isolated serialization, retry/backoff/metric queues and repeated overhead studies remain.
 
+**Auxiliary serializer gate (14 November):** [public serializer and stock delivery](F_SERIALIZER_GATE.md) now
+preserves 20 calls/page including first/quantized zero samples, four independent runs per compact/large profile,
+byte-equivalent auxiliary/stock/offline bodies and separate whole-phase process CPU/RSS. All 544 ended input spans
+reach the collector. Input span creation timestamps are not phase timers. Stock export follows the auxiliary
+calls and is warmed; callback latency includes its own serialization. Subtracting auxiliary time cannot isolate
+network cost. Metrics/retry/compression and repeated mode/monitor-on-off/stripped-build acceptance remain open.
+
 ## Interpretation and report location
 
 Use a minimal built-in comparison for navigation and median/p75/p95/count plus source/completeness. Generate statistical analysis and reproducibility report externally from versioned captures. This avoids adding a large statistics dependency to Observer for the talk, while preserving useful reusable run filtering. Report algorithm/version, run-level confidence intervals where defensible, device segmentation, predeclared exclusions, outliers and failures. Existing version-regression detection is useful product behavior, not a replacement for this experimental protocol.

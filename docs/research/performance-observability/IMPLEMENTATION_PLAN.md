@@ -86,6 +86,13 @@ passed/passed/incomplete/failed. A callback drain barrier preserves earlier in-f
 See [F pipeline validation](F_PIPELINE_GATE.md). Isolated serialization, retries/metric-exporter queues, monitor
 on/off/auxiliary/stripped-build comparisons and full overhead/native acceptance remain open.
 
+F auxiliary serializer gate (14 November): the public upstream JSON serializer is measured separately before
+an unchanged stock export of the same ended SDK batch. Auxiliary bytes, stock HTTP body and offline upstream
+replay match exactly in eight fresh runs; each whole phase has independent renderer CPU/RSS snapshots. First and
+zero-duration samples remain included. See [F serializer evidence](F_SERIALIZER_GATE.md). Fixed phase order warms
+export; callback time includes its own serialization and is not pure transport. This is auxiliary evidence, not
+full F overhead acceptance. Metric-exporter/retry/compression and repeated modes/monitor/stripped builds remain.
+
 The task descriptions below retain the target architecture and acceptance criteria.
 
 ## Architecture constraints

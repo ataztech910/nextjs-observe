@@ -6,6 +6,55 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Третий шаг F — 14 ноября: отдельный serializer и штатная доставка
+
+Merge #106 подтверждён (`0c93c14`); ветка `step-performance-serializer-notes` от свежего origin/master.
+**Чтобы** получить вспомогательные данные о сериализации до overhead study, **сделали** `/serialize.html` в отдельном
+experiment repo. Public OTel JsonTraceSerializer вызывается 20 раз, затем неизменённый OTLPTraceExporter отправляет
+тот же batch ended SDK spans. Instrumentation остаётся в app/Observe, HTTP harness снаружи, ingestion/archive —
+в collector, Observer показывает существующий typed report. Runtime монорепо не менялся.
+[Метод и границы](research/performance-observability/F_SERIALIZER_GATE.md).
+
+4 matched blocks × compact/large с чередованием позиции = 8 fresh Chrome processes. Compact: 8 spans, large: 128.
+Все 20 samples/page сохранены, включая первый и quantized zeros; это 4 независимых запуска/profile, не 80.
+Serializer timer охватывает public SDK projection/JSON stringify/UTF-8 encoding. Проверка байтов и копирование
+вне этого timer; input witness/base64/download/shutdown вне измеряемых фаз. Spans — входные fixture records:
+их creation intervals **не** обозначают serialization/export. Rehydration ограничена этой ended-root/no-links/
+no-tracestate fixture. Auxiliary body = stock HTTP body = offline upstream serialization, byte-exact.
+Private exporter/delegate не патчится, transport не заменяется, внутри stock call нет добавленной сериализации.
+
+Отдельные external CDP/macOS ps snapshots окружают whole serializer phase и whole export phase, после независимой
+SDK-free busy/64MiB calibration. CPU включает all renderer processes/threads и byte-check/automation/acquisition;
+это не per-call serializer CPU. RSS — сумма endpoint residency, shared pages могут учитываться повторно;
+не private heap/peak/leak. В первой фазе 20 вызовов, во второй один export: totals не overhead ratio.
+Fixed phase order прогревает data/code перед exporter. Stock callback включает собственную сериализацию, HTTP,
+receiver и scheduling; разность с auxiliary timer не является pure network time. Cross-clock alignment не заявлен.
+
+**Финал:** `serializer-1794644023258-125f`, 8 passed/finalized, 160 auxiliary calls, 544 уникальных spans доставлены.
+Body compact/large: 6389 / 317191 B. Serializer run medians: compact 0.1ms во всех 4 запусках, large 1.7/1.6/1.6/1.6ms;
+first calls 0.7–0.9 / 2.9–4.1ms; stock callback 18.6–37.6 / 32.5–40.2ms. Whole serializer-phase CPU compact
+0.007569–0.009065s, large 0.109125–0.113969s; export-phase 0.004431–0.006237 / 0.017287–0.018643s.
+Это локальные auxiliary observations, не production overhead budget.
+
+**Проверено:** 76 JS + 8 Python tests, typecheck/build pass. 4 mutations пойманы: потерять first sample, игнорировать
+stock bytes, смешать CPU phases, игнорировать offline equality. Sources restored до финального сбора. 6 corruption
+checks на temporary copy отклоняют input/timings, auxiliary bytes, stock bytes, process receipt, OTLP и missing
+membership; originals unchanged. Replay byte-identical, SHA
+`1ac1397a2a471303f0d3a601708d7b33700deed6f0ca7ce3c2b6bd2d1fb0524e`.
+Старые A/B/CPU-source/pipeline replay hashes прежние. C regression `cost-source-1794644083969-412d`: 9 fresh runs,
+90 actions, 3 modes pass; disabled не загружает SDK и не экспортирует. Packed reader: 8 passed rows, 16 explicit
+unavailable values (pure network/accepted budget), page errors=0; final screenshots просмотрены. Development pilot отдельно.
+
+Experiment commit `c6494a3` локален, remote отсутствует; originals ignored, сохраняем весь session.
+Pinned public experimental `@opentelemetry/otlp-transformer@0.222.0` стал direct experiment dependency; уже был
+transitive installed, offline lock update не менял installed graph. Native builds/monorepo dependencies не менялись.
+Packed 0.3.35 с symlink на installed dependencies, не clean install. Temporary servers закрыты, viewer :4328 оставлен.
+AI review unavailable/timeout: hook сам продолжил fail-open, hooks не обходились.
+**Дальше:** metric-exporter/retry/compression validation, repeated modes/auxiliary/monitor on-off/stripped builds,
+затем согласование overhead budget по измеренным данным. Full F и native physical D/E/F остаются открытыми.
+
+---
+
 ## Второй шаг F — 14 ноября: настоящие SDK queue/drop/export counters
 
 Merge #105 подтверждён (`3a654df`); ветка `step-performance-pipeline-notes` от свежего origin/master.
