@@ -1,5 +1,7 @@
 # Conference demonstration plan
 
+Editorial companion: [slide copy and speaker notes](CONFERENCE_SLIDES.md), with eight core slides and two optional appendices. The confirmed talk slot and final rendering remain open.
+
 Working proposal after merge #115 (`d6ac3ab`), 14 November 2026. This selects a bounded story from existing
 local evidence for **From Profiler to Production: Measuring What Actually Matters in React & React Native**.
 The proposed timing below is an editing allocation, not the confirmed talk length. It does not declare all A–F
