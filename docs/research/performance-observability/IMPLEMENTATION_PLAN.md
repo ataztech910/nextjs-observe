@@ -135,6 +135,17 @@ analysis hashes unchanged, C9-run regression and packed report18 passed/72 unava
 work CPU differences do not prove speedup or accepted overhead. ~6.3s/run does not establish stationarity.
 Monitor on/off, stripped builds, longer-duration convergence, startup CPU, full F/native acceptance remain open.
 
+F scoped browser-monitor comparison (14 November): [event/longtask/LoAF observers on/off](F_MONITOR_STUDY.md)
+with Observe fixed diagnostic,6 alternating adjacent pairs/12 fresh Chrome/64 paced jobs/run. Disposable unbuffered
+observers,2000 records/type, deep public JSON projection, pending-record drain/disconnect and late callback guard.
+Independent trusted180ms source control observes a real longtask; all3 source types required. Final768 jobs/1536 spans/
+168 cumulative points/216 requests, no checkpoint summation. On receives11 Event Timing entries/run, no primary
+longtask/LoAF; quiet-source case only, not high-volume callback cost. Calibrated CPU/RSS,8 paired exploratory contrasts;
+109 JS+8 Python tests/5 mutations/7 corruption checks,10 unchanged prior analysis hashes, C regression and packed
+reader12 passed/54 unavailable. Work-CPU interval spans zero; no acceptable budget/equivalence claim. Full A lifecycle/
+INP, other JS/native monitoring and external harness on/off remain separate. Next: stripped-build comparison;
+longer-duration convergence, startup CPU/full F/native physical acceptance remain open.
+
 The task descriptions below retain the target architecture and acceptance criteria.
 
 ## Architecture constraints

@@ -6,6 +6,79 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Девятый шаг F — 14 ноября: браузерные PerformanceObserver on/off
+
+Merge #112 подтверждён (`9014ce8`); ветка `step-performance-monitor-notes` от свежего origin/master.
+**Чтобы** оценить стоимость выбранного app browser monitor, **сделали** `/monitor.html`: Observe фиксирован в
+**diagnostic в обеих группах**, включаем/выключаем только3 PerformanceObserver: event(durationThreshold16ms),
+longtask,long-animation-frame; buffered:false, capacity2000/type. [Метод и evidence](research/performance-observability/F_MONITOR_STUDY.md).
+Это source types из A, но не полный A buffered/lifecycle/web-vitals/INP collector. JS heartbeat/rAF polling/React
+Profiler/native frame/SDK queue monitoring не добавлялись и не измерены. External CPU/RSS/Playwright/HTTP witnesses
+включены в обеих группах, их собственный observer effect не изолирован. Runtime/dependencies монорепо не менялись:
+Observe/app собирают, external harness измеряет/statistics, collector принимает/архивирует, UI читает typed reports.
+
+Monitor start перед первым job, stop/drain/disconnect после последнего; стоимость setup/callback/deep JSON projection/
+drain/stop внутри work. Capacity bounded, overflow отвергает integrity. Повторный stop idempotent, поздние callbacks
+игнорируются, partial setup failure закрывает observers. Off не обращается к browser sources/clock, не создаёт/
+не читает observers; common monitor object/empty buffers остаются. Отсутствующие browser observations в off —
+unavailable, не zero jank. takeRecords сохраняет pending published entries; ещё не опубликованные при stop записи
+могут отсутствовать, включая last-task observations. Это не full page-lifecycle coverage.
+
+Development attempt `monitor-1794679854848-753c` остановился **до primary runs** на independent known-task check:
+TaskAttributionTiming внутри shallow toJSON нельзя structuredClone. Исправили public deep JSON projection при
+приёме entry, добавили точный regression test и5-ю mutation; все проверки повторены. Failed sources/protocol/error
+оставлены incomplete. Final collection отдельно; timing exclusions/selected primary reruns нет.
+
+Independent SDK-free `/monitor-check.html`: trusted180ms busy task в двух fresh Chrome. Off0 observers/records;
+on3 callbacks,11 event+1 longtask+1 LoAF. Для source gate обязателен actual longtask callback/support всех3 types.
+Основная нагрузка:6 adjacent on/off pairs с alternating order (по3 каждого),12 fresh Chrome/profile/context,
+64 deterministic jobs с100ms absolute targets; общий scheduler прежний, all first/late/quantized retained,
+без skip/parallel work. Plain DOM synchronous job/body completion, не React commit/paint/INP/throughput/stationarity.
+Каждый job — diagnostic interaction:64 roots+64 children. Actual trace queue2048/batch512/delay500ms/hide flush off,
+metrics1000ms; explicit flush во время work нет. Callback IDs/counts/HTTP bytes/archive hashes/replay сверены,
+оба final cumulative histogram count64, checkpoints никогда не суммируем. Run/resource IDs отличаются, batches
+между runs не byte-identical. Concurrent SDK drain и evidence/finalize каждый разделяют один Promise, browser checked.
+
+External CDP/macOS ps CPU/RSS отдельно окружают work и SDK finish; final evidence cloning/archive после обоих окон.
+All threads/all renderers incl.spares, не browser/GPU/collector/harness. Stable PID/coarse CPU agreement обязательны;
+RSS sum может double-count shared pages, не private heap/peak/leak. Startup CPU unavailable, clocks не aligned.
+Visible1280×800/DPR1,250ms settling,no requested throttling; thermal/power/cache unmeasured.8 descriptive contrasts,
+6 paired runs (не384 independent jobs/state), all6^6 empirical paired-block bootstrap exploratory95% nearest-rank
+mean CI с exchangeable-block assumption; fixed order/small n, без p-values/multiplicity correction/accepted budget.
+
+**Финал:** `monitor-1794679904079-986a`:12 passed/finalized,768 jobs/1536 spans/168 cumulative points,
+216 requests/1422374 OTLP body bytes. Каждый run:10 trace+6 metric successful callbacks внутри work,11+7 requests
+всего. Checkpoints `[7,17,27,37,47,57,64]`, кроме block4/off `[6,16,26,36,46,56,64]`: phase относительно workload
+разная, final populations те же. On3 observers/1 callback/11 event entries per run:66 event total,0 longtask/LoAF,
+0 dropped. Off0 observers/records; unavailable browser evidence. Quiet primary case, **не high-volume callback cost**.
+Calibration0.693522s CPU/+73.484MiB RSS. On-minus-off mean[exploratory95%]:
+
+- work CPU -35.928[-70.612,6.108]ms;
+- SDK-finish CPU -0.251[-0.490,-0.016]ms;
+- RSS after work +2.094[0.388,4.214]MiB;
+- paced body +0.883[-0.333,2.567]ms.
+
+Это не speedup/equivalence/acceptable cost. RSS endpoint sum не private retained memory/leak. Ready wall заканчивается
+до monitor start и служит context/balance endpoint, не setup cost. Finish contrast не изолирует monitor work.
+Все8 contrasts/paired endpoints/raw source/OTLP evidence в attachments; старые datasets не matched controls.
+
+**Проверено:**109 JS+8 Python tests/typecheck/build pass; off без browser access, точные registrations, bounded
+retention/drop, pending drain, stop/late callbacks/setup cleanup, diagnostic delivery/source gate/nested host JSON.
+5 mutations:activate off,discard pending,accept late callback,accept silent source,remove deep projection; caught,
+sources restored до primary collection.7 temporary-copy corruptions: monitor records/lifecycle, process/HTTP receipt,
+OTLP,manifest,frozen helper,membership,source calibration; originals unchanged. Byte-identical analysis SHA
+`333cf2d65e05eee106f72807891bc8e730f0df9caee0f0a5a49307af961ca12d`. Старые10 A/B/CPU/pipeline/serializer/metric/
+mode/burst/auxiliary/paced hashes прежние. C regression `cost-source-1794680046207-7d19`:9 fresh runs/90 actions/
+3 modes, disabled no SDK/export. Packed reader12 passed/54 explicit unavailable/page errors0; screenshots просмотрены.
+
+Experiment commit `b82649c` локален, remote отсутствует; raw reports ignored, сохраняем весь session.
+Packed0.3.35 с installed-graph symlink, не clean install; новых native builds/dependencies нет. Temporary collection
+servers закрыты; viewer :4334 оставлен, старые viewers не менялись. AI review unavailable/timeout: experiment hook сам продолжил fail-open, hooks не обходились.
+**Дальше:** stripped-build comparison. Other JS/native monitors, external harness observer effect, longer-duration
+convergence, startup CPU, compression/wider retries, accepted budget/full F и native physical D/E/F открыты.
+
+---
+
 ## Восьмой шаг F — 14 ноября: paced workload с настоящими периодическими экспортами
 
 Merge #111 подтверждён (`08a7676`); ветка `step-performance-sustained-notes` от свежего origin/master.
