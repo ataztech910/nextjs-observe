@@ -153,6 +153,16 @@ prior9 replay hashes/C regression and packed reader pass. Negative observed work
 causal speedup/equivalence or acceptable budget;6.3s paced work does not demonstrate statistical stationarity.
 Monitor on/off, stripped builds, longer-duration convergence, startup CPU/full F and physical native gates stay open.
 
+The [scoped browser PerformanceObserver on/off study](F_MONITOR_STUDY.md) holds Observe diagnostic/periodic OTLP
+fixed while toggling disposable event/longtask/LoAF observers during64 paced jobs.6 alternating adjacent pairs,
+12 fresh Chrome; independent SDK-free trusted180ms source control. Pending published records drain before disconnect;
+deep JSON projection handles nested host objects; late callbacks ignored, overflow rejects. Final768 jobs/1536 spans/
+168 cumulative points/216 requests, paired CPU/RSS/wall evidence; on has11 Event Timing entries/run and no primary
+longtask/LoAF. Quiet-source cost, not high-volume callbacks/full A lifecycle/INP/native or external harness on/off.
+109 JS+8 Python tests/5 mutations/7 corruption checks, prior10 replay hashes/C regression and packed reader pass.
+Work-CPU interval spans zero; no speedup/equivalence/acceptable budget. Stripped build, wider monitoring and full F/
+physical native acceptance remain open.
+
 ## Interpretation and report location
 
 Use a minimal built-in comparison for navigation and median/p75/p95/count plus source/completeness. Generate statistical analysis and reproducibility report externally from versioned captures. This avoids adding a large statistics dependency to Observer for the talk, while preserving useful reusable run filtering. Report algorithm/version, run-level confidence intervals where defensible, device segmentation, predeclared exclusions, outliers and failures. Existing version-regression detection is useful product behavior, not a replacement for this experimental protocol.
