@@ -1,5 +1,7 @@
 # Research summary and decisions
 
+Conference preparation: [proposed demonstration sequence and rehearsal contract](CONFERENCE_DEMO_PLAN.md) selects scoped claims from the existing evidence; it adds no measurements or acceptance budget.
+
 ## Current implementation checkpoint — 14 November 2026
 
 After merge #114 (`a923623`), executable web experiments and bounded performance data paths exist. The original

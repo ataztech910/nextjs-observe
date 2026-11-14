@@ -6,6 +6,38 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## План доклада — 14 ноября: выбранные claims и репетиция сохранённых отчётов
+
+Merge #115 подтверждён (`d6ac3ab`); ветка `step-conference-demo-plan` от свежего origin/master.
+**Чтобы** перейти от реестра к показу результатов, **подготовили**
+[предлагаемый сценарий демо](research/performance-observability/CONFERENCE_DEMO_PLAN.md):
+четыре эпизода A/B/F delivery/F cost, ориентировочно 12 минут внутри будущего доклада. Это рабочее предложение,
+не подтверждённая длительность выступления. Каждому эпизоду сопоставлены exact session, экран, формулировка вывода
+и видимое ограничение. C остаётся supporting functional walkthrough; D — optional Simulator evidence; E не выдаём
+за проведённый native-jank эксперимент. Physical D/E/F и full F/overhead budget не объявляем принятыми.
+
+**Получили:** понятный порядок показа Lighthouse/post-load interaction, bytes/configured work, реальных состояний
+доставки и двух-build cost evidence. Есть команды открытия сохранённых session reports, ограничения списка 100,
+два F shelf viewers и fallback на исходные screenshots/analysis при недоступности локального reader. Raw sessions
+и experiment Git по-прежнему локальны; remote отсутствует. Monorepo docs не публикуют raw artifacts.
+Observe/app instrumentation, внешний harness/statistics, backend collector/archive и Observer UI сохраняют свои роли.
+Новых измерений, native launches, builds, runtime/dependency/test algorithm changes нет.
+
+**Проверено:** fresh packed 0.3.35/Chrome rehearsal восьми оригинальных reports (A/B/C/trace/metric/stripped и два Maestro),
+44 displayed row states, unavailable values, selected IDs/list loading; alerts=0/page errors=0. Backend проверил
+report/artifact/archive association. Overflow incomplete и Maestro failed при finalized capture просмотрены на
+screenshots. Audit/screenshots: ignored `reports/conference-rehearsal-1794695938147`; временные server/browser закрыты.
+Packed зависимости reused через installed-graph symlink, не clean install. Это проверка представления старых данных,
+не новая performance collection и не повторный запуск iOS. JS suite: сначала sandbox запретил loopback bind в 8
+сетевых тестах, затем полный разрешённый запуск 114/114 pass; Python 8/8 pass. Existing 5 temporary F-index corruptions
+отвергнуты; исходные данные сохранены. Local Markdown links и diff whitespace checks pass.
+
+**Дальше:** подготовить слайды/краткие speaker notes по предложенной последовательности и выбрать, нужен ли native
+functional appendix. Более сильные product/native-performance claims требуют отдельного заранее объявленного
+контракта и подтверждённых источников; новая доработка Observer для текущего плана не требуется.
+
+---
+
 ## Одиннадцатый шаг F — 14 ноября: единый реестр evidence и границы выводов
 
 Merge #114 подтверждён (`a923623`); ветка `step-performance-f-evidence-notes` от свежего origin/master.
