@@ -109,6 +109,14 @@ zero; finish CPU differences are positive but include shutdown/archive/download/
 or acceptable overhead budget follows. Steady/burst/large-trace, auxiliary/monitor-on-off/stripped-build comparisons,
 startup CPU and physical native gates remain open.
 
+F synchronous burst (14 November): [one interaction/128 jobs](F_BURST_STUDY.md) now executes without yielding,
+using the existing manual Observe probe in a separate plain DOM entry. Six mode permutations/18 fresh runs retain
+2304 jobs, 780 spans and 24 final cumulative points; no exports occur before finish. A deliberately bounded 129-span
+trace stays below test batch/queue limits. Workload/finish process intervals and sixteen paired run-endpoint
+contrasts replay with exploratory bootstrap intervals. This endpoint is handler-body completion, not React commit/
+paint/INP; earlier C data are not a matched control. No saturation or accepted overhead is claimed. Steady-state,
+auxiliary/monitor/stripped-build comparisons, startup CPU and physical native gates remain open.
+
 The task descriptions below retain the target architecture and acceptance criteria.
 
 ## Architecture constraints
