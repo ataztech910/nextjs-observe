@@ -101,6 +101,14 @@ See [F metric delivery](F_METRIC_DELIVERY_GATE.md). No queue/drop values, compre
 are inferred. Next is repeated mode/steady-burst/auxiliary/monitor-on-off and stripped-build comparison; full F
 and physical native acceptance remain open.
 
+F repeated runtime modes (14 November): [six paired permutation blocks](F_REPEATED_MODES.md) now compare
+18 fresh Chrome runs/540 trusted actions on unchanged C degraded using one profiling artifact. Separate workload
+and finish CPU/RSS, exact action receipts, raw OTLP and fourteen paired run-endpoint contrasts replay deterministically.
+Exploratory 95% intervals enumerate all 6^6 empirical paired-block bootstrap resamples. Workload CPU contrasts span
+zero; finish CPU differences are positive but include shutdown/archive/download/UI. No equivalence, causal speedup
+or acceptable overhead budget follows. Steady/burst/large-trace, auxiliary/monitor-on-off/stripped-build comparisons,
+startup CPU and physical native gates remain open.
+
 The task descriptions below retain the target architecture and acceptance criteria.
 
 ## Architecture constraints
