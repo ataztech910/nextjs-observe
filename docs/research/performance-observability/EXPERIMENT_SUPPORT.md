@@ -144,6 +144,15 @@ serializer/HTTP bytes match offline upstream replay, and concurrent drain/eviden
 blocks balance positions, not carryover; forty exploratory paired-run contrasts cannot isolate additive pure-clock/
 network cost. Steady-state, monitor/stripped builds, startup CPU and accepted overhead/native gates remain open.
 
+The [bounded paced periodic-export study](F_SUSTAINED_STUDY.md) adds18 fresh runs,64 jobs/run with100ms targets,
+actual trace500ms/metric1000ms timers. Each enabled run completes10 trace+6 metric exports during work, with no
+explicit work flush. Callback IDs/counts match original HTTP/archive/replay; final two cumulative series each
+count64, not the sum of their7 checkpoints.1152 jobs/1152 spans/168 points/216 requests, separate calibrated work/
+SDK-finish CPU/RSS and16 paired exploratory contrasts.102 JS+8 Python tests,4 mutations/6 corruption checks,
+prior9 replay hashes/C regression and packed reader pass. Negative observed work-CPU intervals do not establish
+causal speedup/equivalence or acceptable budget;6.3s paced work does not demonstrate statistical stationarity.
+Monitor on/off, stripped builds, longer-duration convergence, startup CPU/full F and physical native gates stay open.
+
 ## Interpretation and report location
 
 Use a minimal built-in comparison for navigation and median/p75/p95/count plus source/completeness. Generate statistical analysis and reproducibility report externally from versioned captures. This avoids adding a large statistics dependency to Observer for the talk, while preserving useful reusable run filtering. Report algorithm/version, run-level confidence intervals where defensible, device segmentation, predeclared exclusions, outliers and failures. Existing version-regression detection is useful product behavior, not a replacement for this experimental protocol.
