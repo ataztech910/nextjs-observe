@@ -117,6 +117,15 @@ Counter/histogram cumulative checkpoints retain exact timestamps/buckets and mus
 records. No natural periodic tick, queue saturation/drop count, retry exhaustion/compression cost or F overhead
 acceptance is claimed. Repeated overhead/mode/monitor/stripped-build studies remain next.
 
+**Repeated runtime-mode study (14 November):** [paired cost and uncertainty](F_REPEATED_MODES.md) adds six fixed
+permutation blocks × three modes × 30 trusted actions on the unchanged C degraded workload. All 18 fresh browsers,
+540 actions, workload/finish process snapshots and exact OTLP populations are retained; disabled loads no SDK assets
+or exports. Fourteen selected-minus-disabled contrasts use independent run endpoints paired by block, not pooled
+action samples. All 6^6 empirical paired-block bootstrap resamples give exploratory 95% intervals under an explicit
+exchangeable-block assumption. Workload CPU intervals span zero; no speedup, equivalence or accepted overhead is
+claimed. App shutdown and external finish CPU overlap and have different scopes. This is neither a true burst/
+steady-state study nor monitor/stripped-build comparison; these, startup CPU and full/native acceptance remain open.
+
 ## Interpretation and report location
 
 Use a minimal built-in comparison for navigation and median/p75/p95/count plus source/completeness. Generate statistical analysis and reproducibility report externally from versioned captures. This avoids adding a large statistics dependency to Observer for the talk, while preserving useful reusable run filtering. Report algorithm/version, run-level confidence intervals where defensible, device segmentation, predeclared exclusions, outliers and failures. Existing version-regression detection is useful product behavior, not a replacement for this experimental protocol.

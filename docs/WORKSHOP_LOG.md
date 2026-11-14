@@ -6,6 +6,66 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Пятый шаг F — 14 ноября: повторные сравнения режимов и неопределённость
+
+Merge #108 подтверждён (`391e853`); ветка `step-performance-repeated-modes-notes` от свежего origin/master.
+**Чтобы** перейти от functional gates к сравнению стоимости режимов, **сделали** внешний repeated study на прежнем
+C degraded. Instrumentation/app не менялись; independent CPU/RSS и statistics — в harness, collector сохраняет
+raw captures, Observer читает существующий typed report и проверенные attachments. Runtime/dependencies монорепо
+не менялись. [Дизайн и все результаты](research/performance-observability/F_REPEATED_MODES.md).
+
+6 блоков всех перестановок disabled/diagnostic/production_like: каждый mode дважды в каждой позиции, каждый ordered
+within-block neighbour pair дважды. Порядок фиксированный, не randomized. 18 fresh Chrome/profile/context, один
+production-profiling artifact, 30 trusted actions/run с requested 16ms gap, 250ms settling. Все первые/quantized-zero
+samples сохранены, timing-based exclusions/reruns нет. Host action brackets показывают фактический cadence с
+Playwright/UI/OS work; это не true burst, saturation или steady-state. Disabled оставляет Profiler/harness/no-op probe,
+но не загружает SDK-bearing assets и не экспортирует. Stripped bundle/normal release React/monitor on-off не измерены.
+
+SDK-free known-load calibration: 0.710172s renderer CPU, +73.609MiB endpoint RSS для busy/retained page-touched 64MiB.
+Три external CDP+macOS ps snapshots дают два интервала: workload и отдельный finish. Все renderer threads/processes,
+включая spare; browser/GPU/collector/harness CPU исключены. Stable PID set и coarse CDP/ps agreement обязательны.
+RSS sum может дважды учитывать shared pages, не private heap/peak/leak. Workload включает scheduled trace export;
+finish включает остаток SDK shutdown, automation/UI, archive finalization/download — не pure SDK flush CPU.
+App shutdown timer пересекается с finish wall/CPU, интервалы не складываем. Startup CPU unavailable; navigation-to-ready
+измерен только host wall. Handler-to-commit — Profiler callback, не paint/INP. Cross-clock alignment не заявлен.
+
+Unit сравнения — независимый run paired by block, не 180 actions/mode. 7 endpoints × 2 selected modes = 14 contrasts,
+в каждом все 6 paired differences и точные run IDs. Mean difference и exploratory 95% percentile interval получены
+полным перечислением 6^6=46656 empirical paired-block bootstrap resamples; nearest-rank 2.5/97.5% endpoints.
+Нет action-level pooling/seed/p-value/multiplicity-corrected significance или performance threshold. Exchangeable-block
+assumption явно указан; n=6 sequential blocks, unmeasured thermal/power/OS caches/fixed order ограничивают inference.
+
+**Финал:** `mode-study-1794649546330-cc4e`, 18 passed integrity/finalized, 540 actions, 540 spans + 36 metric points.
+Histograms остаются одним cumulative checkpoint/run, не складываются как independent observations. Disabled OTLP=0;
+diagnostic body bytes/run 65260–65389, production_like 44487–44608 (не полный HTTP/socket cost).
+Selected-minus-disabled paired means [exploratory 95% interval]:
+
+- workload CPU: diagnostic -0.697ms [-22.406, 21.079], production_like -9.290ms [-32.763, 12.042]; оба пересекают ноль;
+- finish CPU: +5.639ms [4.874, 6.504] / +3.490ms [2.703, 4.310], со всем внешним finish work;
+- RSS sum after workload: +4.646MiB [3.628, 6.013] / -1.107MiB [-18.208, 10.810];
+- handler median: +0.100ms [0.100, 0.100] / +0.083ms [0.050, 0.100], близко к clock quantization;
+- app shutdown timer: +36.367ms [32.100, 42.250] / +33.833ms [30.433, 39.833].
+
+Negative differences/intervals crossing zero сохранены: это не доказательство speedup/equivalence/acceptable overhead.
+Collapsed округлённый handler interval не означает точность до популяции. Все startup/workload wall contrasts в отчёте.
+
+**Проверено:** 86 JS + 8 Python tests, typecheck/build pass. 4 mutations (bootstrap weights, conflated finish CPU,
+wrong paired baseline, missing action receipt) пойманы, source restored до финала. 6 temporary-copy corruption checks
+отклоняют action samples, process/action receipt, OTLP, manifest, frozen build и missing membership; originals unchanged.
+Replay byte-identical, analysis SHA `0a1f487accccb8364c9bf31b967423ddb7469649930925cc612b0af8f297eae6`.
+Старые A/B/CPU-source/trace-pipeline/serializer/metric-delivery replay hashes прежние. Сам новый study покрывает C
+во всех modes/18 fresh runs, отдельный timing-selected regression не подмешан. Packed reader: 18 passed / 72 explicit
+unavailable values (queue/drop, peak, startup CPU, accepted budget), page errors=0; final screenshots просмотрены.
+Pilot отдельный; финальные запуски сохранены без исключений.
+
+Experiment commit `178259a` локален, remote отсутствует; raw reports ignored, сохраняем весь session.
+Новых dependencies/native builds нет. Packed 0.3.35 с installed-graph symlink, не clean install. Collection servers
+закрыты, saved viewer :4330 оставлен; старые viewers не менялись. AI review unavailable/timeout: hook сам продолжил fail-open, hooks не обходились.
+**Дальше:** steady/burst/large-trace, auxiliary modes, monitor on-off и stripped-build comparison, затем overhead
+acceptance по явным требованиям. Startup CPU, compression/wider retry faults, full F и native physical D/E/F открыты.
+
+---
+
 ## Четвёртый шаг F — 14 ноября: metric reader, реальные retry и ошибки доставки
 
 Merge #107 подтверждён (`ef5b8bd`); ветка `step-performance-metric-delivery-notes` от свежего origin/master.
