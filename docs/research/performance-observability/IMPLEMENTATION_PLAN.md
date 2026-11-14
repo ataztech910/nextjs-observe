@@ -1,5 +1,7 @@
 # Implementation roadmap
 
+Conference preparation: [proposed demonstration sequence and rehearsal contract](CONFERENCE_DEMO_PLAN.md) selects scoped claims from the existing evidence; it adds no measurements or acceptance budget.
+
 Current F checkpoint — 14 November 2026: [evidence matrix and remaining acceptance gates](F_EVIDENCE_MATRIX.md)
 consolidates ten scoped protocols and 140 original report rows. The [index](F_EVIDENCE_INDEX.json) pins original
 analysis/report/protocol identities and preserves 137 passed/1 incomplete/2 failed delivery rows. This is an inventory,
