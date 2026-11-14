@@ -6,6 +6,83 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Седьмой шаг F — 14 ноября: вспомогательные probe/SDK/serializer/export состояния
+
+Merge #110 подтверждён (`ea5cfea`); ветка `step-performance-auxiliary-notes` от свежего origin/master.
+**Чтобы** локализовать стоимость instrumentation, **сделали** отдельный `/aux.html` с шестью конфигурациями на одном
+artifact: disabled, clock_probe, aggregate_only, spans_no_export, serialize_only, full_export. Это experimental app
+states, **не** новые public Observe modes. Observe/app собирают, external harness измеряет CPU/RSS/statistics,
+collector принимает/архивирует, Observer показывает прежний typed report/attachments. Runtime/dependencies монорепо
+не менялись. [Метод и evidence](research/performance-observability/F_AUXILIARY_STUDY.md).
+
+Один trusted click выполняет 128 deterministic jobs синхронно, без yield/per-job UI; endpoint — body completion,
+не React commit/paint/INP. Все first/zero/quantized jobs сохраняются. Disabled оставляет independent clocks/checksums
+и no-op Observe, probe clock calls=0. Clock_probe — реальный diagnostic Observe с API no-op tracer/meter и counted
+public now: 2 interaction + 2×128 job = 258 calls. Context/attributes/no-op instruments/witness increments остаются;
+это **не bare performance.now cost**. Aggregate_only добавляет real MeterProvider/ManualReader, без trace provider.
+Spans_no_export добавляет public bounded holder129 ended spans. Serialize_only в finish вызывает public trace/metric
+serializers; full_export вместо этого делегирует по одному вызову stock exporters. SDK module assets общие для SDK
+states; aggregate_only не создаёт exporter/trace provider. Disabled/clock_probe SDK assets не загружают.
+
+Нет BatchSpanProcessor/private queue/periodic exporter/background transport. Zero exports before finish обязательно.
+Local/no-export captures намеренно пустые/finalized; SDK inputs/cumulative metrics — sidecar evidence, не delivery
+loss. Все SDK states имеют work histogram count128 и interaction count1, не pooled independent runs. В trace states
+1 root + 128 children. Оба stock callbacks должны завершиться успешно, HTTP400 отвергает drain; provider cleanup
+в finally. Concurrent drain и concurrent evidence/finalize разделяют каждый свой Promise, проверено browser harness.
+
+External calibrated CDP/macOS ps snapshots отдельно окружают workload и selected finish (collect + optional serialize/
+export + shutdown). **Input projection/base64/archive finalization после обоих CPU окон**; прежние C/burst finish
+endpoints имели другую scope, сравнивать напрямую нельзя. Public SDK witness сохраняет contexts/parents/resources/
+scopes/attributes/events/timestamps. Offline upstream serializer обязан byte-exact воспроизвести original serialize-only
+bytes или actual stock HTTP body; внутри stock call нет добавленной auxiliary serialization. Fixture bounded root+
+128 children, не generic ReadableSpan replay API. Configuration differences не являются additive pure clock/metric/
+span/network CPU decomposition; вычитать serializer из exporter и называть остаток сетью нельзя.
+
+6 fixed cyclic rotations × 6 states =36 fresh Chrome/profile/context; позиции сбалансированы, directed neighbours/
+carryover нет. 250ms settling, visible1280×800/DPR1, no requested throttling. Six paired runs/state, не 768 independent
+jobs. 5 selected states × 8 endpoints =40 contrasts с точными paired run IDs; all6^6 empirical paired-block bootstrap
+exploratory95% nearest-rank mean intervals. Exchangeable-block assumption/n=6/fixed order/unmeasured thermal/power/
+cache явно указаны. Нет p-values/multiplicity correction/timing exclusions/accepted overhead percentage.
+All renderer threads/processes (включая spare), не browser/GPU/collector/harness. RSS sum может double-count shared
+pages, не private heap/peak/leak. Stable PIDs/coarse CPU agreement обязательны; startup CPU unavailable, clocks не aligned.
+
+**Финал:** `auxiliary-1794651983557-c494`, 36 passed integrity/finalized, 4608 jobs, 2322 local held SDK spans,
+48 local cumulative points. Только full_export отправляет: 774 received spans +12 points; все before-finish exports=0.
+Probe counts: disabled0, остальные258/run, всего7740 calls. Calibration CPU0.703792s/RSS+73.641MiB. Paired mean
+selected-minus-disabled [exploratory95%], workload CPU / selected-finish CPU в ms:
+
+- clock_probe: -4.644 [-14.062, 2.528] / +0.193 [0.064, 0.324];
+- aggregate_only: +0.973 [-3.926, 4.546] / +0.685 [0.546, 0.823];
+- spans_no_export: -3.028 [-13.664, 7.272] / +0.626 [0.331, 0.856];
+- serialize_only: +8.527 [-9.715, 26.519] / +2.170 [1.940, 2.469];
+- full_export: +6.275 [-5.911, 16.240] / +6.096 [5.705, 6.506].
+
+Все workload CPU/body intervals пересекают ноль; это не speedup/equivalence/acceptable budget. Finish отличия
+условны и включают measurement/UI/cleanup; не pure clock/network. Original serialize-only bodies94953–94967B/run,
+none sent; full received94901–94955B/run. Byte equality внутри каждого run; между states разные IDs/kind resource/
+timestamps, не byte-identical batches. Full экспортёр не получает дополнительную auxiliary serialization.
+No-op timer может quantize0, не означает zero process cost. Все40 contrasts/paired endpoints сохранены в attachments.
+
+**Проверено:** 95 JS +8 Python tests, typecheck/build pass. Real Observe/SDK semantics, public clock accounting,
+parent-preserving byte equality, actual HTTP export/HTTP400 failure. 4 mutations пойманы: ignore probe clocks,
+ignore serializer originals, ignore stock HTTP identity, ignore shared finish; sources restored до primary collection.
+6 temporary-copy corruptions отклоняют SDK inputs/clocks/original bytes, process/HTTP receipt, OTLP, manifest,
+frozen projection helper и missing membership; originals unchanged. Replay byte-identical, analysis SHA
+`8849a5877baeb42c565440fd9b81c4732f52ca79b7ef27fac475773ea30d54b5`.
+Старые A/B/CPU-source/trace-pipeline/serializer/metric-delivery/repeated-mode/burst hashes прежние. C regression
+`cost-source-1794652146369-bbc0`: 9 fresh runs/90 actions/3 modes pass, disabled no SDK/export. Packed reader:
+36 passed/144 explicit unavailable values/page errors0; final screenshots просмотрены. Development pilot и pre-final
+validation отдельно; final protocol до сбора дополнительно фиксирует hashes Node projection/policy/backend helpers.
+Primary runs не исключались и не выбирались повторно по timing.
+
+Experiment commit `91c61ad` локален, remote отсутствует; raw reports ignored, сохраняем весь session.
+Новых dependencies/native builds нет. Packed0.3.35 с installed-graph symlink, не clean install. Temporary collection
+servers закрыты; viewer :4332 оставлен, старые viewers не менялись. AI review unavailable/timeout: hook сам продолжил fail-open, hooks не обходились.
+**Дальше:** steady-state, monitor on-off и stripped-build comparison, затем overhead acceptance по явным требованиям.
+Startup CPU, compression/wider retry faults, full F и native physical D/E/F открыты.
+
+---
+
 ## Шестой шаг F — 14 ноября: настоящий synchronous burst из 128 jobs
 
 Merge #109 подтверждён (`bf62563`); ветка `step-performance-burst-notes` от свежего origin/master.
