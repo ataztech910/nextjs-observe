@@ -125,6 +125,16 @@ HTTP bodies. Forty exploratory paired run-endpoint contrasts are configuration d
 network CPU costs. Probe state is not bare performance.now; these are app experiments, not new public Observe modes.
 Steady-state, monitor-on-off/stripped builds, startup CPU and overhead/native acceptance remain open.
 
+F bounded paced periodic-export study (14 November): [64 jobs with100ms targets](F_SUSTAINED_STUDY.md),18 fresh
+runs/six mode permutations, actual BatchSpanProcessor delay500ms and metric interval1000ms. Each enabled run has
+10 successful trace+6 metric callbacks completely inside work; no explicit work flush. Final cumulative populations
+are64 work/64 interactions;7 checkpoints/series are never summed. Callback witnesses/original HTTP bodies/archive
+hashes/replay all reconcile:1152 jobs,1152 spans,168 points/216 requests across the study. Separate calibrated work/
+SDK-finish CPU/RSS,16 paired exploratory contrasts,102 JS+8 Python tests/4 mutations/6 corruption checks; prior9
+analysis hashes unchanged, C9-run regression and packed report18 passed/72 unavailable pass. Observed negative
+work CPU differences do not prove speedup or accepted overhead. ~6.3s/run does not establish stationarity.
+Monitor on/off, stripped builds, longer-duration convergence, startup CPU, full F/native acceptance remain open.
+
 The task descriptions below retain the target architecture and acceptance criteria.
 
 ## Architecture constraints

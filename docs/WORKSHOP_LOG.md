@@ -6,6 +6,67 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Восьмой шаг F — 14 ноября: paced workload с настоящими периодическими экспортами
+
+Merge #111 подтверждён (`08a7676`); ветка `step-performance-sustained-notes` от свежего origin/master.
+**Чтобы** проверить экспорт во время нагрузки, **сделали** отдельный `/sustained.html`:64 deterministic degraded
+jobs с absolute targets через100ms. Scheduler ждёт target, перепроверяет early timer wakeups, сохраняет late/first/
+zero jobs, без пропусков/parallel work. Один trusted click запускает всё; каждый job — отдельный interaction.
+Endpoint — synchronous job/body completion, не React commit/paint/INP. ~6.3s/run — bounded paced fixture,
+**не доказательство stationarity** или long-session leaks. [Метод и evidence](research/performance-observability/F_SUSTAINED_STUDY.md).
+
+Observe/app собирают через существующий public manual probe; external harness измеряет CPU/RSS/statistics;
+collector принимает OTLP/архивирует, Observer UI читает прежний typed report/attachments. Runtime/dependencies
+монорепо не менялись. Same artifact: disabled/diagnostic/production_like,18 fresh Chrome/profile/context,
+6 fixed mode permutations. Disabled сохраняет independent clocks/checksums/no-op probe, без SDK assets/OTLP.
+Diagnostic:64 roots+64 children; production_like:64 roots. Две cumulative histogram series:final count64 каждая.
+
+Настоящий BatchSpanProcessor queue2048/batch512/delay500ms/hide flush disabled, PeriodicExportingMetricReader1000ms.
+В work нет explicit flush. Public exporter wrappers делегируют stock exporters, фиксируют IDs/counts/entry/completion/
+callback errors/count. Требуется ≥3 successful callbacks каждого сигнала полностью внутри work. Все callbacks
+exactly once/successful, original HTTP bodies byte/hash-equal архивным records; replay сверяет IDs/cumulative points.
+Shutdown resolution само по себе не delivery proof. Concurrent drain и evidence/finalize каждый делят один Promise,
+проверено browser harness. Work CPU включает periodic exporters/witnesses/timers/UI/automation. SDK finish отдельно;
+evidence cloning/finalization после обоих CPU окон. Экспорты между work end и drain тоже сохранены, clocks не aligned.
+
+Калиброванный external CDP/macOS ps:all threads/all renderers incl.spare, не browser/GPU/collector/harness.
+Три endpoint samples, stable PID/coarse CPU agreement обязательны. RSS sum может double-count shared pages,
+не private heap/peak/leak. Startup CPU unavailable.250ms settle,visible1280×800/DPR1, no requested throttling;
+thermal/power/cache unmeasured. Six paired runs/mode, не384 independent jobs.16 descriptive contrasts с6^6
+empirical paired-block bootstrap exploratory95% nearest-rank mean CI; exchangeable-block assumption/n=6/fixed
+order, без p-values/multiplicity correction/timing exclusions/accepted percentage. Предыдущие C/burst/aux datasets
+имеют иные artifacts/endpoints и не matched controls.
+
+**Финал:** `sustained-1794653710827-cd15`:18 passed/finalized,1152 jobs/1152 received spans/168 cumulative points,
+216 requests/1149819 OTLP body bytes. Каждый enabled run:10 trace+6 metric successful callbacks внутри work;
+всего11 trace+7 metric requests. Cumulative counts `[7,17,27,37,47,57,64]` **каждой** series, никогда не суммируем.
+Disabled0 SDK/exports. Calibration0.708115s CPU/+73.578MiB RSS. Selected-minus-disabled paired mean[exploratory95%]:
+
+- diagnostic work CPU -46.784[-90.867,-7.362]ms; SDK-finish CPU +2.123[1.782,2.431]ms;
+- production_like work CPU -78.003[-130.887,-35.833]ms; SDK-finish CPU +2.467[1.967,2.827]ms.
+
+Отрицательные интервалы не доказывают causal acceleration/acceptable overhead/equivalence. Причины различий
+JIT/cache/timer/host от instrumentation этот fixture не отделяет. Fixed pacing ограничивает body duration заданным
+расписанием, не unrestricted throughput. App shutdown wall differences36.533/36.467ms overlap external finish,
+не складываются как CPU. Все16 contrasts/paired endpoints/raw samples/callbacks/body receipts в attachments.
+
+**Проверено:**102 JS+8 Python tests/typecheck/build pass. Real Observe/SDK modes,64 jobs/interactions, early wakes/
+overruns, delivery/population/schedule/phase/membership rejection.4 mutations пойманы:remove100ms pacing,
+ignore required periodic callbacks,ignore callback failure,allow SDK assets in disabled. Sources restored до первого
+и финального primary collection; pilots/timing-selected reruns нет.6 temporary-copy corruptions: samples/callbacks,
+process/HTTP receipts, OTLP, manifest, frozen scheduler, membership; originals unchanged. Analysis byte-identical,
+SHA `5ea800a1059b195be5138e88fff4469ade285f86b1ddd8dd0fda45241b90e127`. Старые9 A/B/CPU/pipeline/serializer/
+metric/mode/burst/aux hashes прежние. C regression `cost-source-1794653897903-70fb`:9 fresh runs/90 actions/3 modes,
+disabled no SDK/export. Packed reader18 passed/72 explicit unavailable/page errors0; final screenshots просмотрены.
+
+Experiment commit `1a7e54d` локален, remote отсутствует; raw reports ignored, сохраняем весь session.
+Новых dependencies/native builds нет. Packed0.3.35 с installed-graph symlink, не clean install. Temporary servers
+закрыты; viewer :4333 оставлен, старые viewers не менялись. AI review unavailable/timeout: experiment hook сам продолжил fail-open, hooks не обходились.
+**Дальше:** monitor on/off и stripped-build comparisons; longer-duration stationarity с явным duration/convergence
+protocol. Startup CPU, compression/wider retry faults, accepted overhead budget, full F и native physical D/E/F открыты.
+
+---
+
 ## Седьмой шаг F — 14 ноября: вспомогательные probe/SDK/serializer/export состояния
 
 Merge #110 подтверждён (`ea5cfea`); ветка `step-performance-auxiliary-notes` от свежего origin/master.
