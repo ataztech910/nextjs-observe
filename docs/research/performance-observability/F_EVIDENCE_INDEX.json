@@ -1,0 +1,367 @@
+{
+  "schema": "performance-observability/f-evidence-index/v1",
+  "asOf": "2026-11-14",
+  "monorepoMerge": "a923623",
+  "fullExperimentFAccepted": false,
+  "acceptableOverheadBudget": null,
+  "interpretation": "Documentation inventory only; not an Observer report schema, pooled benchmark, acceptance score or claim of producer delivery. Preserve original failed/incomplete fault controls.",
+  "storage": "Experiment Git has no remote; reports/builds/raw evidence are local ignored artifacts. This index does not publish their bodies.",
+  "entries": [
+    {
+      "key": "process",
+      "sessionId": "cost-source-1794606600135-3f62",
+      "experimentCommit": "bbc1bf0",
+      "methodDoc": "F_PROCESS_SOURCES.md",
+      "availability": "local-ignored-session",
+      "captureExperiments": [
+        "C"
+      ],
+      "sessionStatus": "complete",
+      "analysis": {
+        "path": "analysis.json",
+        "sha256": "d79213b4e8a70d716616b696d9acf9e8a64aa7e2d70eb1801d5accfd812101fd",
+        "replayTool": "tools/cost-analysis.mjs"
+      },
+      "protocolSha256": "ef454e716063102fe37997efd9924846bb6740ff96006bce06f2bd13cde8b8c8",
+      "report": {
+        "path": "observer-reports/cost-source-1794606600135-3f62.json",
+        "sha256": "da956ff92c08fb2e43daf5122c050e00b2c0316babe9d4af921b5448e29303dc",
+        "schema": "observe.scenario-report/v1",
+        "rows": 9,
+        "membershipSha256": "668b96219e32b2841e993a43ec82bc6fe0465f2827bc5a6c5085a1d7e13c5b58",
+        "deliveryCounts": {
+          "passed": 9
+        },
+        "manifestCounts": {
+          "finalized": 9
+        },
+        "expectedFaults": []
+      },
+      "savedViewer": "http://127.0.0.1:4326/performance?report=cost-source-1794606600135-3f62"
+    },
+    {
+      "key": "trace_pipeline",
+      "sessionId": "pipeline-1794641370737-5d72",
+      "experimentCommit": "d1a0e0e",
+      "methodDoc": "F_PIPELINE_GATE.md",
+      "availability": "local-ignored-session",
+      "captureExperiments": [
+        "F"
+      ],
+      "sessionStatus": "complete",
+      "analysis": {
+        "path": "analysis.json",
+        "sha256": "4d1d9702c4e7a11fce895119156a4853d46748d0d31e1f9c80821f2e8dfa18a9",
+        "replayTool": "tools/pipeline-analysis.mjs"
+      },
+      "protocolSha256": "fe81e216f139ad4c8fc43e44cdb7b4cf28022a237cd9c316e482b97a71f1065c",
+      "report": {
+        "path": "observer-reports/pipeline-1794641370737-5d72.json",
+        "sha256": "abfca3b7eb57f4027c84dae10100d4965e860825c36dae0418bc671f61660c82",
+        "schema": "observe.scenario-report/v1",
+        "rows": 4,
+        "membershipSha256": "cd364ed172b8cff0c6de489213f15acc80ac9b5f03e7ddfdda7e88631564b867",
+        "deliveryCounts": {
+          "passed": 2,
+          "incomplete": 1,
+          "failed": 1
+        },
+        "manifestCounts": {
+          "finalized": 2,
+          "incomplete": 2
+        },
+        "expectedFaults": [
+          {
+            "variant": "overflow",
+            "deliveryStatus": "incomplete",
+            "manifestStatus": "incomplete"
+          },
+          {
+            "variant": "rejected",
+            "deliveryStatus": "failed",
+            "manifestStatus": "incomplete"
+          }
+        ]
+      },
+      "savedViewer": "http://127.0.0.1:4327/performance?report=pipeline-1794641370737-5d72"
+    },
+    {
+      "key": "serializer",
+      "sessionId": "serializer-1794644023258-125f",
+      "experimentCommit": "c6494a3",
+      "methodDoc": "F_SERIALIZER_GATE.md",
+      "availability": "local-ignored-session",
+      "captureExperiments": [
+        "F"
+      ],
+      "sessionStatus": "complete",
+      "analysis": {
+        "path": "analysis.json",
+        "sha256": "1ac1397a2a471303f0d3a601708d7b33700deed6f0ca7ce3c2b6bd2d1fb0524e",
+        "replayTool": "tools/serializer-analysis.mjs"
+      },
+      "protocolSha256": "69578fda1691b3774b8d92040e9286c22005c41c58c676a5cc6488635e62d6b8",
+      "report": {
+        "path": "observer-reports/serializer-1794644023258-125f.json",
+        "sha256": "7ed7b519d27e4ec425dd45b283c057e8afef8a4d0261204c8a764de514d53008",
+        "schema": "observe.scenario-report/v1",
+        "rows": 8,
+        "membershipSha256": "d9f5d9ae476b51aa7125a4136c4cd55ff2ebd2e44c8c6eee531cc91232c43f76",
+        "deliveryCounts": {
+          "passed": 8
+        },
+        "manifestCounts": {
+          "finalized": 8
+        },
+        "expectedFaults": []
+      },
+      "savedViewer": "http://127.0.0.1:4328/performance?report=serializer-1794644023258-125f"
+    },
+    {
+      "key": "metric_delivery",
+      "sessionId": "metric-1794646414485-258d",
+      "experimentCommit": "4203cfa",
+      "methodDoc": "F_METRIC_DELIVERY_GATE.md",
+      "availability": "local-ignored-session",
+      "captureExperiments": [
+        "F"
+      ],
+      "sessionStatus": "complete",
+      "analysis": {
+        "path": "analysis.json",
+        "sha256": "8a107742ae5ac774366d9913b231ed58fd414d22b2e03c9833a64722cfa93ae9",
+        "replayTool": "tools/metric-analysis.mjs"
+      },
+      "protocolSha256": "e2a19f30c753b516ad170afac8b2a5dda43280eef90fa440b8ca55767fbba32f",
+      "report": {
+        "path": "observer-reports/metric-1794646414485-258d.json",
+        "sha256": "5bdfd865a54a62dca4694880bef81bf031fb3f656a30febe04565373bd2e3a0b",
+        "schema": "observe.scenario-report/v1",
+        "rows": 5,
+        "membershipSha256": "d3aa3065f86b4f2fd68ea77d162a67b872f52b7d2d099496e310424714267a97",
+        "deliveryCounts": {
+          "passed": 4,
+          "failed": 1
+        },
+        "manifestCounts": {
+          "finalized": 4,
+          "incomplete": 1
+        },
+        "expectedFaults": [
+          {
+            "variant": "rejected",
+            "deliveryStatus": "failed",
+            "manifestStatus": "incomplete"
+          }
+        ]
+      },
+      "savedViewer": "http://127.0.0.1:4329/performance?report=metric-1794646414485-258d"
+    },
+    {
+      "key": "runtime_modes",
+      "sessionId": "mode-study-1794649546330-cc4e",
+      "experimentCommit": "178259a",
+      "methodDoc": "F_REPEATED_MODES.md",
+      "availability": "local-ignored-session",
+      "captureExperiments": [
+        "C"
+      ],
+      "sessionStatus": "complete",
+      "analysis": {
+        "path": "analysis.json",
+        "sha256": "0a1f487accccb8364c9bf31b967423ddb7469649930925cc612b0af8f297eae6",
+        "replayTool": "tools/mode-study-analysis.mjs"
+      },
+      "protocolSha256": "1efb772b09d3b34f339655aaa0306321aa383ca617dce97e79cf4052702eda41",
+      "report": {
+        "path": "observer-reports/mode-study-1794649546330-cc4e.json",
+        "sha256": "681558ddaed371a9f06be2bdb701bf0b19dd7075658a1f57d3714db7b9d8cd88",
+        "schema": "observe.scenario-report/v1",
+        "rows": 18,
+        "membershipSha256": "c9700003bae819f4edd5e8e865a039d17e328ee033f66be96b94acc890b0f0fb",
+        "deliveryCounts": {
+          "passed": 18
+        },
+        "manifestCounts": {
+          "finalized": 18
+        },
+        "expectedFaults": []
+      },
+      "savedViewer": "http://127.0.0.1:4330/performance?report=mode-study-1794649546330-cc4e"
+    },
+    {
+      "key": "burst",
+      "sessionId": "burst-study-1794650515193-73b6",
+      "experimentCommit": "66d86ca",
+      "methodDoc": "F_BURST_STUDY.md",
+      "availability": "local-ignored-session",
+      "captureExperiments": [
+        "F"
+      ],
+      "sessionStatus": "complete",
+      "analysis": {
+        "path": "analysis.json",
+        "sha256": "6639af9f24a082dc9a18a245a6a3caf06433bf606e9728b02d88cb2c29c7c990",
+        "replayTool": "tools/burst-analysis.mjs"
+      },
+      "protocolSha256": "2c78ace17925c7a3be661811b050beb5e1abe12a282c63efc751bff300a8b825",
+      "report": {
+        "path": "observer-reports/burst-study-1794650515193-73b6.json",
+        "sha256": "3953fd2784309b97f67bfe332a7facf8cb6603dc3a7a8a2679d788c17b79db16",
+        "schema": "observe.scenario-report/v1",
+        "rows": 18,
+        "membershipSha256": "7e1a49e70e7ae96c4d502fc761341b2cd9135e340eb8673ca97c1142ee6ec60d",
+        "deliveryCounts": {
+          "passed": 18
+        },
+        "manifestCounts": {
+          "finalized": 18
+        },
+        "expectedFaults": []
+      },
+      "savedViewer": "http://127.0.0.1:4331/performance?report=burst-study-1794650515193-73b6"
+    },
+    {
+      "key": "auxiliary",
+      "sessionId": "auxiliary-1794651983557-c494",
+      "experimentCommit": "91c61ad",
+      "methodDoc": "F_AUXILIARY_STUDY.md",
+      "availability": "local-ignored-session",
+      "captureExperiments": [
+        "F"
+      ],
+      "sessionStatus": "complete",
+      "analysis": {
+        "path": "analysis.json",
+        "sha256": "8849a5877baeb42c565440fd9b81c4732f52ca79b7ef27fac475773ea30d54b5",
+        "replayTool": "tools/aux-analysis.mjs"
+      },
+      "protocolSha256": "10b6fedc3573d8389591a1bb96ff5b65a2e4ef26035b00d892f1e58f57cd8212",
+      "report": {
+        "path": "observer-reports/auxiliary-1794651983557-c494.json",
+        "sha256": "9a2b7744e29425908f8d880209e168765a9abb0197c65b46e68c86f0a7685a3b",
+        "schema": "observe.scenario-report/v1",
+        "rows": 36,
+        "membershipSha256": "216d3309937afe31e0e6fa1530edbe506a56461283edf7cd4c4d34f3d2cb6ffe",
+        "deliveryCounts": {
+          "passed": 36
+        },
+        "manifestCounts": {
+          "finalized": 36
+        },
+        "expectedFaults": []
+      },
+      "savedViewer": "http://127.0.0.1:4332/performance?report=auxiliary-1794651983557-c494"
+    },
+    {
+      "key": "paced",
+      "sessionId": "sustained-1794653710827-cd15",
+      "experimentCommit": "1a7e54d",
+      "methodDoc": "F_SUSTAINED_STUDY.md",
+      "availability": "local-ignored-session",
+      "captureExperiments": [
+        "F"
+      ],
+      "sessionStatus": "complete",
+      "analysis": {
+        "path": "analysis.json",
+        "sha256": "5ea800a1059b195be5138e88fff4469ade285f86b1ddd8dd0fda45241b90e127",
+        "replayTool": "tools/sustained-analysis.mjs"
+      },
+      "protocolSha256": "c840a380eea0983557f1845dcf9c2552034e219c83e0b40e36eb869fc5a55f45",
+      "report": {
+        "path": "observer-reports/sustained-1794653710827-cd15.json",
+        "sha256": "d296300f4c188500a458eb8a4c213d3aa6bd32b7a1c697d00782a7ca4e33a064",
+        "schema": "observe.scenario-report/v1",
+        "rows": 18,
+        "membershipSha256": "173d1d9b9527a0c703355bb80d632dbc918968bdf55d224172fa97981c246bb6",
+        "deliveryCounts": {
+          "passed": 18
+        },
+        "manifestCounts": {
+          "finalized": 18
+        },
+        "expectedFaults": []
+      },
+      "savedViewer": "http://127.0.0.1:4333/performance?report=sustained-1794653710827-cd15"
+    },
+    {
+      "key": "browser_monitor",
+      "sessionId": "monitor-1794679904079-986a",
+      "experimentCommit": "b82649c",
+      "methodDoc": "F_MONITOR_STUDY.md",
+      "availability": "local-ignored-session",
+      "captureExperiments": [
+        "F"
+      ],
+      "sessionStatus": "complete",
+      "analysis": {
+        "path": "analysis.json",
+        "sha256": "333cf2d65e05eee106f72807891bc8e730f0df9caee0f0a5a49307af961ca12d",
+        "replayTool": "tools/monitor-analysis.mjs"
+      },
+      "protocolSha256": "6aead90d32397caefd3ec28ce7d3b5d0ac94ea22c2e1105466d410bf255053d3",
+      "report": {
+        "path": "observer-reports/monitor-1794679904079-986a.json",
+        "sha256": "7251667d2839574024a7ef34fdaed5c49960d7511f9e5d864a89d21b3826a760",
+        "schema": "observe.scenario-report/v1",
+        "rows": 12,
+        "membershipSha256": "ee7d366447df81f13350bd6f222f1fc3997d20c4356475f3e4a335398d32254d",
+        "deliveryCounts": {
+          "passed": 12
+        },
+        "manifestCounts": {
+          "finalized": 12
+        },
+        "expectedFaults": []
+      },
+      "savedViewer": "http://127.0.0.1:4334/performance?report=monitor-1794679904079-986a"
+    },
+    {
+      "key": "stripped_build",
+      "sessionId": "stripped-1794680848671-8f54",
+      "experimentCommit": "0a24e1c",
+      "methodDoc": "F_STRIPPED_STUDY.md",
+      "availability": "local-ignored-session",
+      "captureExperiments": [
+        "F"
+      ],
+      "sessionStatus": "complete",
+      "analysis": {
+        "path": "analysis.json",
+        "sha256": "518f6fc78885bb58c92bc6b02f005063251d55da6f01222e0b728bd583cd02d4",
+        "replayTool": "tools/strip-analysis.mjs"
+      },
+      "protocolSha256": "34078ad45fe6ee29a8ce4aedbbebe8fa12d901af20b7bbeffd10554a069e2ae7",
+      "report": {
+        "path": "observer-reports/stripped-1794680848671-8f54.json",
+        "sha256": "4b19d757204fb7c814d4d7a6c06e26f1620049bf9a984ed459d7448064233082",
+        "schema": "observe.scenario-report/v1",
+        "rows": 12,
+        "membershipSha256": "7645a74f64e92cca5b46fdabaf9bbfce178912a80631ce805cf4f60dc0de5ef0",
+        "deliveryCounts": {
+          "passed": 12
+        },
+        "manifestCounts": {
+          "finalized": 12
+        },
+        "expectedFaults": []
+      },
+      "savedViewer": "http://127.0.0.1:4335/performance?report=stripped-1794680848671-8f54"
+    }
+  ],
+  "inventoryTotals": {
+    "datasets": 10,
+    "reportRows": 140,
+    "deliveryCounts": {
+      "passed": 137,
+      "incomplete": 1,
+      "failed": 2
+    },
+    "manifestCounts": {
+      "finalized": 137,
+      "incomplete": 3
+    }
+  },
+  "nextDecision": "Freeze intended talk/product claim, representative workload/build/device conditions and acceptance rule before any budgeted overhead claim."
+}

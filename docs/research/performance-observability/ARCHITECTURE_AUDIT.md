@@ -1,5 +1,7 @@
 # Architecture audit
 
+Historical baseline: this document describes the11 November audited checkout. Subsequent implementation is summarized in the [current research checkpoint](RESEARCH_SUMMARY.md) and [F evidence matrix](F_EVIDENCE_MATRIX.md). Original missing-feature statements and line references below are dated audit findings, not today's implementation inventory.
+
 Research date: 2026-11-11. Audited checkout: `c7278c4b514182efc91dad95413391dbde922de2`.
 Paths and line numbers refer to this checkout, relative to the Git root `nextjs-observe/`.
 Evidence links use GitHub-style line anchors; line numbers are also written in the text for local readers.
