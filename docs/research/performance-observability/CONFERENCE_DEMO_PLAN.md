@@ -1,5 +1,7 @@
 # Conference demonstration plan
 
+Preferred visual version: [copied workshop graph engine](../../../presentations/profiler-to-production/graph/README.md), on its own port 4349. The original `workshop-slides` is unchanged; the flat deck below remains the print fallback.
+
 Visual version: [separate offline slide deck](../../../presentations/profiler-to-production/index.html), with notes and audience-only PDF printing. [Controls and rebuild instructions](../../../presentations/profiler-to-production/README.md).
 
 Editorial companion: [slide copy and speaker notes](CONFERENCE_SLIDES.md), with eight core slides and two optional appendices. The total slot is 30 minutes; the [run of show](CONFERENCE_RUN_OF_SHOW.md) allocates 25 minutes presentation and 5 minutes Q&A.

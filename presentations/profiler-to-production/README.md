@@ -1,4 +1,24 @@
-# From Profiler to Production — standalone presentation
+# From Profiler to Production — presentation
+
+## Preferred version — original graph engine
+
+The new talk now uses an independent copy of the engine from `workshop-slides`: gliding camera, graph cards/edges,
+overview, notes and the original keyboard/gamepad controls. The old presentation stays untouched in its own folder.
+
+```sh
+cd presentations/profiler-to-production/graph
+npm ci
+npm run dev
+```
+
+From the monorepo root, these commands open **http://127.0.0.1:4349/**. For an offline file, run `npm run build`
+and open `graph/dist/index.html`. [Engine details, controls, provenance and checks](graph/README.md).
+The graph route stops at 08; its Q&A cards return there. It uses `#step=slide-03` links.
+
+## Flat print fallback
+
+The earlier flat HTML below is retained for printing/audience PDF and as a fallback. Its controls/hash format are
+specific to that version. It is separate from the preferred graph engine and from the original workshop deck.
 
 Slot: **30 minutes total**. The [run of show](../../docs/research/performance-observability/CONFERENCE_RUN_OF_SHOW.md)
 allocates 25 minutes to slides 01–08 and 5 minutes to questions; A1/A2 support Q&A. Timing cues appear only in notes.

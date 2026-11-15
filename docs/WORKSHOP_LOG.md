@@ -6,6 +6,48 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Движок прежней презентации — 15 ноября: независимая graph-версия performance-доклада
+
+По просьбе пользователя взяли движок `workshop-slides`, сохранив прежнюю презентацию там, где она есть.
+Merge #119 (`e302b83`); ветка `step-performance-original-engine` от свежего origin/master.
+**Чтобы** показывать новый доклад на привычном движке, **скопировали** graph-компоненты, camera/navigation/
+keyboard/gamepad hooks, types/styles и timer/step tests в отдельный
+`presentations/profiler-to-production/graph/`. Provenance: `ENGINE_ORIGIN.json`, source commit старого repo
+`2b4edfc073545d8d5aaa879c10dd392f874b748e`, SHA каждого из 24 файлов. Из них 23 byte-identical; только новая копия
+PresenterNotes получила max-height/scroll и сохранение переносов для длинных timed notes. Старые файлы не меняли.
+Перед/после совпали все 276 source/assets hashes `workshop-slides`; прежний `.DS_Store` остался untracked.
+
+**Получили:** настоящий прежний canvas/карточки/рёбра/camera, overview pan/zoom, keyboard/swipe/wheel, notes,
+fullscreen, elapsed bar и inherited gamepad support. Физический controller не проверялся. Данные 10 карточек
+генерируются из reviewed Markdown в единственный content entry `src/deck/deck.ts`; tables стали labelled bullets,
+источники/endpoints/boundaries сохранены в карточке, notes включают 25/5 timing. Основная линия 8 steps заканчивается
+на 08 (`next:null`), A1/A2 выбираются в overview и возвращаются к 08. Hash формат движка `#step=slide-03`; собственный
+navigation trail/replaceState сохранён, это не browser-history поведение flat версии. Deep link читается при загрузке.
+
+Новый минимальный React/Vite wrapper без TanStack/Lovable/app routing, собственные pinned dependencies/lockfile и
+`node_modules`, без symlink/import старого app. Offline npm-cache install не нашёл registry metadata, отдельный
+обычный install 127 packages прошёл. Next/Observe/Observer/experiment dependencies не меняли. Dev strict-port 4349;
+старые port 3000/flat 4348/Observer processes не трогали. Production lib build явно заменяет NODE_ENV и упаковывает
+JS/CSS в `dist/index.html` для file:// offline. Без этого Vite library bundle оставлял бы Node global; исправлено до
+финальной offline проверки. Print layout движка не добавляли: flat HTML и audience PDF сохранены как fallback.
+README делает graph-версию предпочтительной, даёт команды npm ci/dev/build, controls и ограничения.
+
+**Проверено:** typecheck/build pass, 16 Vitest tests (copied timer/counter + main-route/evidence contract). Две
+изолированные temp-copy mutations — автоматический вход в appendix и HTTP400 failed→passed — пойманы; live source
+не менялся. Final real Chrome: 8 main cards/stop, оба overview appendices/return, camera fit, notes hidden/timing/scroll,
+Home/help/load-time deep link, 1280×720, offline packed fault states/navigation; page errors 0/external requests 0.
+Browser ожидания учитывают появление списка после animation; переход hash без reload не выдаём за supported live
+hash navigation старого движка. Скриншоты просмотрены. Standalone index упакован в `/private/tmp/performance-graph-deck.tgz`,
+извлечённые bytes SHA совпали, final browser использовал именно извлечённый file:// HTML.
+Отдельно с включённым motion в извлечённом offline HTML проверены разные intermediate/final camera transforms, errors=0.
+Артефакты: `/private/tmp/performance-graph-final`; graph dist/node_modules/artifacts ignored. Research/local links и
+whitespace checks pass. Новых performance measurements/native launches нет; источники и scientific claims прежние.
+
+**Дальше:** открыть http://127.0.0.1:4349 и репетировать 25 минут + 5 Q&A на привычном движке. Content правим в Markdown,
+затем npm run generate/build. Старый workshop не связан с новой копией и остаётся доступным в своём проекте.
+
+---
+
 ## Тайминг доклада — 15 ноября: слот 30 минут вместе с вопросами
 
 Merge #118 подтверждён (`b27ff63`); ветка `step-conference-30-minute-timing` от свежего origin/master.
