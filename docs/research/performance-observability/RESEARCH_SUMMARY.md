@@ -1,5 +1,9 @@
 # Research summary and decisions
 
+New research (17 November): [RN progress pressure outside React render](RN_EVENT_PRESSURE_RESEARCH.md).
+22 completed Simulator profiling runs find a bounded render/notification mismatch; real native producer, physical
+input/device and named-tool recordings remain open. This does not change full F acceptance.
+
 Conference preparation: [proposed demonstration sequence and rehearsal contract](CONFERENCE_DEMO_PLAN.md) selects scoped claims from the existing evidence; it adds no measurements or acceptance budget.
 
 ## Current implementation checkpoint — 14 November 2026

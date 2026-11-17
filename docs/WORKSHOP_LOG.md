@@ -6,6 +6,34 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## RN research — 17 ноября: короткие renders и задержка нотификаций
+
+**Чтобы** найти содержательный кейс под фиксированный анонс, **исследовали** progress callbacks вне React render,
+вместо ещё одного busy-loop demo. В локальном experiment repo создана ветка `research-rn-progress-pressure`,
+commit `9980d23` (remote по-прежнему нет). Independent loopback WebSocket producer моделирует progress,
+не замедляясь вместе с RN JS. Rescan всей истории сравнивается с incremental delta update; события не теряем,
+все итоговые rows и суммы совпадают. [Контракт и все результаты](research/performance-observability/RN_EVENT_PRESSURE_RESEARCH.md).
+
+**Получили:** 2 smoke + 16 sweep + 4 phase runs на Release/Hermes Simulator с отдельным profiling renderer.
+В high-load sweep max React render <0.710 ms, а send→JS receipt lower endpoints до 33.180 ms; incremental до
+0.597 ms при max render 1.383 ms. Phase follow-up сохраняет расхождение: send→layout effect до 41.477 ms против
+4.795 ms. Это simulated notifications, не реальные downloads/touches/presentation. Два процесса на ячейку,
+не сотни независимых повторов; clock bounds транспортные, precision/drift неизвестны. Гипотеза перспективна,
+но физический performance и conference acceptance не закрыты. Малые нагрузки и фазовая зависимость сохранены.
+
+**Проверено:** 119 experiment tests pass, web typecheck/build, native Release compile/link, 22 Simulator runs.
+Пять новых tests и две mutations: ошибка cumulative→delta и фиктивный zero при unavailable Profiler отвергнуты;
+исходники восстановлены, targeted tests pass. Первый sandboxed full suite не смог открыть HTTP порты; повтор с
+local networking прошёл. Старые 276 presentation hashes совпадают. AI commit review сообщил unavailable/timeout
+и сам продолжил; hooks не обходились. Обычный default renderer не меняли, profiling opt-in записан в identity.
+В монорепо только документы; runtime Observe/collector/Observer, старые captures и F index не менялись.
+
+**Дальше:** реальный native progress source/правдоподобная частота, Hermes CPU capture и React DevTools workflow,
+независимый native input и physical Release. Затем confirmatory protocol и performance regression rule.
+Observer расширять только под доказанную потребность принятых результатов; сырые pilot JSON пока отдельные.
+
+---
+
 ## Тайминг доклада — 15 ноября: слот 30 минут вместе с вопросами
 
 Merge #118 подтверждён (`b27ff63`); ветка `step-conference-30-minute-timing` от свежего origin/master.
