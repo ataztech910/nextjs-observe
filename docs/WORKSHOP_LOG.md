@@ -68,6 +68,30 @@ Observer расширять только под доказанную потре�
 
 ---
 
+## Фиксированный brief — 17 ноября: эксперименты под заявленное описание
+
+Пользователь уточнил: тему и описание менять нельзя. **Чтобы** готовить именно заявленный доклад,
+**зафиксировали** [исходный brief и обязательную матрицу покрытия](research/performance-observability/CONFERENCE_BRIEF.md).
+Предыдущий evidence-only маршрут недостаточен: RN был appendix, Hermes sampling/Flashlight/React DevTools
+workflow, hydration, RN startup и полноценный RN before/after не подтверждены. Заголовок и описание сохранены
+дословно; отсутствие результатов не превращаем в разрешение убрать обещания.
+
+**Получили:** приоритет RN interaction → equivalent fix → повторные Release measurements и диагностические
+профили; затем недостающие web hydration/startup и React DevTools, RN startup, regression rule/CI.
+Flashlight требует отдельного подтверждённого Android пути: у пользователя подтверждён только iPhone.
+Simulator остаётся полезным для workflow, не заменяет physical performance evidence. Новый main-route budget
+25+5 оставляет RN и инструменты в основной части, F internals уводит в supporting material.
+Три старых conference-документа явно помечены частичными drafts с новой acceptance-ссылкой.
+Старая презентация, runtime, экспериментальные данные и evidence indexes не менялись.
+
+**Проверено:** относительные ссылки новых/изменённых документов, последовательность окон 25+5 и git diff.
+Новых performance runs, profiler captures, runtime tests или browser checks этот документационный шаг не заявляет.
+
+**Дальше:** реализовать и проверить RN before/after protocol в существующем host, отдельно проверить
+Hermes sampling и доступный Android путь для Flashlight. Слайды обновлять по реально принятым результатам.
+
+---
+
 ## Тайминг доклада — 15 ноября: слот 30 минут вместе с вопросами
 
 Merge #118 подтверждён (`b27ff63`); ветка `step-conference-30-minute-timing` от свежего origin/master.
