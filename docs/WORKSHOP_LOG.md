@@ -6,6 +6,47 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Hermes attribution — 17 ноября: находим пересчёт вне React render
+
+После merge всей очереди продолжили исследование. **Чтобы** проверить, где работает full-history store во время
+настоящих native downloads, **добавили** отдельный Debug/Hermes diagnostic protocol в локальном experiment repo:
+ветка `research-hermes-profiles`, commit `e405330`, remote нет.
+[Протокол, результат и границы](research/performance-observability/HERMES_PROFILE_RESEARCH.md).
+
+**Получили:** два clean fresh-process профиля `hermes-download-1794943343804` с 16 XHR Blob downloads и 8,192 history
+rows каждый. В rescan sampled ancestry ведёт через `accept` → `summarizeJobs` к array filter/reduce/map. В incremental
+этот путь внутри acquisition markers не наблюдается. Inclusive entries `summarizeJobs`: 17,085 / 0 observed;
+это не invocation counts, CPU milliseconds или speedup. Zero sampled entries не означает нулевую работу.
+Медиана прежних Release-прогонов остаётся необъяснённой: Debug attribution не подменяет Release timing.
+
+Capture сохраняет actual loaded Metro source, target/build identity и raw trace, выключает Debugger domain перед
+Hermes sampling, останавливает его до payload verification. Анализ проверяет markers, chunk identity/coverage,
+ancestry и zero-based source coordinates. Обе raw записи реально импортированы в RN DevTools Performance через
+Chrome/Playwright; сохранены flame chart/Bottom-up screenshots и accessibility snapshots. Это ещё не отдельный
+React Components Profiler before/after workflow. В обоих процессах сохранены 1,024 progress + 16 load callbacks и
+проверены все 16 тел. Native input/presentation не измерены.
+
+Предыдущую completed pair с Fast Refresh исключили, raw evidence сохранили. Причина — captured JS в watched reports;
+Metro теперь исключает generated reports/captures/dist с сохранением default block list. В clean traces refresh нет.
+Три ранних setup failures (target race, Origin, CDP global expression) также сохранены отдельно. Не считаем их
+дополнительными независимыми successful runs. Все файлы evidence остаются локальными и ignored.
+
+**Проверено:** 131 experiment tests; web typecheck/build; настоящий Debug native build; production Metro/Hermes
+bundle compile. Mutations отключения refresh guard и artifact exclusion отвергаются, исходники восстановлены.
+Replay обоих accepted attributions и всех восьми прежних Release download analyses побайтно совпадает по JSON data.
+Все 276 хешей старой презентации совпадают. После проверки восстановили прежнее Release app в Simulator и остановили
+только свой Metro. Hook AI review был unavailable/timeout и сам продолжил; hooks не обходились.
+
+Monorepo checkpoint меняет только документацию: instrumentation остаётся в app/Observe, capture/analysis — в harness,
+OTLP ingestion/storage — в backend, Observer frontend читает поддерживаемые схемы. Raw Hermes JSON не объявляли
+новым Observer import contract. Фиксированные title/abstract не изменены; обновлена только строка coverage Hermes.
+
+**Дальше:** разобраться с median/tail на отдельном повторяемом Release-протоколе и явном native input endpoint;
+затем React Components Profiler, startup, SSR hydration, Flashlight и CI regression rule. Не объявлять Debug pair
+закрытием physical Release acceptance или всех требований доклада.
+
+---
+
 ## Согласование очереди PR — 17 ноября: движок, фотографии, brief и research
 
 Пользователь разрешил смержить всю открытую очередь и решить конфликты до продолжения исследований.
