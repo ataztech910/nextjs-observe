@@ -6,6 +6,34 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Согласование очереди PR — 17 ноября: движок, фотографии, brief и research
+
+Пользователь разрешил смержить всю открытую очередь и решить конфликты до продолжения исследований.
+#121 (speaker/GDG photos) объединён в свою базовую ветку #120 (copied graph engine), #124 (native download
+research) и #122 (fixed brief) — в master. Checks не обходились, force push/admin merge не использовались.
+В #122 конфликт журнала разрешён сохранением обеих историй. Для #120 объединение со свежим master сохраняет
+journal entries обеих сторон, status fixed brief и preferred graph links в conference docs. Ни одна сторона
+конфликта целиком не выбрасывалась. Run of show явно различает graph stop на 08 и flat fallback переход в appendix.
+
+README обеих новых версий явно помечает содержание частичным draft относительно неизменяемого brief.
+Заголовок/abstract/brief побайтно совпадают с merge #122; generated graph content не отличается от #121.
+Новых benchmark runs и instrumentation/UI features при разборе очереди не добавляли.
+
+**Проверено перед финальным merge #120:** 17 graph tests, 3 flat renderer tests, graph generation/TypeScript/build.
+Standalone HTML упакован в `/private/tmp/pr-merge-graph.tgz`, распакован независимо от исходников. Chrome проверил
+10 main / 12 total cards, обе opening photos (в том числе embedded JPEG offline), camera/navigation, main stop,
+appendix returns, notes/scroll, help/Home/deep links, 720p fit и offline file navigation; page errors=0, external
+requests=0. Артефакты `/private/tmp/pr-merge-graph-check`. Изолированная mutation с повреждённым JPEG в копии
+artifact отвергнута на image.decode (EncodingError), рабочий artifact/source не менялся. Ссылки документов,
+отсутствие unresolved index entries и diff checks прошли. All 276 original presentation hashes и оба photo-copy
+SHA совпали; F evidence index SHA прежний. Backend/Observe runtime и raw experiment evidence не менялись.
+AI pre-commit review был unavailable/timeout и сам продолжил; hooks не обходились.
+
+**Дальше:** проверить итоговый master и пустую очередь открытых PR; только после этого возвращаться к
+Hermes/React DevTools/native input gates. Старая презентация остаётся на прежнем месте без изменений.
+
+---
+
 ## Native download follow-up — 17 ноября: median и tail расходятся
 
 Пользователь разрешил merge #123 и продолжение; PR смержен (`cc68247`). GitHub connector ответил 403 на merge,
@@ -89,6 +117,78 @@ Simulator остаётся полезным для workflow, не заменяе
 
 **Дальше:** реализовать и проверить RN before/after protocol в существующем host, отдельно проверить
 Hermes sampling и доступный Android путь для Flashlight. Слайды обновлять по реально принятым результатам.
+
+---
+
+## Вступительные фотографии — 17 ноября: спикер и GDG Linz
+
+По просьбе пользователя добавлены первые photo cards из старой презентации в новую graph-версию.
+PR #120 ещё open; ветка `step-performance-intro-photos` основана на его `bdbf2d6`, PR фотографий stacked поверх
+`step-performance-original-engine`, чтобы отдельно видеть только это изменение. Старый `workshop-slides` не менялся:
+все 276 source/assets hashes совпали; `me.jpg` и `gdg-linz.jpg` скопированы byte-identical, provenance в ASSET_ORIGIN.json.
+
+**Получили:** title → about-me (Andrei Tazetdinov, Dynatrace RN agent, портрет, LinkedIn QR) → GDG Linz (community
+image и исходный community QR) → endpoint model. Биография согласована с присланной аннотацией, не выдаёт lab results
+за customer production benchmarks. Вступление всё ещё 1:30: title 15s, speaker 45s, GDG 30s. Graph main counter теперь 10
+(восемь прежних cards + 2 intro), всего 12 с appendices; stop/return к 08 сохранены. Source intro data хранится отдельно
+в `introduction.json`, generated `deck.ts` остаётся entry для контента. Не переписывали научные результаты/основные
+speaker notes и не меняли длительность общего слота 25+5.
+
+Изображения импортируются `?inline`, поэтому dev и production используют встроенные data URLs; автономный HTML
+не зависит от старой папки или сервера картинок. Только новое intro.css задаёт contain для GDG, чтобы знак целиком
+поместился; скопированный движок не правили. Flat print fallback остался прежним и не содержит новых graph-intros;
+README явно разделяет версии. Run of show уточняет состав первого 90s окна.
+
+**Проверено:** typecheck/build pass, 17 tests pass. Isolated missing-portrait mutation поймана; live source не менялся.
+Chrome проверил 10 main cards/stop, оба appendix return, обе photos natural size/decode, contain GDG, notes/timing,
+overview/Home/help/deep links/720p и автономную навигацию. В offline оба фото именно embedded data:image/jpeg,
+page errors 0/external requests 0. Финальные portrait/GDG screenshots просмотрены. Artifacts:
+`/private/tmp/performance-intro-photos`; dist/images compiled в ignored build. Старые фото не редактировались.
+
+**Дальше:** показать обновлённое начало и продолжить работу над соответствием основной истории заявленной аннотации;
+этот шаг добавляет только знакомство со спикером и сообществом, не закрывает найденные RN/tooling/before-after gaps.
+
+---
+
+## Движок прежней презентации — 15 ноября: независимая graph-версия performance-доклада
+
+По просьбе пользователя взяли движок `workshop-slides`, сохранив прежнюю презентацию там, где она есть.
+Merge #119 (`e302b83`); ветка `step-performance-original-engine` от свежего origin/master.
+**Чтобы** показывать новый доклад на привычном движке, **скопировали** graph-компоненты, camera/navigation/
+keyboard/gamepad hooks, types/styles и timer/step tests в отдельный
+`presentations/profiler-to-production/graph/`. Provenance: `ENGINE_ORIGIN.json`, source commit старого repo
+`2b4edfc073545d8d5aaa879c10dd392f874b748e`, SHA каждого из 24 файлов. Из них 23 byte-identical; только новая копия
+PresenterNotes получила max-height/scroll и сохранение переносов для длинных timed notes. Старые файлы не меняли.
+Перед/после совпали все 276 source/assets hashes `workshop-slides`; прежний `.DS_Store` остался untracked.
+
+**Получили:** настоящий прежний canvas/карточки/рёбра/camera, overview pan/zoom, keyboard/swipe/wheel, notes,
+fullscreen, elapsed bar и inherited gamepad support. Физический controller не проверялся. Данные 10 карточек
+генерируются из reviewed Markdown в единственный content entry `src/deck/deck.ts`; tables стали labelled bullets,
+источники/endpoints/boundaries сохранены в карточке, notes включают 25/5 timing. Основная линия 8 steps заканчивается
+на 08 (`next:null`), A1/A2 выбираются в overview и возвращаются к 08. Hash формат движка `#step=slide-03`; собственный
+navigation trail/replaceState сохранён, это не browser-history поведение flat версии. Deep link читается при загрузке.
+
+Новый минимальный React/Vite wrapper без TanStack/Lovable/app routing, собственные pinned dependencies/lockfile и
+`node_modules`, без symlink/import старого app. Offline npm-cache install не нашёл registry metadata, отдельный
+обычный install 127 packages прошёл. Next/Observe/Observer/experiment dependencies не меняли. Dev strict-port 4349;
+старые port 3000/flat 4348/Observer processes не трогали. Production lib build явно заменяет NODE_ENV и упаковывает
+JS/CSS в `dist/index.html` для file:// offline. Без этого Vite library bundle оставлял бы Node global; исправлено до
+финальной offline проверки. Print layout движка не добавляли: flat HTML и audience PDF сохранены как fallback.
+README делает graph-версию предпочтительной, даёт команды npm ci/dev/build, controls и ограничения.
+
+**Проверено:** typecheck/build pass, 16 Vitest tests (copied timer/counter + main-route/evidence contract). Две
+изолированные temp-copy mutations — автоматический вход в appendix и HTTP400 failed→passed — пойманы; live source
+не менялся. Final real Chrome: 8 main cards/stop, оба overview appendices/return, camera fit, notes hidden/timing/scroll,
+Home/help/load-time deep link, 1280×720, offline packed fault states/navigation; page errors 0/external requests 0.
+Browser ожидания учитывают появление списка после animation; переход hash без reload не выдаём за supported live
+hash navigation старого движка. Скриншоты просмотрены. Standalone index упакован в `/private/tmp/performance-graph-deck.tgz`,
+извлечённые bytes SHA совпали, final browser использовал именно извлечённый file:// HTML.
+Отдельно с включённым motion в извлечённом offline HTML проверены разные intermediate/final camera transforms, errors=0.
+Артефакты: `/private/tmp/performance-graph-final`; graph dist/node_modules/artifacts ignored. Research/local links и
+whitespace checks pass. Новых performance measurements/native launches нет; источники и scientific claims прежние.
+
+**Дальше:** открыть http://127.0.0.1:4349 и репетировать 25 минут + 5 Q&A на привычном движке. Content правим в Markdown,
+затем npm run generate/build. Старый workshop не связан с новой копией и остаётся доступным в своём проекте.
 
 ---
 

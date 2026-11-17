@@ -2,6 +2,8 @@
 
 > **Status — 17 November 2026:** This evidence-only draft does not yet fulfill the fixed conference description. The [fixed brief and delivery requirements](CONFERENCE_BRIEF.md) govern acceptance and the replacement main route. RN before/after, startup/hydration, named tool workflows and regression prevention require additional work; the earlier “no new measurements required” scope is superseded. Existing results retain their original limits.
 
+Preferred visual version: [copied workshop graph engine](../../../presentations/profiler-to-production/graph/README.md), on its own port 4349. The original `workshop-slides` is unchanged; the flat deck below remains the print fallback.
+
 Visual version: [separate offline slide deck](../../../presentations/profiler-to-production/index.html), with notes and audience-only PDF printing. [Controls and rebuild instructions](../../../presentations/profiler-to-production/README.md).
 
 Editorial companion: [slide copy and speaker notes](CONFERENCE_SLIDES.md), with eight core slides and two optional appendices. The total slot is 30 minutes; the [run of show](CONFERENCE_RUN_OF_SHOW.md) allocates 25 minutes presentation and 5 minutes Q&A.

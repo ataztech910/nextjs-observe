@@ -1,0 +1,109 @@
+{
+  "repository": "workshop-slides",
+  "commit": "2b4edfc073545d8d5aaa879c10dd392f874b748e",
+  "copiedFiles": [
+    {
+      "path": "src/components/HelpOverlay.tsx",
+      "sha256": "3368e9c2511671a4281e59f7eba9dab9c8dafa1a587439fc0eb4472e7a849a13"
+    },
+    {
+      "path": "src/components/ExerciseTimer.tsx",
+      "sha256": "cda5549b12865af19a0105b2806361143ee11daee005765d78a1a99527cf5882"
+    },
+    {
+      "path": "src/components/TopBar.tsx",
+      "sha256": "c20c66e7d94244b025934d69c047b31d16a519c7292da02a7d1fa127adc7a485"
+    },
+    {
+      "path": "src/components/Chooser.tsx",
+      "sha256": "95ae01f82a45bc48d5ff53c2b4a1eae702ad724ac97c76b7384103671d49a131"
+    },
+    {
+      "path": "src/components/NodeCard.tsx",
+      "sha256": "f2499626157874f11163f76fdf95edcc173a3dc56b803df2da849b2f38bf3c9f"
+    },
+    {
+      "path": "src/components/Presentation.tsx",
+      "sha256": "4e2129c87fd15cc0b8de39e8552cb0af8b4fdb368891965f7f230021c7fa034c"
+    },
+    {
+      "path": "src/components/DetailPanel.tsx",
+      "sha256": "8328b2fe38c49c548e742d30f179c545d799f84f1598f03dec067c7f7abd158a"
+    },
+    {
+      "path": "src/components/BottomBar.tsx",
+      "sha256": "e25630e19318d579bae46ce7a24a58b5e43087270b05706410473f0a26c0aa42"
+    },
+    {
+      "path": "src/components/PresenterNotes.tsx",
+      "sha256": "3f6645527448b51b2d8d5fe464e69ce4fa5d2e2a716eb5bffc2f32e60f724bfa"
+    },
+    {
+      "path": "src/components/HandOff.tsx",
+      "sha256": "3a932cc60130dd0ddc0db4335486204001ee6961ebc8869e707541e6b57a5a77"
+    },
+    {
+      "path": "src/components/EdgeLayer.tsx",
+      "sha256": "67c4eef84424d1a36f44f2a723ca5710b6bb50a0538c5a032a71aef247b43150"
+    },
+    {
+      "path": "src/components/GlyphRain.tsx",
+      "sha256": "a3c3a1b6c2e808d87773a5f116fb8893cf7d3e4107a82096eb10c12253a4b180"
+    },
+    {
+      "path": "src/components/Canvas.tsx",
+      "sha256": "d2d31d2df244f60df2646a14b0ac63db6b414f1e492c591d009250ee2afdb402"
+    },
+    {
+      "path": "src/hooks/useCamera.ts",
+      "sha256": "b709830ed23d246dd97d6776f5930298ae90a9408cac632f175042d9911894b8"
+    },
+    {
+      "path": "src/hooks/useDeckNav.ts",
+      "sha256": "b68424e3a52577882d4287a263b5186dc7824a872d8d5297daae005b4d68970b"
+    },
+    {
+      "path": "src/hooks/useGamepad.ts",
+      "sha256": "6a17c998a77d4a1b9b74accba11a875397dd728d93939cab1acf0dd0656461c0"
+    },
+    {
+      "path": "src/hooks/useKeyboard.ts",
+      "sha256": "cc61602b7e2231fc30b4e215965de6700e2174eb549577f0eaa078605d52244c"
+    },
+    {
+      "path": "src/lib/exercise-timer.ts",
+      "sha256": "49853437ca590f546246dd7c8d2b7a6c0151ce2d903728992aaa219d3e9b53ef"
+    },
+    {
+      "path": "src/lib/step-number.ts",
+      "sha256": "5bf1381ff6928433c9c8617dd4ef794927cc305ec46b5103061b9b9782afe661"
+    },
+    {
+      "path": "src/lib/utils.ts",
+      "sha256": "d1f1e0d62cb8d8d1e04c26e14de842d8a151f75812d81b046c65b5d1fe8e4b27"
+    },
+    {
+      "path": "src/deck/types.ts",
+      "sha256": "6c5d0c824f916a4ebeea25023a9a4c9bb572ff90a65cbd100a5cb00d9daf472e"
+    },
+    {
+      "path": "src/styles.css",
+      "sha256": "f27ecd1a146ccb61bf3f138102d1f66ed88fcbe89769752f12f0a196c8efbc56"
+    },
+    {
+      "path": "src/test/exercise-timer.test.ts",
+      "sha256": "6b9aadb1485d6e8272a8654c71901ff4939c31a52c01d700f3a05e7211812e47"
+    },
+    {
+      "path": "src/test/step-number.test.ts",
+      "sha256": "68ce6aea92c8239ce9c9db49100f77bb8577a3fe8b57050af975d5f5cca899c9"
+    }
+  ],
+  "integration": "Original graph components/hooks/styles copied into an independent React/Vite app. Generated deck data replaces workshop content. PresenterNotes has the separately listed local adaptation.",
+  "adaptations": [
+    {
+      "path": "src/components/PresenterNotes.tsx",
+      "reason": "Scroll long timed notes and preserve paragraphs; original source unchanged."
+    }
+  ]
+}
