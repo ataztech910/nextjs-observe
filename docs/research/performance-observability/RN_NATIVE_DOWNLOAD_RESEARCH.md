@@ -105,6 +105,9 @@ a new supported Observer schema; no instrumentation was moved into its frontend.
 
 ## Next gates
 
+[Four-pair repeat and decomposition](RN_LATENCY_DECOMPOSITION.md) now reproduce the median/tail tradeoff in both
+orders and localize its same-JS-clock component. They do not establish the causal mechanism or native input UX.
+
 [Hermes diagnostic checkpoint](HERMES_PROFILE_RESEARCH.md) now locates the callback/store path in actual Debug
 sampling profiles, imported in RN DevTools Performance. Release median behavior and the separate React Components
 Profiler workflow remain open. Independently timestamp native input and declare its completion endpoint, with physical

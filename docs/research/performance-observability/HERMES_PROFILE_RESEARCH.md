@@ -75,7 +75,8 @@ or packed-app behavior is claimed by this documentation checkpoint.
 
 ## Next gates
 
-Investigate the Release median/tail tradeoff with a declared repeated protocol and native input/completion endpoint.
+[Four new Release pairs](RN_LATENCY_DECOMPOSITION.md) reproduce the tradeoff and localize a same-JS-clock component;
+the cause remains open. Add an independent native input/completion endpoint and isolate any causal intervention.
 Retain diagnostic attribution separately from ordinary physical Release performance. Validate a concrete React
 DevTools Components/Profiler workflow, then startup, SSR hydration, Flashlight and an executable CI regression rule
 against the unchanged brief. These remain required, not removed to fit the current evidence.
