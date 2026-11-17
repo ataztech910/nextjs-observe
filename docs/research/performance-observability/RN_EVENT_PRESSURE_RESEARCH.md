@@ -1,5 +1,8 @@
 # RN research: small renders, delayed notifications
 
+Follow-up: [real native HTTP downloads](RN_NATIVE_DOWNLOAD_RESEARCH.md) found a smaller tail and a median/tail tradeoff.
+The original model results and limitations below remain unchanged.
+
 17 November 2026. **Retain as a candidate; not conference or physical-device acceptance.** This research follows
 the fixed talk description: find a useful profiler/endpoint mismatch, rather than another artificial blocking loop.
 The published title and abstract remain unchanged. The original presentation remains at `workshop-slides/`.
