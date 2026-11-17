@@ -1,0 +1,17 @@
+{
+  "repository": "workshop-slides",
+  "commit": "2b4edfc073545d8d5aaa879c10dd392f874b748e",
+  "assets": [
+    {
+      "source": "public/about/me.jpg",
+      "copy": "src/assets/about/me.jpg",
+      "sha256": "0f4ba310ed2b89ed4b1e0c71e6d57ed886ef816cbcee8e2418ba69b0c53fde94"
+    },
+    {
+      "source": "public/about/gdg-linz.jpg",
+      "copy": "src/assets/about/gdg-linz.jpg",
+      "sha256": "6f9ad154f95a97c090b28f6c00b8395492e5e06d9e18e6121813cd1c155726cf"
+    }
+  ],
+  "links": "LinkedIn and GDG URLs copied from the original about-me / gdg-linz cards; speaker bio follows the supplied talk abstract."
+}

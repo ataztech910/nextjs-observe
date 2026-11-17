@@ -1,0 +1,43 @@
+[
+  {
+    "id": "about-me",
+    "title": "Andrei Tazetdinov",
+    "subtitle": "Dynatrace · GDG Linz",
+    "photo": "speakerPhoto",
+    "textWidth": 720,
+    "size": "md",
+    "detail": {
+      "heading": "Who is talking",
+      "bullets": [
+        "I work on the Dynatrace React Native agent",
+        "SDK-level instrumentation inside production apps",
+        "Today: performance metrics, tools and reproducible measurements"
+      ],
+      "qr": {
+        "value": "https://www.linkedin.com/in/andrei-tazetdinov/",
+        "caption": "LinkedIn"
+      },
+      "note": "Timing: 00:15–01:00 elapsed; budget 0:45. Introduce your work on the React Native agent at Dynatrace, then move on. The linked experimental numbers are controlled local cases, not customer-production benchmarks."
+    }
+  },
+  {
+    "id": "gdg-linz",
+    "title": "GDG Linz",
+    "subtitle": "Google Developer Group · Linz, Austria",
+    "photo": "communityPhoto",
+    "textWidth": 720,
+    "size": "md",
+    "detail": {
+      "heading": "Developers meeting developers",
+      "bullets": [
+        "meetups, talks and workshops in Linz",
+        "come by — or come and speak"
+      ],
+      "qr": {
+        "value": "https://gdg.community.dev/gdg-linz/",
+        "caption": "GDG Linz"
+      },
+      "note": "Timing: 01:00–01:30 elapsed; budget 0:30. Introduce GDG Linz and invite people to join or speak. The QR points to the original community page. Continue to the measurement model by 01:30."
+    }
+  }
+]

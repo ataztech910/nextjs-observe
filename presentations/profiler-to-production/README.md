@@ -13,6 +13,7 @@ npm run dev
 
 From the monorepo root, these commands open **http://127.0.0.1:4349/**. For an offline file, run `npm run build`
 and open `graph/dist/index.html`. [Engine details, controls, provenance and checks](graph/README.md).
+The graph adds speaker/GDG photo cards after the title (12 cards total, 10 main + 2 appendices). The opening still fits 1:30.
 The graph route stops at 08; its Q&A cards return there. It uses `#step=slide-03` links.
 
 ## Flat print fallback
