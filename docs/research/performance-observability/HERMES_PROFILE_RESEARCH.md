@@ -76,7 +76,8 @@ or packed-app behavior is claimed by this documentation checkpoint.
 ## Next gates
 
 [Four new Release pairs](RN_LATENCY_DECOMPOSITION.md) reproduce the tradeoff and localize a same-JS-clock component;
-the cause remains open. Add an independent native input/completion endpoint and isolate any causal intervention.
+the cause remains open. [Native input feasibility](RN_NATIVE_INPUT_RESEARCH.md) now records an independent touch
+timestamp/ack layout; isolate any causal intervention and validate a repeated input comparison separately.
 Retain diagnostic attribution separately from ordinary physical Release performance. Validate a concrete React
 DevTools Components/Profiler workflow, then startup, SSR hydration, Flashlight and an executable CI regression rule
 against the unchanged brief. These remain required, not removed to fit the current evidence.

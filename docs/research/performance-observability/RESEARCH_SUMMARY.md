@@ -1,5 +1,9 @@
 # Research summary and decisions
 
+Native input checkpoint (17 November): [actual Maestro gestures and declared acknowledgement layout](RN_NATIVE_INPUT_RESEARCH.md).
+The native touch path is measured separately from source notifications; sparse functional observations do not establish
+a touch p95 or optimization win. Preserve failed/late runs and keep Simulator gates separate from physical acceptance.
+
 Release repeat (17 November): [four native latency pairs and decomposition](RN_LATENCY_DECOMPOSITION.md).
 Lower p95 and higher median repeat in both orders; the median difference also exists on one JS clock.
 Causal scheduling/CPU/GC attribution and native input/presentation remain open; do not claim uniform UX improvement.

@@ -6,6 +6,64 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Native input — 17 ноября: timestamps реального touch отдельно от notifications
+
+Пользователь разрешил merge #126 и продолжение. `gh` смержил проверенный head с зелёным security check без обхода
+checks/admin/force; merge `20b2c9c`. Локальный master обновлён, следующий шаг — отдельная ветка.
+
+**Чтобы** измерять настоящий native input, **добавили** app-local touch recorder, ack-layout endpoint и Maestro flow
+в experiment repo: `research-rn-native-input`, commit `5bcad89`, remote нет.
+[Протокол, все индивидуальные точки и ограничения](research/performance-observability/RN_NATIVE_INPUT_RESEARCH.md).
+Fabric RN 0.88 берёт timestamp из UITouch до JS; копируем down/up/press timestamp/identifier сразу, не храним React
+event object. Семь native ping pairs до/после дают conditional clock bounds. Completion — JS layout effect текста
+`Input acknowledged N`, не paint/presentation. Maestro runner wall time не превращаем во время нажатия.
+
+**Получили:** v1 `native-input-1794947484145` завершил 4 fresh-process runs / 12 taps. Footer-only rebuild исправил
+старое «No touch measurement» в новом режиме. Следующий v1 `native-input-1794953358672` failed: третий touch пришёл
+после конца acquisition. Partial native/source evidence сохранён; это failed gate, не выборочно отброшенная точка.
+Ошибка также выявила cleanup race: теперь при раннем app failure дожидаемся отмены runner и записи evidence.
+
+До нового запуска объявили v2: 128 writes/body вместо 64, те же 50 ms между writes, body bytes/history/варианты
+и 3 taps/process. Продлили окно для последовательного Maestro, сохранив cadence, но изменив total callback work;
+с v1 не смешиваем. Final `native-input-1794953533485`: четыре процесса (rescan→incremental, incremental→rescan),
+12 touch/ack associations, 8,192 progress callbacks, 64 loads/bodies, 67,170,304 bytes; все проверки прошли.
+
+Touch-up→ack layout lower endpoints 6.943–25.322 ms, JS onPress→layout 0.862–1.691 ms. Это индивидуальные значения
+условной clock model, не p95 или calibrated uncertainty. Диапазоны обоих вариантов перекрываются, нет idle input
+control, tap phases не выровнены (204–1,356 обработанных callbacks на onPress). **Выигрыш оптимизации для input
+не установлен**; прежний notification p95 не выдаём за native UX improvement. До JS handler есть часть пути,
+которую render duration не описывает; причины native scheduling/JS queue/CPU/GC по этим данным не разделены.
+
+Maestro exit, строгий JUnit run/flow и ordered commands проверяются независимо от app receipts. Missing/failed/
+optional taps/assertions, поздний ввод, неверные clocks, cancellation/deadline не дают passed. В v1 наблюдались
+4,094 callbacks на 4,096 source writes при целых payloads; не предполагаем one-write-one-callback. Все исходы
+сохранены отдельно, автоматического retry и pooled процентов нет. Root post-run PNG может показывать SpringBoard
+после teardown; UI evidence — настоящий Maestro takeScreenshot с ack 3 / Stored и исправленным footer.
+
+**Проверено:** 138 JS tests + 3 Python tests, actual final native Release build, production Metro/Hermes compile
+на раннем варианте. Три source mutations (timestamp units, active-window guard, cleanup await) отвергаются;
+исходники восстановлены и targeted tests проходят. Обе input series (4+4) и 16 прежних Release notification runs
+replay идентично. Изолированный `/private/tmp/native-input-export-8uiz6_sp/analysis.tgz` без npm dependencies
+воспроизводит report SHA `e9d3bc972a7c3af9d44cdc60171d298be66f5fb24262924ce36580c9c0727194`; mutation чужого
+JUnit flow отвергается, восстановленный artifact проходит. Prepared source bodies/native source hashes/whole app
+сохранены, собственные tests/builds не шли параллельно с acquisition; OS-wide условия не контролировали.
+Все 276 old presentation hashes совпадают. Simulator возвращён в ручной Release screen. AI commit-hook review
+unavailable/timeout и сам продолжил; hooks не обходились.
+
+Проверены 82 локальные Markdown links, все 12 строк input points/три endpoint columns против raw report.
+Полный recheck выявил слишком короткий 2-s startup timeout в mock child fixture; увеличили до 10 s, оставив
+отдельные timeout/abort проверки, затем все 138 JS tests прошли. Реальный runner deadline не меняли.
+
+Monorepo публикует только checkpoint docs. Title/abstract/F index и старая презентация сохранены. Observe/app
+инструментирует, harness запускает/считает, backend принимает/хранит OTLP, Observer frontend читает поддерживаемые
+схемы. Raw native-input JSON не объявляем новым Observer importer и не переносим instrumentation во frontend.
+
+**Дальше:** repeated input protocol с idle control и независимыми tap phases; causal intervention до объяснения
+scheduling/CPU/GC. Physical ordinary Release/presentation, React Components Profiler, startup, SSR hydration,
+Flashlight и исполняемый CI regression workflow остаются требованиями неизменяемого brief.
+
+---
+
 ## Release latency decomposition — 17 ноября: median/tail tradeoff повторяется
 
 По разрешению пользователя смержили #125 с проверкой head SHA и зелёного security check; merge `c442aae`.
