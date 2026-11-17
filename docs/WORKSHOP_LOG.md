@@ -6,6 +6,58 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Input delivery calibration — 17 ноября: координата прошла idle gate, ID нет
+
+По разрешению пользователя смержили #128 (`2281d98`): проверенный head, зелёный GitGuardian, обычный merge без
+admin/bypass/force. Следующий шаг — ветка от обновлённого master. Старая презентация остаётся на месте.
+
+**Чтобы** уменьшить погрешность доставки Maestro, **сравнили** ID selector и заранее выбранную координату на одном
+прежнем app artifact. Локальный experiment repo: `research-rn-input-calibration`, commit `d3fdab0`, remote нет.
+[Протокол, все индивидуальные точки и ограничения](research/performance-observability/RN_INPUT_CALIBRATION.md).
+Не пересобирали app и не меняли native instrumentation; source/executable/bundle совпадают с paced pilot.
+
+До acquisition объявили 4 пары id→point / point→id / id→point / point→id: восемь fresh Release/Hermes React profiling
+Simulator процессов, все без загрузок, по три native gestures. Сохранили 8,192-row model, 137-ms control notifications,
+250-ms UI refresh, HTTP targets +3/+9/+15 s и прежний upper lateness budget 1,500 ms. Между taps нет ack assertions;
+координата 50%,33% выбрана до запуска по retained screenshot того же экрана, а native events/ack доказывают hit.
+
+**Получили:** `input-cal-1794955881697`, все 24 gestures / 8 процессов валидны по app/native/idle/JUnit/commands.
+Координата — **12/12** в budget, ID — **9/12** (три misses в трёх процессах). Все точки сохранены, без retries или
+замен. Общий report остаётся `phase-budget-missed` и CLI выходит **1**: успешный route не перекрашивает весь опыт.
+
+Coordinate native-down lateness upper endpoints 320.780–406.859 ms, ID 569.775–3635.295 ms. Во всех 12 per-block/
+per-slot contrasts point-minus-ID clock compatibility interval ниже нуля. Это описательные точки/conditional bounds,
+не confidence intervals или portable accuracy. Не отделили selector lookup от остальных внутренних операций driver.
+Touch-up→ack layout lower endpoints пересекаются: ID 5.874–23.096 ms, coordinate 6.077–20.706 ms. Это улучшение
+доставки тестового ввода, **не app UX win**. Даже 321–407 ms не даёт matching к 50-ms callback phase.
+
+После чтения actual Maestro export исправили offline parser key на `tapOnPointV2Command`; исходное предположение
+не содержало суффикс Command. App/acquisition/raw exports/protocol не меняли и не повторяли. Frozen tool copies
+сохранены; corrected report/validator/test лежат в post-analysis-source. Проверяем конкретный point/route,
+zero settle, отключённые retry/repeat, completed taps и финальные ack3/Stored; чужая coordinate/route/flow отвергаются.
+
+**Проверено:** 143 JS tests после исправления; 9 прежних Python tests, включая те же 3 Maestro JUnit parser tests,
+новых Python tests нет. Первый full invocation упёрся в sandbox localhost EPERM; не считаем его passing. Полный
+rerun с доступом localhost прошёл. Mutations wrong-route/wrong-point/unconditional acceptance отвергаются, restored
+source проходит. Во время acquisition собственные tests/builds/sampler не шли, OS-wide условия не контролировали.
+
+Изолированный `/private/tmp/input-calibration-export-_wrc1pdt/analysis.tgz` без npm dependencies воспроизводит
+report SHA `676c950c9ecdddd55061553667ea38f2b54b70c455425de9023f8945ce0333bd` и expected exit 1. Отключение этого exit,
+подмена coordinate command и foreign JUnit flow ломают соответствующие проверки; восстановленный artifact идентичен.
+Прежний paced report также воспроизводится с неизменным SHA/exit 1. Целый app и 123-file hash inventory сохранены;
+все 276 old presentation hashes совпадают. Simulator возвращён в manual Release screen. AI hook review был
+unavailable/timeout и сам продолжил, bypass не использовали.
+
+Monorepo меняет research docs/coverage/journal; title/abstract, F index и runtime packages не менялись.
+Observe/app инструментирует, harness запускает/считает, фактический OTLP backend принимает/хранит, Observer frontend
+читает свои поддерживаемые схемы. Новый raw research JSON не становится Observer importer.
+
+**Дальше:** отдельно объявить loaded comparison с coordinate route, всеми callback/body проверками и actual native
+phases. Idle calibration не смешиваем с прежним failed pilot. Для точных 50-ms phases нужна отдельная более строгая
+калибровка; physical presentation/ordinary Release, Components Profiler, startup/hydration, Flashlight и CI rule открыты.
+
+---
+
 ## Paced native input — 17 ноября: idle baseline есть, phase gate не пройден
 
 По разрешению пользователя смержили #127 с проверкой head/security check через `gh`, без bypass/admin/force;
