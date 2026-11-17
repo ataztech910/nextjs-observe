@@ -1,5 +1,13 @@
 # Research summary and decisions
 
+Native-source follow-up (17 November): [HTTP downloads and median/tail tradeoff](RN_NATIVE_DOWNLOAD_RESEARCH.md).
+Eight dense-probe Simulator runs replace synthetic progress with native XHR; ordinary physical/input/profiler-tool
+acceptance remains open. The initial three-point real-source smoke did not reproduce the model's extreme.
+
+New research (17 November): [RN progress pressure outside React render](RN_EVENT_PRESSURE_RESEARCH.md).
+22 completed Simulator profiling runs find a bounded render/notification mismatch; real native producer, physical
+input/device and named-tool recordings remain open. This does not change full F acceptance.
+
 Conference preparation: [proposed demonstration sequence and rehearsal contract](CONFERENCE_DEMO_PLAN.md) selects scoped claims from the existing evidence; it adds no measurements or acceptance budget.
 
 ## Current implementation checkpoint — 14 November 2026

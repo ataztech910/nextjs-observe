@@ -6,6 +6,68 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Native download follow-up — 17 ноября: median и tail расходятся
+
+Пользователь разрешил merge #123 и продолжение; PR смержен (`cc68247`). GitHub connector ответил 403 на merge,
+настроенный `gh` выполнил его с проверкой head SHA; проверка безопасности PR прошла, bypass не применялся.
+**Чтобы** проверить исходную модель на настоящем native source, **добавили** XHR Blob downloads в app-local host
+и независимый HTTP byte producer/validator в experiment repo: `research-rn-native-downloads`, commit `35a8b21`,
+remote нет. [Протокол и полный результат](research/performance-observability/RN_NATIVE_DOWNLOAD_RESEARCH.md).
+
+**Получили:** первый smoke (2 процесса) на трёх inherited control points не подтвердил прежний worst delay —
+это сохранённое отрицательное наблюдение. Отдельный v2 protocol до acquisition задал controls каждые 137 ms на
+всё окно transfers. 8 fresh processes: 4/16 downloads, rescan/incremental, обратный порядок во втором блоке.
+На 16 requested files source overlap peak=6, фактический rate около 104 progress/s, не искусственные 320/s.
+В обоих блоках layout p95 lower endpoints снизились 19.043/18.670 → 4.811/5.918 ms, но median выросли
+1.419/1.479 → 3.130/4.099 ms. Это per-process описания коррелированных нотификаций, не field percentiles/CI.
+Точную причину изменения median пока не установили. React renders оставались короткими.
+
+Все 80 тел (83,950,592 bytes) проверены на точное ожидаемое base64 содержимое после native load и вне probe
+acquisition. Native progress и load отмечены раздельно; фактические callbacks replayed в независимую модель,
+итоговые rows/summaries совпадают. 376 controls и 5120 progress — не независимые benchmark replications.
+Simulator/profiling artifact, synthetic control notification, transport clock bounds: physical/touch/presentation,
+Hermes sampling и React DevTools workflow этим не закрыты. Старую model extreme не выдаём за native result.
+
+**Проверено:** 125 tests pass, web typecheck/build, native Release compile/link, 2 smoke + 8 dense runs. Шесть новых
+tests; mutations пропуска exact bytes и probe/verification isolation пойманы, source восстановлен, targeted pass.
+Replay 20 прежних model sweep/phase + 8 native runs даёт прежние analyses. Все 276 hashes старой презентации
+совпадают. AI hook unavailable/timeout, сам продолжил без bypass. Монорепо меняет только документы; raw reports
+и runtime research в отдельном local repo. Исторические captures, F index и presentation source не менялись.
+
+**Дальше:** Hermes CPU capture + React DevTools, причина median behavior, независимо timestamped native input,
+physical ordinary Release и confirmatory protocol перед regression budget. Observer остаётся reader; новый raw
+pilot JSON пока не поддерживаемый report schema. Fixed title/abstract не меняли.
+
+---
+
+## RN research — 17 ноября: короткие renders и задержка нотификаций
+
+**Чтобы** найти содержательный кейс под фиксированный анонс, **исследовали** progress callbacks вне React render,
+вместо ещё одного busy-loop demo. В локальном experiment repo создана ветка `research-rn-progress-pressure`,
+commit `9980d23` (remote по-прежнему нет). Independent loopback WebSocket producer моделирует progress,
+не замедляясь вместе с RN JS. Rescan всей истории сравнивается с incremental delta update; события не теряем,
+все итоговые rows и суммы совпадают. [Контракт и все результаты](research/performance-observability/RN_EVENT_PRESSURE_RESEARCH.md).
+
+**Получили:** 2 smoke + 16 sweep + 4 phase runs на Release/Hermes Simulator с отдельным profiling renderer.
+В high-load sweep max React render <0.710 ms, а send→JS receipt lower endpoints до 33.180 ms; incremental до
+0.597 ms при max render 1.383 ms. Phase follow-up сохраняет расхождение: send→layout effect до 41.477 ms против
+4.795 ms. Это simulated notifications, не реальные downloads/touches/presentation. Два процесса на ячейку,
+не сотни независимых повторов; clock bounds транспортные, precision/drift неизвестны. Гипотеза перспективна,
+но физический performance и conference acceptance не закрыты. Малые нагрузки и фазовая зависимость сохранены.
+
+**Проверено:** 119 experiment tests pass, web typecheck/build, native Release compile/link, 22 Simulator runs.
+Пять новых tests и две mutations: ошибка cumulative→delta и фиктивный zero при unavailable Profiler отвергнуты;
+исходники восстановлены, targeted tests pass. Первый sandboxed full suite не смог открыть HTTP порты; повтор с
+local networking прошёл. Старые 276 presentation hashes совпадают. AI commit review сообщил unavailable/timeout
+и сам продолжил; hooks не обходились. Обычный default renderer не меняли, profiling opt-in записан в identity.
+В монорепо только документы; runtime Observe/collector/Observer, старые captures и F index не менялись.
+
+**Дальше:** реальный native progress source/правдоподобная частота, Hermes CPU capture и React DevTools workflow,
+независимый native input и physical Release. Затем confirmatory protocol и performance regression rule.
+Observer расширять только под доказанную потребность принятых результатов; сырые pilot JSON пока отдельные.
+
+---
+
 ## Фиксированный brief — 17 ноября: эксперименты под заявленное описание
 
 Пользователь уточнил: тему и описание менять нельзя. **Чтобы** готовить именно заявленный доклад,
