@@ -1,5 +1,9 @@
 # Research summary and decisions
 
+Hermes checkpoint (17 November): [native download source attribution](HERMES_PROFILE_RESEARCH.md).
+Two clean Debug/Hermes profiles identify the full-history aggregation path and import into RN DevTools Performance.
+This is separate from Release measurements; median behavior, physical input and other named-tool gates remain open.
+
 Native-source follow-up (17 November): [HTTP downloads and median/tail tradeoff](RN_NATIVE_DOWNLOAD_RESEARCH.md).
 Eight dense-probe Simulator runs replace synthetic progress with native XHR; ordinary physical/input/profiler-tool
 acceptance remains open. The initial three-point real-source smoke did not reproduce the model's extreme.

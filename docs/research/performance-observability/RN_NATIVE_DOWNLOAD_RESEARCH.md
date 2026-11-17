@@ -105,8 +105,9 @@ a new supported Observer schema; no instrumentation was moved into its frontend.
 
 ## Next gates
 
-Capture actual Hermes CPU samples and React DevTools workflow to locate the callback/store path and investigate
-median behavior. Then independently timestamp native input and declare its completion endpoint, with physical
+[Hermes diagnostic checkpoint](HERMES_PROFILE_RESEARCH.md) now locates the callback/store path in actual Debug
+sampling profiles, imported in RN DevTools Performance. Release median behavior and the separate React Components
+Profiler workflow remain open. Independently timestamp native input and declare its completion endpoint, with physical
 ordinary Release comparisons separate from diagnostic captures. Validate source/history realism and freeze a
 confirmatory protocol before a regression budget. Startup, hydration, Flashlight and CI regression workflow remain
 separate requirements of the unchanged talk brief. No new slides claim those gates complete.
