@@ -1,5 +1,10 @@
 # Research summary and decisions
 
+Paced input pilot (17 November): [no-download control and independent planned targets](RN_PACED_INPUT_RESEARCH.md).
+Nine processes / 27 gestures complete; 4 phase-budget misses remain in the report and the gate exits 1. Idle already
+has a measurable input path; no accepted phase-controlled optimization claim follows. Actual timestamps stay separate
+from Maestro delivery timing.
+
 Native input checkpoint (17 November): [actual Maestro gestures and declared acknowledgement layout](RN_NATIVE_INPUT_RESEARCH.md).
 The native touch path is measured separately from source notifications; sparse functional observations do not establish
 a touch p95 or optimization win. Preserve failed/late runs and keep Simulator gates separate from physical acceptance.
