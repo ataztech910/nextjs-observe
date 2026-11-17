@@ -6,6 +6,57 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Release latency decomposition — 17 ноября: median/tail tradeoff повторяется
+
+По разрешению пользователя смержили #125 с проверкой head SHA и зелёного security check; merge `c442aae`.
+GitHub connector снова вернул 403, настроенный `gh` выполнил merge без bypass/admin/force push. Head #125 включён
+в origin/master, локальный master обновлён, следующий шаг начат отдельной веткой.
+
+**Чтобы** проверить устойчивость median/tail tradeoff и определить участок задержки, **добавили** repeat mode и
+отдельный harness analyzer/report в experiment repo: `research-rn-latency-decomposition`, commit `e5caac2`, remote нет.
+[Полный checkpoint](research/performance-observability/RN_LATENCY_DECOMPOSITION.md). Protocol записан до acquisition:
+четыре блока с чередованием порядка rescan/incremental, восемь fresh-process Release/Hermes React profiling runs,
+8,192 history rows, 16 real native XHR bodies/run, прежние 50/137/250-ms интервалы. App sources не менялись от Hermes
+checkpoint; собрали отдельный Release artifact. Debug timings в повтор не входят, sampler/debugger не подключён.
+
+**Получили:** `native-latency-1794945085024`, четыре пары с одинаковым направлением: incremental снижает observed
+source→layout p95 (15.694–18.573 → 6.053–6.510 ms), повышая median (1.391–1.814 → 4.770–5.444 ms). Это per-process
+nearest-rank quantiles lower endpoints условной clock model, не field percentiles/CPU/confidence intervals.
+Same-JS-clock receipt→layout median differences: +2.873, +3.311, +3.633, +3.323 ms. Разница есть и без cross-clock
+пересчёта; scheduler/CPU-frequency/GC cause не установлена. Component medians/p95 не складываем: additive identity
+проверяется для каждого уведомления, а не для квантилей. React render summaries process-wide и не приписаны
+конкретным notification commits по ordinal index.
+
+Все 8,192 progress callbacks, 128 load callbacks/bodies и 134,340,608 bytes сохранены и проверены. 567 controls —
+внутрипроцессные наблюдения, не 567 независимых повторений. Один процесс emitted 70 до конца source, остальные 71;
+ничего не дополняли до искусственного fixed count. First-containing layout сохранил notification label для всех
+567: возможное затирание periodic Progress проверяется отдельно, но здесь не наблюдалось. Layout не означает paint.
+
+Первый technical start `native-latency-1794945004950` остановили и исключили до paired comparison: по ошибке запустили
+test suite параллельно с acquisition. Его raw artifacts и exclusion.json сохранены. Socket tests в sandbox дали EPERM;
+после остановки acquisition полный suite прошёл с разрешёнными локальными сокетами, затем выполнена чистая серия
+без одновременных собственных builds/tests/inspector. OS-wide background/thermal/power conditions не калиброваны.
+
+**Проверено:** 133 tests; настоящий native Release build; две mutations (ложно считать label сохранившимся;
+вычесть неверную clock bound) отвергаются, исходники восстановлены и targeted tests зелёные. Восемь новых и восемь
+исторических Release analyses replay идентично; paired report SHA при повторном CLI расчёте тот же. Raw/report
+identity и все восемь input hashes сохранены; исходные 276 presentation hashes совпадают. App возвращён в ручной
+Release screen. AI commit-hook review unavailable/timeout и сам продолжил; bypass не применялся.
+
+Изолированный analysis artifact `/private/tmp/rn-latency-export-8odosbqy/analysis.tgz` распакован вне обоих repo:
+CLI без установленных зависимостей пересчитал восемь raw inputs в тот же report SHA. Проверены 75 локальных
+Markdown links, все восемь строк таблицы против raw report, знаки четырёх paired intervals и неизменность brief/F index.
+
+Monorepo меняет research docs, не runtime packages или frontend. Title/abstract и F evidence index сохранены.
+Raw paired JSON остаётся harness format, не новым Observer import contract; instrumentation остаётся в app/Observe,
+backend отвечает за OTLP ingestion/storage, Observer frontend читает поддерживаемые схемы.
+
+**Дальше:** native input с независимым timestamp и объявленным completion; отдельная causal intervention для
+scheduling/CPU/GC. Ordinary physical Release, React Components Profiler, startup, SSR hydration, Flashlight и
+исполняемое CI regression правило всё ещё нужны для fixed brief. Не заявлять uniform UX improvement по одному p95.
+
+---
+
 ## Hermes attribution — 17 ноября: находим пересчёт вне React render
 
 После merge всей очереди продолжили исследование. **Чтобы** проверить, где работает full-history store во время

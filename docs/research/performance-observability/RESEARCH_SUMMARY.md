@@ -1,5 +1,9 @@
 # Research summary and decisions
 
+Release repeat (17 November): [four native latency pairs and decomposition](RN_LATENCY_DECOMPOSITION.md).
+Lower p95 and higher median repeat in both orders; the median difference also exists on one JS clock.
+Causal scheduling/CPU/GC attribution and native input/presentation remain open; do not claim uniform UX improvement.
+
 Hermes checkpoint (17 November): [native download source attribution](HERMES_PROFILE_RESEARCH.md).
 Two clean Debug/Hermes profiles identify the full-history aggregation path and import into RN DevTools Performance.
 This is separate from Release measurements; median behavior, physical input and other named-tool gates remain open.
