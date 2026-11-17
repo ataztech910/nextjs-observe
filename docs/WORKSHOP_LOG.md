@@ -6,6 +6,63 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Paced native input — 17 ноября: idle baseline есть, phase gate не пройден
+
+По разрешению пользователя смержили #127 с проверкой head/security check через `gh`, без bypass/admin/force;
+merge `5ce01e7`. Локальный master обновлён, следующий checkpoint — отдельная ветка.
+
+**Чтобы** отделить background transfer pressure от input pipeline и зависимости нажатий от ack, **добавили**
+явный no-download control и fixed external deadlines в experiment repo: `research-rn-paced-input`, commit `98177a9`,
+remote нет. [Полный протокол и все точки](research/performance-observability/RN_PACED_INPUT_RESEARCH.md).
+Idle сохраняет model/UI refresh/control notifications, но не вызывает XHR; это не равный объём выполненной работы.
+Загруженные варианты сохраняют все bytes/callbacks/final states. Instrumentation в app, не в Observer.
+
+До acquisition объявили три Latin-order блока: idle→rescan→incremental, rescan→incremental→idle,
+incremental→idle→rescan. Девять fresh Release/Hermes React profiling процессов, по три native gestures. HTTP gates
+в Maestro runScript открываются на +3/+9/+15 s от source start; между taps нет ack assertions, предыдущая задержка
+не сдвигает следующий target. Native timestamps остаются временем события; gate release не подменяет их.
+
+**Получили:** `paced-input-1794954728629`, все 9 процессов / 27 gestures валидны по native/input/body evidence и
+Maestro JUnit/commands. Но 4/27 превышают заранее объявленный upper lateness budget 1,500 ms, в трёх процессах.
+Сохранили все точки; report `phase-budget-missed`, CLI пишет полный JSON и выходит **1**. Passing JUnit не делает
+phase gate зелёным. Не фильтруем эти точки, не повышаем budget после данных и не делаем выборочные retries.
+
+Idle touch-up→layout lower endpoints 8.252–21.794 ms, rescan 8.590–40.891 ms, incremental 7.566–18.797 ms —
+описательные extrema девяти наблюдений на condition, не p95/field distribution. Native-down lateness около
+0.516–2.594 s — delivery timing Maestro, не app stall. Даже 23 within-budget точки не доказывают exact matching
+к 50-ms callback phase. Контрасты с idle имеют разные знаки; **принятое phase-controlled сравнение и causal UX win
+не установлены**. Source/native clock intervals условные, precision/drift/physical presentation не калиброваны.
+
+В шести loaded runs сохранены 12,288 progress callbacks, 96 loads/bodies, 100,755,456 bytes. Три idle runs имеют
+нулевые download events/files и неизменный initial store. UI screenshots подтверждают ack 3/Stored, idle Processed 0.
+Все gate requests/releases, фактические timestamps, prepared source bodies, app/build hashes и flow scripts
+сохранены локально. Календарная опечатка в pre-acquisition prose (18 вместо 17 ноября) исправлена только в текущей
+документации: raw snapshot/session timestamps/protocol parameters не переписывали.
+
+**Проверено:** 141 JS test + прежние 3 Python tests; actual native Release build. Mutations retargeting deadlines,
+игнорирования budget и разрешения events в idle отвергаются. Первый fake-timer mutation завис до await assertion;
+его и пересекавшийся suite остановили, добавили assertion до await и bounded timeout, восстановили исходники и
+заново успешно выполнили mutations/полный suite до acquisition. Прерванные проверки не считаем passed.
+Все девять paced analyses, восемь старых input analyses и 16 прежних notification analyses replay идентично.
+
+Изолированный `/private/tmp/paced-input-export-9pz7l8yq/analysis.tgz` без npm dependencies пересоздаёт SHA
+`bad70b0f9ad6bb21add098722286be1fd867dcac48126d267ada3a7ce81f9c1e` и ожидаемый exit 1. Mutation exit-guard
+ломает эту проверку; foreign JUnit flow отвергается отдельно, восстановленный artifact воспроизводится.
+Все 276 old presentation hashes совпадают. Собственные builds/tests/sampler не шли одновременно с acquisition;
+OS-wide условия не контролировали. Simulator возвращён в ручной Release screen. AI commit-hook review был
+unavailable/timeout и сам продолжил; bypass не применялся.
+
+Monorepo публикует research docs/coverage. Не меняли title/abstract, F evidence index, старую презентацию или
+runtime packages. Raw paced JSON не стал Observer importer: Observe/app инструментирует, harness запускает/считает,
+реальный backend принимает/хранит OTLP, Observer frontend читает поддерживаемые схемы.
+
+**Дальше:** калибровать lower-jitter injection route до принятия phase-controlled benchmark; coordinate selection
+или другой driver требуют отдельного заранее объявленного протокола, а не ослабления этого budget задним числом.
+Physical ordinary Release/presentation, React Components Profiler, startup, SSR hydration, Flashlight и CI regression
+workflow остаются требованиями fixed brief. Условия и отрицательный результат этого pilot сохраняются.
+
+---
+
 ## Native input — 17 ноября: timestamps реального touch отдельно от notifications
 
 Пользователь разрешил merge #126 и продолжение. `gh` смержил проверенный head с зелёным security check без обхода

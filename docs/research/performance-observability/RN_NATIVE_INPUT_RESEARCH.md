@@ -62,6 +62,10 @@ Observer import contract. No collector or Observer runtime package changes in th
 
 ## Retained results and limits
 
+Follow-up: [paced input with a no-download control](RN_PACED_INPUT_RESEARCH.md) retains nine processes and 27 gestures.
+The phase-coverage gate fails with four misses; it does not close phase-controlled benchmark acceptance or replace
+the initial functional evidence below.
+
 Final v2 session: `native-input-1794953533485`, four fresh processes / twelve gestures, all associated Maestro
 JUnit/ordered commands and app/body checks passed. Every run delivered 2,048 native progress callbacks and sixteen
 loads: 8,192 progress callbacks, 64 verified bodies, 67,170,304 bytes total. All callbacks update the same final model.
