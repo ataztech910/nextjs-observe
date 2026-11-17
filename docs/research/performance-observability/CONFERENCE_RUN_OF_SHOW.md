@@ -1,5 +1,7 @@
 # Run of show — 30 minutes total
 
+> **Status — 17 November 2026:** This evidence-only draft does not yet fulfill the fixed conference description. The [fixed brief and delivery requirements](CONFERENCE_BRIEF.md) govern acceptance and the replacement main route. RN before/after, startup/hydration, named tool workflows and regression prevention require additional work; the earlier “no new measurements required” scope is superseded. Existing results retain their original limits.
+
 The speaker confirmed a 30-minute total slot on 15 November 2026. Working allocation: **25 minutes presentation,
 5 minutes Q&A**, including slide/viewer transitions. The Q&A split is our proposed allocation within that total,
 not an additional organizer instruction. This supersedes the earlier approximate 12-minute evidence-only estimate.

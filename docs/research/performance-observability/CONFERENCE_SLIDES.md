@@ -1,5 +1,7 @@
 # Conference slides — editorial draft
 
+> **Status — 17 November 2026:** This evidence-only draft does not yet fulfill the fixed conference description. The [fixed brief and delivery requirements](CONFERENCE_BRIEF.md) govern acceptance and the replacement main route. RN before/after, startup/hydration, named tool workflows and regression prevention require additional work; the earlier “no new measurements required” scope is superseded. Existing results retain their original limits.
+
 Visual companion (15 November): [standalone presentation](../../../presentations/profiler-to-production/index.html) and [editing/preview instructions](../../../presentations/profiler-to-production/README.md). The sections below remain the editorial source; the visual deck is built separately from them.
 
 Draft after merge #116 (`d94c9b8`), 14 November 2026. English slide copy and speaker notes for
