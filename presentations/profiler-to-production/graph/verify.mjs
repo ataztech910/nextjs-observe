@@ -15,17 +15,18 @@ try{
  const base=process.env.DECK_URL??'http://127.0.0.1:4349/';
  async function ready(id){
   await page.waitForFunction(id=>new URLSearchParams(location.hash.slice(1)).get('step')===id,id);
-  await page.locator('.node-card--focus .detail-scroll').waitFor();
-  await page.waitForFunction(()=>{const items=[...document.querySelectorAll('.node-card--focus .detail-scroll li')];return items.length>0&&items.every(el=>Number(getComputedStyle(el).opacity)>.99)&&document.querySelector('.node-card--focus .detail-scroll').getBoundingClientRect().height>80;});
+  await page.locator('.node-card--focus li').first().waitFor();
+  await page.waitForFunction(()=>{const items=[...document.querySelectorAll('.node-card--focus li')];return items.length>0&&items.every(el=>Number(getComputedStyle(el).opacity)>.99)&&document.querySelector('.node-card--focus ul').getBoundingClientRect().height>30;});
   await page.waitForFunction(()=>{const node=document.querySelector('.node-card--focus'),canvas=document.querySelector('.canvas-viewport');if(!node||!canvas)return false;const n=node.getBoundingClientRect(),c=canvas.getBoundingClientRect();return n.width>100&&n.left>=c.left-2&&n.right<=c.right+2&&n.top>=c.top-2&&n.bottom<=c.bottom+2;});
  }
  await page.goto(base);await ready('slide-01');
- if(await page.locator('#world').count()!==1||await page.locator('.node-card').count()!==10)throw Error('Not the original canvas engine');
+ if(await page.locator('#world').count()!==1||await page.locator('.node-card').count()!==12)throw Error('Not the original canvas engine');
  const initial=await page.locator('#world').getAttribute('style');
- for(const id of ['01','02','03','04','05','06','07','08']){
-  if(id!=='01'){await page.keyboard.press('ArrowRight');await ready('slide-'+id);}
+ for(const id of ['01','about-me','gdg-linz','02','03','04','05','06','07','08']){
+  if(id!=='01'){await page.keyboard.press('ArrowRight');await ready(['about-me','gdg-linz'].includes(id)?id:'slide-'+id);}
   const text=await page.locator('.node-card--focus').innerText();
   if(text.includes('Timing:')||await page.getByRole('complementary',{name:'Presenter notes',exact:true}).count())throw Error('Notes leaked');
+  if(['about-me','gdg-linz'].includes(id)){const image=page.locator('.node-card--focus img.photo-frame').first();await image.waitFor();await image.evaluate(img=>img.decode());if(!await image.evaluate(img=>img.naturalWidth>0))throw Error('Intro image missing');if(id==='gdg-linz'&&await image.evaluate(img=>getComputedStyle(img).objectFit)!=='contain')throw Error('GDG logo cropped');}
   results.push({id,text});await page.screenshot({path:out+'/'+id+'.png'});
  }
  if(await page.locator('#world').getAttribute('style')===initial)throw Error('Camera did not move');
@@ -45,10 +46,10 @@ try{
  await page.setViewportSize({width:1280,height:720});await ready('slide-07');await page.screenshot({path:out+'/720p.png'});
  await page.context().setOffline(true);
  const packed=process.env.DECK_PACKED_URL??new URL('dist/index.html',import.meta.url).href;
- await page.goto(packed+'#step=slide-06');await ready('slide-06');
+ await page.goto(packed+'#step=slide-06');await page.reload();await ready('slide-06');
  if(!await page.locator('.node-card--focus').innerText().then(t=>t.includes('20 dropped spans')&&t.includes('incomplete')&&t.includes('failed')))throw Error('Packed fault states lost');
- await page.screenshot({path:out+'/offline.png'});await page.keyboard.press('ArrowRight');await ready('slide-07');
+ await page.screenshot({path:out+'/offline.png'});await page.keyboard.press('Home');await ready('slide-01');for(const intro of ['about-me','gdg-linz']){await page.keyboard.press('ArrowRight');await ready(intro);const img=page.locator('.node-card--focus img.photo-frame').first();await img.evaluate(el=>el.decode());if(!await img.evaluate(el=>el.src.startsWith('data:image/jpeg;')&&el.naturalWidth>0))throw Error('Offline photo dependency');await page.screenshot({path:out+'/offline-'+intro+'.png'});}await page.goto(packed+'?reload=1#step=slide-06');await ready('slide-06');await page.keyboard.press('ArrowRight');await ready('slide-07');
  if(errors.length||external.length)throw Error(JSON.stringify({errors,external}));
- await writeFile(out+'/verification.json',JSON.stringify({engine:'copied workshop-slides graph engine',results,errors,external,offlinePacked:packed,checks:['canvas/cards','camera','main route stop','notes/scroll','both overview appendices/return','home','help','deep link','720p fit','offline packed fault states/navigation']},null,2));
- console.log(JSON.stringify({out,mainSlides:8,totalCards:10,errors,external,offlinePacked:packed}));
+ await writeFile(out+'/verification.json',JSON.stringify({engine:'copied workshop-slides graph engine',results,errors,external,offlinePacked:packed,checks:['canvas/cards','camera','intro photos/QR/offline images','main route stop','notes/scroll','both overview appendices/return','home','help','deep link','720p fit','offline packed fault states/navigation']},null,2));
+ console.log(JSON.stringify({out,mainSlides:10,totalCards:12,errors,external,offlinePacked:packed}));
 }finally{await browser.close();}

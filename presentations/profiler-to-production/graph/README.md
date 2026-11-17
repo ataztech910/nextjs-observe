@@ -33,7 +33,7 @@ page time, not an automatic 25-minute hard stop.
 | Home | First step |
 | ? | Original engine help |
 
-Appendices A1/A2 are accessible from overview; Next returns them to 08. The main counter remains 8 steps, excluding
+Appendices A1/A2 are accessible from overview; Next returns them to 08. The main counter now has 10 steps (eight talk cards plus two opening cards), excluding
 appendices. Deep links use **`#step=slide-03`**, unlike the flat fallback's hash format. The engine maintains its own
 navigation trail; it uses replaceState for its URL rather than creating browser-history entries for each step.
 Notes overlay the same window, not a private presenter screen. Close them before projecting audience content.
@@ -41,9 +41,10 @@ Notes overlay the same window, not a private presenter screen. Close them before
 ## Content and standalone build
 
 The [reviewed Markdown](../../../docs/research/performance-observability/CONFERENCE_SLIDES.md) supplies audience values,
-source/endpoint/boundary text and full notes. `generate.py` projects that content into `src/deck/deck.ts`, the engine's
+source/endpoint/boundary text and full notes. `introduction.json` supplies the copied speaker/GDG opening cards.
+`generate.py` projects both sources into `src/deck/deck.ts`, the engine's
 content entry point. It converts tables to labelled bullet rows without recalculating any observations. Edit the
-Markdown and regenerate, not the generated TypeScript. Sources/endpoints/limitations remain in the focused card.
+Markdown or introduction data and regenerate, not the generated TypeScript. Sources/endpoints/limitations remain in the focused card.
 
 ```sh
 npm run build
@@ -52,7 +53,7 @@ npm test
 
 Build performs generation, TypeScript checking, production bundling and writes **`dist/index.html`** with embedded
 CSS and JavaScript. Open it directly without a server or network. No workshop illustrations, application routing,
-Lovable integration, remote fonts or external report data are needed to present these ten cards. The imported
+Lovable integration, remote fonts or external report data are needed to present these twelve cards. The imported
 engine has no audience-PDF layout; use the [flat deck](../index.html) / its existing audience PDF for printing.
 
 The slot is 30 minutes total: 25 presentation + 5 Q&A. These are rehearsal targets; no actual speaking rehearsal
@@ -72,5 +73,15 @@ PLAYWRIGHT_PACKAGE_ROOT=../../../../performance-observability node verify.mjs
 
 Run the dev server first and build `dist/index.html`. Optional `DECK_URL`, `DECK_PACKED_URL` and `DECK_ARTIFACTS` override
 the preview, offline build and output paths. The check waits for card animations, verifies the camera and focused card
-fit, eight main steps/stop, overview/appendix return, notes scroll/timing, help/Home/deep links, 720p fit and offline
+fit, ten main steps/stop, overview/appendix return, notes scroll/timing, help/Home/deep links, 720p fit and offline
 packed navigation. Screenshots and verification JSON are written to ignored `artifacts/`.
+
+## Opening photos
+
+The first steps are title → Andrei Tazetdinov → GDG Linz → endpoint model. The three-card opening stays inside
+00:00–01:30: title 15 seconds, speaker 45 seconds, community 30 seconds. Other slide timing is unchanged.
+The speaker portrait and GDG image are byte-identical copies of the old deck's `public/about/me.jpg` and
+`public/about/gdg-linz.jpg`; see `ASSET_ORIGIN.json`. They are imported with `?inline` so the standalone HTML embeds
+both images and works offline. The GDG image uses contain sizing to preserve the whole mark. LinkedIn/community
+QR destinations are copied from the original cards; no network is needed to render them. The original files remain
+in place. The flat print fallback has its original eight-card main route and does not include these graph-only intros.

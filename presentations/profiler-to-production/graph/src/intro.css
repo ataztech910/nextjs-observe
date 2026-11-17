@@ -1,0 +1,2 @@
+/* Preserve the complete GDG mark; portrait uses the original engine photo layout. */
+.node-card[aria-label^="GDG Linz"] .photo-frame { object-fit: contain; background: white; }

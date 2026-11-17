@@ -1,5 +1,7 @@
-// Generated from CONFERENCE_SLIDES.md by generate.py. Edit the Markdown, then regenerate.
+// Generated from CONFERENCE_SLIDES.md + introduction.json. Edit sources, then regenerate.
 import type { Deck } from "./types";
+import speakerPhoto from "../assets/about/me.jpg?inline";
+import communityPhoto from "../assets/about/gdg-linz.jpg?inline";
 export const deck: Deck = {
   "meta": {
     "title": "From Profiler to Production",
@@ -28,15 +30,60 @@ export const deck: Deck = {
           "Measuring What Actually Matters in React & React Native",
           "Start with the interaction. Name the endpoint. Preserve the evidence."
         ],
-        "note": "Timing: 00:00–01:30 elapsed; budget 1:30. State the question and scoped local evidence; move to the endpoint model at 01:30.\n\n“When we say an app is fast, which observation do we mean: load, selected JavaScript work, React completion,\nor pixels presented? I will show controlled cases where these observations answer different questions.\nThese are reproducible local experiments, with explicit limits. They do not prove a universal production result.”\n\nEvidence cue\nScope and six-experiment coverage (CONFERENCE_DEMO_PLAN.md). The original hypothesis remains a question;\nthis draft makes only the selected scoped claims. No numerical performance claim on this title slide."
+        "note": "Timing: 00:00–00:15 elapsed; budget 0:15. State the title, then introduce yourself and GDG Linz. The full three-card opening finishes at 01:30.\n\n“When we say an app is fast, which observation do we mean: load, selected JavaScript work, React completion,\nor pixels presented? I will show controlled cases where these observations answer different questions.\nThese are reproducible local experiments, with explicit limits. They do not prove a universal production result.”\n\nEvidence cue\nScope and six-experiment coverage (CONFERENCE_DEMO_PLAN.md). The original hypothesis remains a question;\nthis draft makes only the selected scoped claims. No numerical performance claim on this title slide."
       }
+    },
+    {
+      "id": "about-me",
+      "title": "Andrei Tazetdinov",
+      "subtitle": "Dynatrace · GDG Linz",
+      "photo": speakerPhoto,
+      "textWidth": 720,
+      "size": "md",
+      "detail": {
+        "heading": "Who is talking",
+        "bullets": [
+          "I work on the Dynatrace React Native agent",
+          "SDK-level instrumentation inside production apps",
+          "Today: performance metrics, tools and reproducible measurements"
+        ],
+        "qr": {
+          "value": "https://www.linkedin.com/in/andrei-tazetdinov/",
+          "caption": "LinkedIn"
+        },
+        "note": "Timing: 00:15–01:00 elapsed; budget 0:45. Introduce your work on the React Native agent at Dynatrace, then move on. The linked experimental numbers are controlled local cases, not customer-production benchmarks."
+      },
+      "x": 2280,
+      "y": 300
+    },
+    {
+      "id": "gdg-linz",
+      "title": "GDG Linz",
+      "subtitle": "Google Developer Group · Linz, Austria",
+      "photo": communityPhoto,
+      "textWidth": 720,
+      "size": "md",
+      "detail": {
+        "heading": "Developers meeting developers",
+        "bullets": [
+          "meetups, talks and workshops in Linz",
+          "come by — or come and speak"
+        ],
+        "qr": {
+          "value": "https://gdg.community.dev/gdg-linz/",
+          "caption": "GDG Linz"
+        },
+        "note": "Timing: 01:00–01:30 elapsed; budget 0:30. Introduce GDG Linz and invite people to join or speak. The QR points to the original community page. Continue to the measurement model by 01:30."
+      },
+      "x": 4320,
+      "y": 300
     },
     {
       "id": "slide-02",
       "title": "Name the boundary before reading the number",
       "subtitle": "Main talk · 25 minutes",
       "size": "lg",
-      "x": 1360,
+      "x": 6360,
       "y": 300,
       "chips": [
         {
@@ -65,8 +112,8 @@ export const deck: Deck = {
       "title": "A: the same load score, different later interaction",
       "subtitle": "Source: load-a-1794560947170-6c40 Endpoint: handler start → React Profiler callback. Boundary: one local unthrottled Mac; four primary matched blocks; descriptive result.",
       "size": "lg",
-      "x": 2480,
-      "y": 300,
+      "x": 240,
+      "y": 1900,
       "chips": [
         {
           "label": "03",
@@ -92,8 +139,8 @@ export const deck: Deck = {
       "title": "B: identical downloaded code, different configured work",
       "subtitle": "Source: bundle-b-1794566743221-443a Boundary: four primary matched pairs on one Mac; ranges are observed run values, not confidence intervals.",
       "size": "lg",
-      "x": 3600,
-      "y": 300,
+      "x": 2280,
+      "y": 1900,
       "chips": [
         {
           "label": "04",
@@ -118,8 +165,8 @@ export const deck: Deck = {
       "title": "Instrumentation and analysis have different jobs",
       "subtitle": "Main talk · 25 minutes",
       "size": "lg",
-      "x": 240,
-      "y": 1800,
+      "x": 4320,
+      "y": 1900,
       "chips": [
         {
           "label": "05",
@@ -147,8 +194,8 @@ export const deck: Deck = {
       "title": "F delivery: a completed check can contain incomplete telemetry",
       "subtitle": "Source: pipeline-1794641370737-5d72 Endpoint: produced spans → SDK queue → exporter → receiver. Boundary: controlled faults; no production loss-rate claim.",
       "size": "lg",
-      "x": 1360,
-      "y": 1800,
+      "x": 6360,
+      "y": 1900,
       "chips": [
         {
           "label": "06",
@@ -173,8 +220,8 @@ export const deck: Deck = {
       "title": "F cost: keep bytes, readiness and CPU separate",
       "subtitle": "Source: stripped-1794680848671-8f54 Boundary: two build artifacts, six local alternating run pairs; no accepted overhead budget.",
       "size": "lg",
-      "x": 2480,
-      "y": 1800,
+      "x": 240,
+      "y": 3500,
       "chips": [
         {
           "label": "07",
@@ -201,8 +248,8 @@ export const deck: Deck = {
       "title": "Make the performance statement inspectable",
       "subtitle": "Main talk · 25 minutes",
       "size": "lg",
-      "x": 3600,
-      "y": 1800,
+      "x": 2280,
+      "y": 3500,
       "chips": [
         {
           "label": "08",
@@ -230,8 +277,8 @@ export const deck: Deck = {
       "title": "React Native: callback cadence is one observable",
       "subtitle": "Source: ios-cadence-1794441662289; diagnostic corroboration ios-system-1794455821579. Boundary: Simulator functional evidence; no physical smoothness or dropped-frame conclusion.",
       "size": "lg",
-      "x": 1360,
-      "y": 3300,
+      "x": 4320,
+      "y": 3500,
       "chips": [
         {
           "label": "A1",
@@ -256,8 +303,8 @@ export const deck: Deck = {
       "title": "Runner outcome and archive state are separate",
       "subtitle": "Sources: maestro-1794559097407-1a14dc, maestro-1794559119640-609fd2. Endpoint: JS scheduling and native callback proxy; presentation unavailable.",
       "size": "lg",
-      "x": 2480,
-      "y": 3300,
+      "x": 6360,
+      "y": 3500,
       "chips": [
         {
           "label": "A2",
@@ -280,6 +327,14 @@ export const deck: Deck = {
   "edges": [
     {
       "from": "slide-01",
+      "to": "about-me"
+    },
+    {
+      "from": "about-me",
+      "to": "gdg-linz"
+    },
+    {
+      "from": "gdg-linz",
       "to": "slide-02"
     },
     {
@@ -327,6 +382,22 @@ export const deck: Deck = {
       ],
       "part": "Main talk · 25 minutes",
       "caption": "Start with the interaction. Name the endpoint."
+    },
+    {
+      "id": "about-me",
+      "focus": [
+        "about-me"
+      ],
+      "part": "Opening · within 1:30",
+      "caption": "Who is talking"
+    },
+    {
+      "id": "gdg-linz",
+      "focus": [
+        "gdg-linz"
+      ],
+      "part": "Opening · within 1:30",
+      "caption": "GDG Linz"
     },
     {
       "id": "slide-02",

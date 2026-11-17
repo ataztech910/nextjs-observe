@@ -9,7 +9,7 @@ The durations below are rehearsal targets, not measured speaking times or new ex
 
 | Slide | Elapsed window | Budget | What to finish in this window |
 | --- | --- | --- | --- |
-| 01 — Title | 00:00–01:30 | 1:30 | State the question and local-experiment scope. Move on without an extra biography or product tour. |
+| 01 — Title + speaker + GDG | 00:00–01:30 | 1:30 | In the graph deck: title 00:00–00:15, Andrei 00:15–01:00, GDG Linz 01:00–01:30. State the question and speaker context; no product tour. |
 | 02 — Endpoint model | 01:30–04:30 | 3:00 | Distinguish selected work, Profiler completion, readiness and presentation. Establish that overlapping intervals are not additive. |
 | 03 — A | 04:30–08:30 | 4:00 | Show all eight load scores and four paired block differences. Allow at most 60 seconds for the saved report; keep lifecycle INP separate. |
 | 04 — B | 08:30–12:30 | 4:00 | Show identical bytes and the two timing rows. Allow at most 60 seconds for saved byte evidence; state same artifact/different configured work. |
@@ -19,7 +19,8 @@ The durations below are rehearsal targets, not measured speaking times or new ex
 | 08 — Takeaway | 23:00–25:00 | 2:00 | Give the four evidence requirements and state the physical native/product-overhead gaps. Invite questions at 25:00. |
 | Q&A | 25:00–30:00 | 5:00 | Stay on 08; open A1/A2 only for a relevant question. End at 30:00. |
 
-The main-slide budgets sum to 25:00. The four evidence scenes total 15:30; opening/model/architecture/closing total
+The graph deck has ten main steps: the eight talk cards plus two photo introduction cards inside the first row above.
+The flat print fallback keeps its original eight-card main route. The main-slide budgets sum to 25:00. The four evidence scenes total 15:30; opening/model/architecture/closing total
 9:30. Appendices A1/A2 have no separate presentation budget. The deck's Next button still goes from 08 to A1:
 stop advancing at 08 and use **O** to select an appendix when answering a question. Printing pages 1–8 produces
 the core audience deck; printing all ten retains question-support slides.

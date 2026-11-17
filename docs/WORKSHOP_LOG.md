@@ -6,6 +6,36 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Вступительные фотографии — 17 ноября: спикер и GDG Linz
+
+По просьбе пользователя добавлены первые photo cards из старой презентации в новую graph-версию.
+PR #120 ещё open; ветка `step-performance-intro-photos` основана на его `bdbf2d6`, PR фотографий stacked поверх
+`step-performance-original-engine`, чтобы отдельно видеть только это изменение. Старый `workshop-slides` не менялся:
+все 276 source/assets hashes совпали; `me.jpg` и `gdg-linz.jpg` скопированы byte-identical, provenance в ASSET_ORIGIN.json.
+
+**Получили:** title → about-me (Andrei Tazetdinov, Dynatrace RN agent, портрет, LinkedIn QR) → GDG Linz (community
+image и исходный community QR) → endpoint model. Биография согласована с присланной аннотацией, не выдаёт lab results
+за customer production benchmarks. Вступление всё ещё 1:30: title 15s, speaker 45s, GDG 30s. Graph main counter теперь 10
+(восемь прежних cards + 2 intro), всего 12 с appendices; stop/return к 08 сохранены. Source intro data хранится отдельно
+в `introduction.json`, generated `deck.ts` остаётся entry для контента. Не переписывали научные результаты/основные
+speaker notes и не меняли длительность общего слота 25+5.
+
+Изображения импортируются `?inline`, поэтому dev и production используют встроенные data URLs; автономный HTML
+не зависит от старой папки или сервера картинок. Только новое intro.css задаёт contain для GDG, чтобы знак целиком
+поместился; скопированный движок не правили. Flat print fallback остался прежним и не содержит новых graph-intros;
+README явно разделяет версии. Run of show уточняет состав первого 90s окна.
+
+**Проверено:** typecheck/build pass, 17 tests pass. Isolated missing-portrait mutation поймана; live source не менялся.
+Chrome проверил 10 main cards/stop, оба appendix return, обе photos natural size/decode, contain GDG, notes/timing,
+overview/Home/help/deep links/720p и автономную навигацию. В offline оба фото именно embedded data:image/jpeg,
+page errors 0/external requests 0. Финальные portrait/GDG screenshots просмотрены. Artifacts:
+`/private/tmp/performance-intro-photos`; dist/images compiled в ignored build. Старые фото не редактировались.
+
+**Дальше:** показать обновлённое начало и продолжить работу над соответствием основной истории заявленной аннотации;
+этот шаг добавляет только знакомство со спикером и сообществом, не закрывает найденные RN/tooling/before-after gaps.
+
+---
+
 ## Движок прежней презентации — 15 ноября: независимая graph-версия performance-доклада
 
 По просьбе пользователя взяли движок `workshop-slides`, сохранив прежнюю презентацию там, где она есть.

@@ -52,8 +52,18 @@ def build():
         steps.append(step)
         if 0 < i < 8: edges.append({'from':f'slide-{matches[i-1][1]}','to':f'slide-{sid}'})
         if i >= 8: edges.append({'from':'slide-08','to':f'slide-{sid}','kind':'dashed','label':'Q&A'})
+    introduction = json.loads((ROOT/'introduction.json').read_text())
+    assert [n['id'] for n in introduction] == ['about-me','gdg-linz']
+    nodes[1:1] = introduction
+    steps[1:1] = [{'id':n['id'],'focus':[n['id']],'part':'Opening · within 1:30','caption':'Who is talking' if n['id']=='about-me' else 'GDG Linz'} for n in introduction]
+    nodes[0]['detail']['note'] = 'Timing: 00:00–00:15 elapsed; budget 0:15. State the title, then introduce yourself and GDG Linz. The full three-card opening finishes at 01:30.\n\n' + nodes[0]['detail']['note'].split('\n',1)[-1].strip()
+    for i,node in enumerate(nodes):
+        node['x'],node['y'] = 240+(i%4)*2040,300+(i//4)*1600
+    main = [s for s in steps if not s.get('returnToStep')]
+    edges = [{'from':a['focus'][0],'to':b['focus'][0]} for a,b in zip(main,main[1:])] + [{'from':'slide-08','to':f'slide-{sid}','kind':'dashed','label':'Q&A'} for sid in ['A1','A2']]
     deck = {'meta':{'title':'From Profiler to Production','subtitle':'React & React Native · 25 min + 5 min Q&A'},'nodes':nodes,'edges':edges,'steps':steps}
-    (ROOT/'src/deck/deck.ts').write_text('// Generated from CONFERENCE_SLIDES.md by generate.py. Edit the Markdown, then regenerate.\nimport type { Deck } from "./types";\nexport const deck: Deck = '+json.dumps(deck,ensure_ascii=False,indent=2)+';\n')
+    data = json.dumps(deck,ensure_ascii=False,indent=2).replace('"photo": "speakerPhoto"','"photo": speakerPhoto').replace('"photo": "communityPhoto"','"photo": communityPhoto')
+    (ROOT/'src/deck/deck.ts').write_text('// Generated from CONFERENCE_SLIDES.md + introduction.json. Edit sources, then regenerate.\nimport type { Deck } from "./types";\nimport speakerPhoto from "../assets/about/me.jpg?inline";\nimport communityPhoto from "../assets/about/gdg-linz.jpg?inline";\nexport const deck: Deck = '+data+';\n')
     return deck
 
 
