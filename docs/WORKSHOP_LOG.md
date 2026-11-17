@@ -6,6 +6,120 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Согласование очереди PR — 17 ноября: движок, фотографии, brief и research
+
+Пользователь разрешил смержить всю открытую очередь и решить конфликты до продолжения исследований.
+#121 (speaker/GDG photos) объединён в свою базовую ветку #120 (copied graph engine), #124 (native download
+research) и #122 (fixed brief) — в master. Checks не обходились, force push/admin merge не использовались.
+В #122 конфликт журнала разрешён сохранением обеих историй. Для #120 объединение со свежим master сохраняет
+journal entries обеих сторон, status fixed brief и preferred graph links в conference docs. Ни одна сторона
+конфликта целиком не выбрасывалась. Run of show явно различает graph stop на 08 и flat fallback переход в appendix.
+
+README обеих новых версий явно помечает содержание частичным draft относительно неизменяемого brief.
+Заголовок/abstract/brief побайтно совпадают с merge #122; generated graph content не отличается от #121.
+Новых benchmark runs и instrumentation/UI features при разборе очереди не добавляли.
+
+**Проверено перед финальным merge #120:** 17 graph tests, 3 flat renderer tests, graph generation/TypeScript/build.
+Standalone HTML упакован в `/private/tmp/pr-merge-graph.tgz`, распакован независимо от исходников. Chrome проверил
+10 main / 12 total cards, обе opening photos (в том числе embedded JPEG offline), camera/navigation, main stop,
+appendix returns, notes/scroll, help/Home/deep links, 720p fit и offline file navigation; page errors=0, external
+requests=0. Артефакты `/private/tmp/pr-merge-graph-check`. Изолированная mutation с повреждённым JPEG в копии
+artifact отвергнута на image.decode (EncodingError), рабочий artifact/source не менялся. Ссылки документов,
+отсутствие unresolved index entries и diff checks прошли. All 276 original presentation hashes и оба photo-copy
+SHA совпали; F evidence index SHA прежний. Backend/Observe runtime и raw experiment evidence не менялись.
+AI pre-commit review был unavailable/timeout и сам продолжил; hooks не обходились.
+
+**Дальше:** проверить итоговый master и пустую очередь открытых PR; только после этого возвращаться к
+Hermes/React DevTools/native input gates. Старая презентация остаётся на прежнем месте без изменений.
+
+---
+
+## Native download follow-up — 17 ноября: median и tail расходятся
+
+Пользователь разрешил merge #123 и продолжение; PR смержен (`cc68247`). GitHub connector ответил 403 на merge,
+настроенный `gh` выполнил его с проверкой head SHA; проверка безопасности PR прошла, bypass не применялся.
+**Чтобы** проверить исходную модель на настоящем native source, **добавили** XHR Blob downloads в app-local host
+и независимый HTTP byte producer/validator в experiment repo: `research-rn-native-downloads`, commit `35a8b21`,
+remote нет. [Протокол и полный результат](research/performance-observability/RN_NATIVE_DOWNLOAD_RESEARCH.md).
+
+**Получили:** первый smoke (2 процесса) на трёх inherited control points не подтвердил прежний worst delay —
+это сохранённое отрицательное наблюдение. Отдельный v2 protocol до acquisition задал controls каждые 137 ms на
+всё окно transfers. 8 fresh processes: 4/16 downloads, rescan/incremental, обратный порядок во втором блоке.
+На 16 requested files source overlap peak=6, фактический rate около 104 progress/s, не искусственные 320/s.
+В обоих блоках layout p95 lower endpoints снизились 19.043/18.670 → 4.811/5.918 ms, но median выросли
+1.419/1.479 → 3.130/4.099 ms. Это per-process описания коррелированных нотификаций, не field percentiles/CI.
+Точную причину изменения median пока не установили. React renders оставались короткими.
+
+Все 80 тел (83,950,592 bytes) проверены на точное ожидаемое base64 содержимое после native load и вне probe
+acquisition. Native progress и load отмечены раздельно; фактические callbacks replayed в независимую модель,
+итоговые rows/summaries совпадают. 376 controls и 5120 progress — не независимые benchmark replications.
+Simulator/profiling artifact, synthetic control notification, transport clock bounds: physical/touch/presentation,
+Hermes sampling и React DevTools workflow этим не закрыты. Старую model extreme не выдаём за native result.
+
+**Проверено:** 125 tests pass, web typecheck/build, native Release compile/link, 2 smoke + 8 dense runs. Шесть новых
+tests; mutations пропуска exact bytes и probe/verification isolation пойманы, source восстановлен, targeted pass.
+Replay 20 прежних model sweep/phase + 8 native runs даёт прежние analyses. Все 276 hashes старой презентации
+совпадают. AI hook unavailable/timeout, сам продолжил без bypass. Монорепо меняет только документы; raw reports
+и runtime research в отдельном local repo. Исторические captures, F index и presentation source не менялись.
+
+**Дальше:** Hermes CPU capture + React DevTools, причина median behavior, независимо timestamped native input,
+physical ordinary Release и confirmatory protocol перед regression budget. Observer остаётся reader; новый raw
+pilot JSON пока не поддерживаемый report schema. Fixed title/abstract не меняли.
+
+---
+
+## RN research — 17 ноября: короткие renders и задержка нотификаций
+
+**Чтобы** найти содержательный кейс под фиксированный анонс, **исследовали** progress callbacks вне React render,
+вместо ещё одного busy-loop demo. В локальном experiment repo создана ветка `research-rn-progress-pressure`,
+commit `9980d23` (remote по-прежнему нет). Independent loopback WebSocket producer моделирует progress,
+не замедляясь вместе с RN JS. Rescan всей истории сравнивается с incremental delta update; события не теряем,
+все итоговые rows и суммы совпадают. [Контракт и все результаты](research/performance-observability/RN_EVENT_PRESSURE_RESEARCH.md).
+
+**Получили:** 2 smoke + 16 sweep + 4 phase runs на Release/Hermes Simulator с отдельным profiling renderer.
+В high-load sweep max React render <0.710 ms, а send→JS receipt lower endpoints до 33.180 ms; incremental до
+0.597 ms при max render 1.383 ms. Phase follow-up сохраняет расхождение: send→layout effect до 41.477 ms против
+4.795 ms. Это simulated notifications, не реальные downloads/touches/presentation. Два процесса на ячейку,
+не сотни независимых повторов; clock bounds транспортные, precision/drift неизвестны. Гипотеза перспективна,
+но физический performance и conference acceptance не закрыты. Малые нагрузки и фазовая зависимость сохранены.
+
+**Проверено:** 119 experiment tests pass, web typecheck/build, native Release compile/link, 22 Simulator runs.
+Пять новых tests и две mutations: ошибка cumulative→delta и фиктивный zero при unavailable Profiler отвергнуты;
+исходники восстановлены, targeted tests pass. Первый sandboxed full suite не смог открыть HTTP порты; повтор с
+local networking прошёл. Старые 276 presentation hashes совпадают. AI commit review сообщил unavailable/timeout
+и сам продолжил; hooks не обходились. Обычный default renderer не меняли, profiling opt-in записан в identity.
+В монорепо только документы; runtime Observe/collector/Observer, старые captures и F index не менялись.
+
+**Дальше:** реальный native progress source/правдоподобная частота, Hermes CPU capture и React DevTools workflow,
+независимый native input и physical Release. Затем confirmatory protocol и performance regression rule.
+Observer расширять только под доказанную потребность принятых результатов; сырые pilot JSON пока отдельные.
+
+---
+
+## Фиксированный brief — 17 ноября: эксперименты под заявленное описание
+
+Пользователь уточнил: тему и описание менять нельзя. **Чтобы** готовить именно заявленный доклад,
+**зафиксировали** [исходный brief и обязательную матрицу покрытия](research/performance-observability/CONFERENCE_BRIEF.md).
+Предыдущий evidence-only маршрут недостаточен: RN был appendix, Hermes sampling/Flashlight/React DevTools
+workflow, hydration, RN startup и полноценный RN before/after не подтверждены. Заголовок и описание сохранены
+дословно; отсутствие результатов не превращаем в разрешение убрать обещания.
+
+**Получили:** приоритет RN interaction → equivalent fix → повторные Release measurements и диагностические
+профили; затем недостающие web hydration/startup и React DevTools, RN startup, regression rule/CI.
+Flashlight требует отдельного подтверждённого Android пути: у пользователя подтверждён только iPhone.
+Simulator остаётся полезным для workflow, не заменяет physical performance evidence. Новый main-route budget
+25+5 оставляет RN и инструменты в основной части, F internals уводит в supporting material.
+Три старых conference-документа явно помечены частичными drafts с новой acceptance-ссылкой.
+Старая презентация, runtime, экспериментальные данные и evidence indexes не менялись.
+
+**Проверено:** относительные ссылки новых/изменённых документов, последовательность окон 25+5 и git diff.
+Новых performance runs, profiler captures, runtime tests или browser checks этот документационный шаг не заявляет.
+
+**Дальше:** реализовать и проверить RN before/after protocol в существующем host, отдельно проверить
+Hermes sampling и доступный Android путь для Flashlight. Слайды обновлять по реально принятым результатам.
+
+---
+
 ## Вступительные фотографии — 17 ноября: спикер и GDG Linz
 
 По просьбе пользователя добавлены первые photo cards из старой презентации в новую graph-версию.

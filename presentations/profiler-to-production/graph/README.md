@@ -1,5 +1,7 @@
 # Performance talk on the workshop graph engine
 
+> **Content status — 17 November:** The viewer and introduction photos are available; the talk content remains a partial draft. The [fixed title, abstract and required experiments](../../../docs/research/performance-observability/CONFERENCE_BRIEF.md) govern completion. The existing evidence-only route does not yet fulfill that brief.
+
 This is an independent copy of the engine from the sibling `workshop-slides` presentation, at commit
 `2b4edfc073545d8d5aaa879c10dd392f874b748e`. The original deck stays in its original folder unchanged.
 `ENGINE_ORIGIN.json` records all 24 copied files and their original hashes. The copied PresenterNotes component alone

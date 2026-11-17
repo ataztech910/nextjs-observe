@@ -1,5 +1,7 @@
 # From Profiler to Production — presentation
 
+> **Content status — 17 November:** The viewer and introduction photos are available; the talk content remains a partial draft. The [fixed title, abstract and required experiments](../../docs/research/performance-observability/CONFERENCE_BRIEF.md) govern completion. The existing evidence-only route does not yet fulfill that brief.
+
 ## Preferred version — original graph engine
 
 The new talk now uses an independent copy of the engine from `workshop-slides`: gliding camera, graph cards/edges,

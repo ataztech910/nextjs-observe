@@ -1,5 +1,7 @@
 # Run of show — 30 minutes total
 
+> **Status — 17 November 2026:** This evidence-only draft does not yet fulfill the fixed conference description. The [fixed brief and delivery requirements](CONFERENCE_BRIEF.md) govern acceptance and the replacement main route. RN before/after, startup/hydration, named tool workflows and regression prevention require additional work; the earlier “no new measurements required” scope is superseded. Existing results retain their original limits.
+
 The speaker confirmed a 30-minute total slot on 15 November 2026. Working allocation: **25 minutes presentation,
 5 minutes Q&A**, including slide/viewer transitions. The Q&A split is our proposed allocation within that total,
 not an additional organizer instruction. This supersedes the earlier approximate 12-minute evidence-only estimate.
@@ -21,9 +23,9 @@ The durations below are rehearsal targets, not measured speaking times or new ex
 
 The graph deck has ten main steps: the eight talk cards plus two photo introduction cards inside the first row above.
 The flat print fallback keeps its original eight-card main route. The main-slide budgets sum to 25:00. The four evidence scenes total 15:30; opening/model/architecture/closing total
-9:30. Appendices A1/A2 have no separate presentation budget. The deck's Next button still goes from 08 to A1:
-stop advancing at 08 and use **O** to select an appendix when answering a question. Printing pages 1–8 produces
-the core audience deck; printing all ten retains question-support slides.
+9:30. Appendices A1/A2 have no separate presentation budget. The flat fallback's Next button still goes from 08 to A1; stop advancing there at 08. The graph deck's main route
+stops at 08 automatically; use **O** to select an appendix when answering a question. Printing flat-deck pages 1–8
+produces the core audience deck; printing all ten retains question-support slides.
 
 ## Timing checkpoints and recovery
 
