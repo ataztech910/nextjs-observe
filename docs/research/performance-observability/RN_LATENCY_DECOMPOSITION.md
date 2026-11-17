@@ -101,7 +101,8 @@ No runtime package changed; no new package publication/packed-app behavior is cl
 
 ## Next gate
 
-Native input must have an independent timestamp and declared completion endpoint; ordinary physical Release
+[Native input feasibility](RN_NATIVE_INPUT_RESEARCH.md) now records an independent event timestamp and declared
+acknowledgement layout. A repeated input protocol with idle control and independent tap phases remains needed; ordinary physical Release
 performance stays separate from profiling diagnostics. Investigate scheduling/CPU/GC with a declared intervention
 before naming the cause. Then complete React Components Profiler, startup, SSR hydration, Flashlight and executable
 CI regression workflow against the unchanged conference brief. This case is stronger research evidence, not full
