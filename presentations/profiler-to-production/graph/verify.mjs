@@ -15,8 +15,7 @@ try{
  const base=process.env.DECK_URL??'http://127.0.0.1:4349/';
  async function ready(id){
   await page.waitForFunction(id=>new URLSearchParams(location.hash.slice(1)).get('step')===id,id);
-  await page.locator('.node-card--focus li').first().waitFor();
-  await page.waitForFunction(()=>{const items=[...document.querySelectorAll('.node-card--focus li')];return items.length>0&&items.every(el=>Number(getComputedStyle(el).opacity)>.99)&&document.querySelector('.node-card--focus ul').getBoundingClientRect().height>30;});
+  await page.waitForFunction(()=>{const card=document.querySelector('.node-card--focus'),image=card?.querySelector(':scope > img'),items=[...card?.querySelectorAll('li')??[]];return image?image.complete&&image.naturalWidth>0:items.length>0&&items.every(el=>Number(getComputedStyle(el).opacity)>.99)&&card.querySelector('ul').getBoundingClientRect().height>30;});
   await page.waitForFunction(()=>{const node=document.querySelector('.node-card--focus'),canvas=document.querySelector('.canvas-viewport');if(!node||!canvas)return false;const n=node.getBoundingClientRect(),c=canvas.getBoundingClientRect();return n.width>100&&n.left>=c.left-2&&n.right<=c.right+2&&n.top>=c.top-2&&n.bottom<=c.bottom+2;});
  }
  await page.goto(base);await ready('slide-01');

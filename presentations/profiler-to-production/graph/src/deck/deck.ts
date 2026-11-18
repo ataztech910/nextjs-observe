@@ -2,6 +2,8 @@
 import type { Deck } from "./types";
 import speakerPhoto from "../assets/about/me.jpg?inline";
 import communityPhoto from "../assets/about/gdg-linz.jpg?inline";
+import interactionCard from "../assets/measurements/A-interaction.png?inline";
+import startupCard from "../assets/measurements/B-startup.png?inline";
 export const deck: Deck = {
   "meta": {
     "title": "From Profiler to Production",
@@ -109,8 +111,8 @@ export const deck: Deck = {
     },
     {
       "id": "slide-03",
-      "title": "A: the same load score, different later interaction",
-      "subtitle": "Source: load-a-1794560947170-6c40 Endpoint: handler start → React Profiler callback. Boundary: one local unthrottled Mac; four primary matched blocks; descriptive result.",
+      "title": "Same score. Different response.",
+      "subtitle": "A · Handler start → React Profiler callback · Four matched local pairs",
       "size": "lg",
       "x": 240,
       "y": 1900,
@@ -126,18 +128,16 @@ export const deck: Deck = {
       },
       "detail": {
         "bullets": [
-          "Eight Lighthouse navigation reports: 100 / 100.",
-          "Four matched primary blocks: degraded-minus-baseline handler-to-Profiler run-median gaps",
-          "214.2 · 200.8 · 213.3 · 213.6 ms",
-          "The selected expensive work was deliberately deferred beyond navigation."
+          "Paired median gaps: 214.2 · 200.8 · 213.3 · 213.6 ms. Lighthouse measures navigation; measure the later interaction separately."
         ],
-        "note": "Timing: 04:30–08:30 elapsed; budget 4:00. Use at most 60 seconds for the saved report; skip diagnostics if late. Finish A at 08:30.\n\n“Here the navigation score stays at 100 in all eight load reports. Then the user performs the nominated\ninteraction. Every matched block shows a larger handler-to-Profiler median with the deferred expensive work.\nLighthouse is measuring its declared load protocol; our later interaction is a different endpoint.\nThe four numbers are block-level differences. The individual clicks are not independent run replications.”\n\n“Lifecycle INP is recorded separately on the three-click lab pages. It is not a renamed handler duration or a\nfield Core Web Vital. The profiled source diagnostics are separate runs, excluded from these primary timings.”\n\nEvidence cue\nA protocol, full values and limitations (EXPERIMENT_A_GATE.md).\nSelect ?report=load-a-1794560947170-6c40 on its session viewer. Show both variants and all primary blocks;\nuse the separate lifecycle/source attachment if asked. If the viewer is unavailable, use the retained original\nreport screenshot or analysis with this session/endpoint visible; do not collect a new timing during the talk."
+        "note": "Timing: 04:30–08:30 elapsed; budget 4:00. Use at most 60 seconds for the saved report; skip diagnostics if late. Finish A at 08:30.\n\n“Here the navigation score stays at 100 in all eight load reports. Then the user performs the nominated\ninteraction. Every matched block shows a larger handler-to-Profiler median with the deferred expensive work.\nLighthouse is measuring its declared load protocol; our later interaction is a different endpoint.\nThe four numbers are block-level differences. The individual clicks are not independent run replications.”\n\n“Lifecycle INP is recorded separately on the three-click lab pages. It is not a renamed handler duration or a\nfield Core Web Vital. The profiled source diagnostics are separate runs, excluded from these primary timings.”\n\nEvidence cue\nA protocol, full values and limitations (EXPERIMENT_A_GATE.md).\nSelect ?report=load-a-1794560947170-6c40 on its session viewer. Show both variants and all primary blocks;\nuse the separate lifecycle/source attachment if asked. If the viewer is unavailable, use the retained original\nreport screenshot or analysis with this session/endpoint visible; do not collect a new timing during the talk.",
+        "image": interactionCard
       }
     },
     {
       "id": "slide-04",
-      "title": "B: identical downloaded code, different configured work",
-      "subtitle": "Source: bundle-b-1794566743221-443a Boundary: four primary matched pairs on one Mac; ranges are observed run values, not confidence intervals.",
+      "title": "Same JavaScript. Different startup.",
+      "subtitle": "B · Navigation → first App.useLayoutEffect · Same downloaded code",
       "size": "lg",
       "x": 2280,
       "y": 1900,
@@ -153,11 +153,10 @@ export const deck: Deck = {
       },
       "detail": {
         "bullets": [
-          "Same JS artifact and matching downloaded bodies. Different startup configuration.",
-          "Selected compute — Baseline: 1.4–3.2 ms; Degraded: 348.7–354.3 ms",
-          "Navigation → first layout effect — Baseline: 82.2–146.3 ms; Degraded: 424.4–448.1 ms"
+          "Equal download size does not mean equal executed work or readiness. Controlled configurations; not a production bug-fix history."
         ],
-        "note": "Timing: 08:30–12:30 elapsed; budget 4:00. Use at most 60 seconds for saved byte evidence; finish B at 12:30.\n\n“The same compiled code is configured to do different amounts of redundant startup work, with the same result.\nThe preserved response bodies and browser/cache receipts establish byte comparability. This is a controlled\nsame-artifact example; it does not compare the parse cost of two different equal-size bundles.”\n\n“The selected compute interval excludes imports, SDK and capture setup. Navigation-to-first-layout-effect\nincludes earlier loading and setup. Neither number is whole-bundle CPU or paint. Gzip was actually served;\nBrotli sizes are saved artifacts. Browser transferSize is not exact socket traffic. Diagnostic source profiles\nare excluded from the four primary timing pairs.”\n\nEvidence cue\nB exact protocol and byte joins (EXPERIMENT_B_GATE.md).\nSelect ?report=bundle-b-1794566743221-443a; show byte evidence beside the distinct timing endpoints.\nDiagnostic readiness remains unavailable rather than entering the primary comparison."
+        "note": "Timing: 08:30–12:30 elapsed; budget 4:00. Use at most 60 seconds for saved byte evidence; finish B at 12:30.\n\n“The same compiled code is configured to do different amounts of redundant startup work, with the same result.\nThe preserved response bodies and browser/cache receipts establish byte comparability. This is a controlled\nsame-artifact example; it does not compare the parse cost of two different equal-size bundles.”\n\n“The selected compute interval excludes imports, SDK and capture setup. Navigation-to-first-layout-effect\nincludes earlier loading and setup. Neither number is whole-bundle CPU or paint. Gzip was actually served;\nBrotli sizes are saved artifacts. Browser transferSize is not exact socket traffic. Diagnostic source profiles\nare excluded from the four primary timing pairs.”\n\nEvidence cue\nB exact protocol and byte joins (EXPERIMENT_B_GATE.md).\nSelect ?report=bundle-b-1794566743221-443a; show byte evidence beside the distinct timing endpoints.\nDiagnostic readiness remains unavailable rather than entering the primary comparison.",
+        "image": startupCard
       }
     },
     {

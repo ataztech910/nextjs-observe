@@ -52,6 +52,13 @@ def build():
         steps.append(step)
         if 0 < i < 8: edges.append({'from':f'slide-{matches[i-1][1]}','to':f'slide-{sid}'})
         if i >= 8: edges.append({'from':'slide-08','to':f'slide-{sid}','kind':'dashed','label':'Q&A'})
+    measurements = json.loads((ROOT/'measurement-cards.json').read_text())
+    for node in nodes:
+        if node['id'] in measurements:
+            card = measurements[node['id']]
+            node['title'], node['subtitle'] = card['title'], card['subtitle']
+            node['detail']['image'] = card['image']
+            node['detail']['bullets'] = card['bullets']
     introduction = json.loads((ROOT/'introduction.json').read_text())
     assert [n['id'] for n in introduction] == ['about-me','gdg-linz']
     nodes[1:1] = introduction
@@ -62,8 +69,8 @@ def build():
     main = [s for s in steps if not s.get('returnToStep')]
     edges = [{'from':a['focus'][0],'to':b['focus'][0]} for a,b in zip(main,main[1:])] + [{'from':'slide-08','to':f'slide-{sid}','kind':'dashed','label':'Q&A'} for sid in ['A1','A2']]
     deck = {'meta':{'title':'From Profiler to Production','subtitle':'React & React Native · 25 min + 5 min Q&A'},'nodes':nodes,'edges':edges,'steps':steps}
-    data = json.dumps(deck,ensure_ascii=False,indent=2).replace('"photo": "speakerPhoto"','"photo": speakerPhoto').replace('"photo": "communityPhoto"','"photo": communityPhoto')
-    (ROOT/'src/deck/deck.ts').write_text('// Generated from CONFERENCE_SLIDES.md + introduction.json. Edit sources, then regenerate.\nimport type { Deck } from "./types";\nimport speakerPhoto from "../assets/about/me.jpg?inline";\nimport communityPhoto from "../assets/about/gdg-linz.jpg?inline";\nexport const deck: Deck = '+data+';\n')
+    data = json.dumps(deck,ensure_ascii=False,indent=2).replace('"photo": "speakerPhoto"','"photo": speakerPhoto').replace('"photo": "communityPhoto"','"photo": communityPhoto').replace('"image": "interactionCard"','"image": interactionCard').replace('"image": "startupCard"','"image": startupCard')
+    (ROOT/'src/deck/deck.ts').write_text('// Generated from CONFERENCE_SLIDES.md + introduction.json. Edit sources, then regenerate.\nimport type { Deck } from "./types";\nimport speakerPhoto from "../assets/about/me.jpg?inline";\nimport communityPhoto from "../assets/about/gdg-linz.jpg?inline";\nimport interactionCard from "../assets/measurements/A-interaction.png?inline";\nimport startupCard from "../assets/measurements/B-startup.png?inline";\nexport const deck: Deck = '+data+';\n')
     return deck
 
 

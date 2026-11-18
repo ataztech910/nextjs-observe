@@ -6,6 +6,27 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Измерения на слайдах A / B — 18 ноября
+
+Пользователь одобрил вставку подготовленных кадров. После merge #130 обновили master до `c723e5a`; отдельная
+ветка добавляет PNG в preferred graph presentation, сцены 03/04. Сравнение показывает redundant work on/off,
+измеренную границу и why-it-matters; не называем это историей исправления production bug. Все числа — прежние
+4 primary pairs A/B, картинки приложения — исходный block1. Новых измерений не делали.
+
+`measurement-cards.json` связывает кадры со сценами; PNG и source/output SHA256 сохранены в assets. В фокусе
+NodeCard показывает весь кадр вместо мелкой картинки под повторённым текстом, overview/notes/navigation остаются.
+Оба PNG inline в standalone HTML, полный speaker/evidence текст сохранён. Число main steps 10, всего cards 12;
+новых сцен/минут не добавляли. Flat print fallback и старая workshop presentation не менялись.
+
+Проверено: production build + 18 tests; удаление B mapping отвергается contract test, восстановленная версия проходит.
+Chrome проверил полный main route, overview/appendices, notes, intro photos и автономный HTML из распакованного
+`/private/tmp/talk-cards-packed-w_sj7c5s/presentation.tgz`; page errors/external requests — 0. Оба image frames отдельно
+проверены live/offline без clipping/inner scroll. Source analyses/captures и PNG hashes совпадают; все 276 old deck
+hashes неизменны. Из 24 copied engine files менялись только прежний PresenterNotes и теперь NodeCard; origin hashes
+сохранены. Следующий шаг — совместно просмотреть эти две сцены, не запускать новую серию экспериментов.
+
+---
+
 ## Loaded coordinate input — 18 ноября: три favorable medians, но gate не пройден
 
 Пользователь смержил #129; обновили master до `51cbff3` и создали отдельную ветку. Чтобы проверить native input

@@ -235,7 +235,13 @@ export const NodeCard = memo(function NodeCard({
 
         {glyphs && <GlyphRain reduced={reduced} />}
 
-        {sideBySide ? (
+        {expanded && node.detail?.image ? (
+          <img
+            src={node.detail.image}
+            alt={node.title}
+            className="relative block w-full rounded-lg"
+          />
+        ) : sideBySide ? (
           <div
             className="relative grid items-stretch gap-8"
             // The card's padding (28 px top and bottom) is outside the grid.

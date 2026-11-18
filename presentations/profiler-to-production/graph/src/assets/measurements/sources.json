@@ -1,0 +1,45 @@
+{
+  "type": "presentation-summary-not-profiler-capture",
+  "measurementsRerun": false,
+  "inputs": [
+    {
+      "path": "performance-observability/reports/load-a-1794560947170-6c40/analysis.json",
+      "sha256": "35f4c6c3402c652fea10a4e3d39b4726ef3cb42d442ae1447ce3da7fba0ce02f"
+    },
+    {
+      "path": "performance-observability/reports/bundle-b-1794566743221-443a/analysis.json",
+      "sha256": "8d8894ac07683ce3c69a12c806b22b80db2a7e51f86037c465b2ad36b5255d82"
+    },
+    {
+      "path": "performance-observability/reports/load-a-1794560947170-6c40/runs/load-a-1794560947170-6c40-b1-degraded/app.png",
+      "sha256": "5b8fb6035f04a77ffffbf01157c374d20523fce17d1cd10e67fb98d7baa351c3"
+    },
+    {
+      "path": "performance-observability/reports/load-a-1794560947170-6c40/runs/load-a-1794560947170-6c40-b1-baseline/app.png",
+      "sha256": "5b8fb6035f04a77ffffbf01157c374d20523fce17d1cd10e67fb98d7baa351c3"
+    },
+    {
+      "path": "performance-observability/reports/bundle-b-1794566743221-443a/runs/bundle-b-1794566743221-443a-b1-degraded/app.png",
+      "sha256": "7ea6882c4f2ebc569250ce4e541b1fc9773238a33fba3803db8c9ccd144ebee2"
+    },
+    {
+      "path": "performance-observability/reports/bundle-b-1794566743221-443a/runs/bundle-b-1794566743221-443a-b1-baseline/app.png",
+      "sha256": "7ea6882c4f2ebc569250ce4e541b1fc9773238a33fba3803db8c9ccd144ebee2"
+    }
+  ],
+  "metrics": "A: all four primary per-run medians; B: all four primary run ranges; source screenshots: block 1",
+  "sessions": [
+    "load-a-1794560947170-6c40",
+    "bundle-b-1794566743221-443a"
+  ],
+  "cards": [
+    {
+      "file": "A-interaction.png",
+      "sha256": "3431fc27ce81a56512a32c9ed281b71a879b3e3fdbf1a07975a2d84ee3927a1f"
+    },
+    {
+      "file": "B-startup.png",
+      "sha256": "916cfe0e4188353ea3007918e806e0f9848fd4e7bb76704877ee4d2bf65a347c"
+    }
+  ]
+}

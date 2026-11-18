@@ -1,0 +1,18 @@
+{
+  "slide-03": {
+    "title": "Same score. Different response.",
+    "subtitle": "A · Handler start → React Profiler callback · Four matched local pairs",
+    "image": "interactionCard",
+    "bullets": [
+      "Paired median gaps: 214.2 · 200.8 · 213.3 · 213.6 ms. Lighthouse measures navigation; measure the later interaction separately."
+    ]
+  },
+  "slide-04": {
+    "title": "Same JavaScript. Different startup.",
+    "subtitle": "B · Navigation → first App.useLayoutEffect · Same downloaded code",
+    "image": "startupCard",
+    "bullets": [
+      "Equal download size does not mean equal executed work or readiness. Controlled configurations; not a production bug-fix history."
+    ]
+  }
+}
