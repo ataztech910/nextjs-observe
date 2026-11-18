@@ -103,6 +103,10 @@ All 276 original-presentation file hashes remain unchanged. Fixed title/abstract
 
 ## Next decision
 
+Follow-up: the [loaded coordinate study](RN_LOADED_INPUT_RESEARCH.md) completes all 27 gestures with equivalent
+loaded work, but one native-down target misses the declared budget. Favorable paired medians do not override that
+failed gate: the input hypothesis remains inconclusive. Retain both protocols separately; no accepted UX claim.
+
 Use the coordinate route as a candidate in a separately declared **loaded** study, preserving all callbacks/body
 verification and reporting actual native event phases. Do not pool this idle calibration with the earlier loaded
 pilot, compensate timestamps post hoc, or claim precise 50-ms phase alignment. If exact phase alignment is required,

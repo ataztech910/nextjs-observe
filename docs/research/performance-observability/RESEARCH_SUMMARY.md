@@ -1,5 +1,11 @@
 # Research summary and decisions
 
+Loaded coordinate input (18 November): [nine-process comparison and the declared decision](RN_LOADED_INPUT_RESEARCH.md).
+Equivalent loaded work and lower incremental process medians in all three pairs are retained, but one gesture misses
+its target by 5.432 s. The phase gate fails, hypothesis remains inconclusive and CLI exits 1. Most of that miss is
+before the HTTP gate request; it is not a 5.43-second app stall or accepted UX win. Keep the result and move to the
+open startup/hydration coverage rather than retune a favorable subset.
+
 Input delivery calibration (17 November): [ID selector versus coordinate](RN_INPUT_CALIBRATION.md).
 Eight no-download processes / 24 native gestures: coordinate meets the unchanged budget for 12/12, ID for 9/12.
 Coordinate is a candidate for a separately declared loaded study; overall calibration still exits 1 and no app UX
