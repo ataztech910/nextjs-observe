@@ -6,6 +6,60 @@
 Стенд: Next.js 16.3.7 (Turbopack), React 19.3.0, TypeScript 7, `@vercel/otel` 2.1.3, Node 24.
 Проект-полигон: `vercel-otel-test/`.
 
+## Loaded coordinate input — 18 ноября: три favorable medians, но gate не пройден
+
+Пользователь смержил #129; обновили master до `51cbff3` и создали отдельную ветку. Чтобы проверить native input
+под реальными загрузками, добавили loaded protocol в local experiment repo: `research-rn-loaded-input`, commit
+`128ec48`, remote нет. [Протокол, все точки и решение](research/performance-observability/RN_LOADED_INPUT_RESEARCH.md).
+App не пересобирали: source/executable/bundle совпадают с предыдущим pilot/calibration; 38 source files проверены.
+
+До acquisition объявили 3 Latin-order блока idle/rescan/incremental: 9 fresh Release/Hermes React profiling
+Simulator процессов, по 3 native gestures. Все measured taps — прежняя координата 50%,33%; HTTP targets +3/+9/+15 s,
+upper lateness budget 1,500 ms. Loaded сохраняет 16 bodies, 128 writes/body × 50 ms и все callbacks/final state.
+Primary — медиана трёх touch-up→ack-layout в каждом процессе; directional support требует все 3 paired upper
+endpoints ниже нуля, равную loaded work и все phase gates. Неблагоприятный результат не заменяется p95/выбором slot.
+
+Подготовка выявила удалённый временный Maestro и неполный JDK: `li-1795028222858` остановился на version preflight,
+без flows/измерений. Восстановили те же официальные Maestro 2.12.1 / Temurin 21.0.13+9, проверили SHA256. Следующий
+`li-1795028415408` failed foreground guard до source start/clock pairs/native gestures; logs/raw failure сохранены.
+Отдельная launch-only preparation XCTest прошла, после неё начали целую серию. Foreground guard, app, budget,
+endpoint/order/decision rule не меняли. Setup failures не считаем успешными измерениями и не удаляем.
+
+**Получили:** `li-1795028571253`, 9 процессов / 27 gestures; все app/native/body/idle и связанные JUnit/commands
+валидны. Loaded work совпадает во всех парах: 12,288 progress callbacks, 96 loads/verified bodies, 100,755,456 bytes;
+все body signatures/write counts/per-file callback populations/final jobs/summary проверены. Idle остаётся no-download
+control, не equivalent completed work. Actual source/native file lifetimes и write positions сохранены для каждого tap.
+
+Все 3 incremental-minus-rescan median compatibility intervals ниже нуля: [-0.308,-0.268], [-7.212,-7.165],
+[-2.905,-2.858] ms. Но **1/27** нарушает budget: block0 incremental slot1, upper lateness **5,432.319 ms**.
+Все точки остаются. `status: measurement-invalid`, `hypothesis: inconclusive`, `equivalentWork: true`; CLI пишет
+полный report и выходит **1**. Descriptive pattern не отменяет predeclared validity gate и не доказывает UX win.
+
+У выброса HTTP gate request пришёл на 5,092.452 ms позже target, release — на 5,094.067 ms, native down ещё примерно
+через 338 ms. Не называем 5.43 s app stall/native injection latency: большая часть задержки до gate request,
+конкретная внутренняя readiness/driver/host причина не изолирована. На первом incremental press уже 984 callbacks
+против 391 в rescan; coarse target budget не даёт точного matching 50-ms фаз даже для остальных 26 taps.
+
+**Проверено:** 146 JS tests; mutations some-instead-of-all paired benefit, игнорирования work mismatch и неверной
+native clock conversion отвергаются; restored source проходит. Новых Python tests/dependencies нет. Изолированный
+`/private/tmp/loaded-input-export-hlimcw72/analysis.tgz` без npm воспроизводит report SHA
+`d03084634370aaa60afcb028ad06eea6ce43bcdb75168532600e3b51b7aadbfc` и expected exit 1; foreign JUnit, wrong coordinate,
+disabled failure-exit отвергаются. Прежние paced/calibration reports воспроизводятся с исходными SHA/status.
+
+Whole app/123-file inventory, frozen protocol/tools, gates/flows/scripts, native/source/clocks, JUnit/logs/screenshots
+и обе setup failures сохранены локально. Все 276 old presentation hashes совпадают, title/abstract/F index неизменны.
+Собственные tests/builds/sampler не шли во время measured capture; OS-wide условия не контролировали. Simulator
+возвращён в manual Release screen. AI hook review был unavailable/timeout и сам продолжил, bypass не применялся.
+Observe/app инструментирует, harness оркестрирует/считает, OTLP backend принимает/хранит, Observer frontend визуализирует;
+raw pilot JSON не новый importer, runtime packages не менялись.
+
+**Дальше:** этот вариант не используем как принятое доказательство RN UX before/after. Не подгоняем budget и не
+повторяем favorable subset. Следующий конференционный опыт — открытая startup/SSR hydration coverage; возможный
+новый RN input protocol потребует отдельного readiness/barrier design. Physical presentation/ordinary Release,
+React Components Profiler, Flashlight и CI regression rule остаются открытыми требованиями fixed brief.
+
+---
+
 ## Input delivery calibration — 17 ноября: координата прошла idle gate, ID нет
 
 По разрешению пользователя смержили #128 (`2281d98`): проверенный head, зелёный GitGuardian, обычный merge без
