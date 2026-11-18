@@ -4,8 +4,8 @@
 
 This is an independent copy of the engine from the sibling `workshop-slides` presentation, at commit
 `2b4edfc073545d8d5aaa879c10dd392f874b748e`. The original deck stays in its original folder unchanged.
-`ENGINE_ORIGIN.json` records all 24 copied files and their original hashes. The copied PresenterNotes component alone
-adds a scroll limit/paragraph preservation for the longer timing notes; the other 23 engine files are byte-identical.
+`ENGINE_ORIGIN.json` records all 24 copied files and their original hashes. PresenterNotes adds a scroll limit/paragraph preservation for the longer timing notes; NodeCard displays a focused
+measurement image as a full frame. The other 22 copied engine files are byte-identical.
 The React app entry, Vite setup, content generator and offline packer are new integration code.
 
 ## Start locally
@@ -87,3 +87,17 @@ The speaker portrait and GDG image are byte-identical copies of the old deck's `
 both images and works offline. The GDG image uses contain sizing to preserve the whole mark. LinkedIn/community
 QR destinations are copied from the original cards; no network is needed to render them. The original files remain
 in place. The flat print fallback has its original eight-card main route and does not include these graph-only intros.
+
+
+## Measurement images in A / B
+
+Scenes 03 and 04 show the approved 1920×1080 measurement cards as full-frame images while focused. Their overview
+cards keep short titles; full speaker notes and evidence links remain available with N. No main-route steps or time
+are added. `measurement-cards.json` maps the two scenes, and `src/assets/measurements/` contains the PNGs and source
+hashes. The generator imports both images with `?inline`, so the standalone HTML carries them without a server.
+
+These are presentation summaries of four retained local primary pairs, with original app captures from block 1.
+Left is deliberately redundant work enabled; right is disabled. They are not a production bug-fix history or new
+measurements. Source analyses/screenshots and output PNG hashes are pinned in `sources.json`. A measures handler
+start to the React Profiler callback; B measures navigation to the first App.useLayoutEffect. Neither image is a
+hydration/presentation claim. The flat print fallback and original workshop deck are unchanged.

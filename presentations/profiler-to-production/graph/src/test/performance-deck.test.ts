@@ -27,6 +27,14 @@ describe('performance talk contract',()=>{
     expect(speaker.detail?.qr?.value).toBe('https://www.linkedin.com/in/andrei-tazetdinov/');
     expect(community.detail?.qr?.value).toBe('https://gdg.community.dev/gdg-linz/');
   });
+  it('includes distinct measurement images and keeps the complete source notes',()=>{
+    const a=deck.nodes.find(n=>n.id==='slide-03')!;
+    const b=deck.nodes.find(n=>n.id==='slide-04')!;
+    expect(a.detail?.image).toBeTruthy();expect(b.detail?.image).toBeTruthy();
+    expect(a.detail?.image).not.toBe(b.detail?.image);
+    expect(a.detail?.note).toContain('load-a-1794560947170-6c40');
+    expect(b.detail?.note).toContain('bundle-b-1794566743221-443a');
+  });
   it('has resolvable edges, focus IDs and disjoint collapsed card positions',()=>{
     const ids=new Set(deck.nodes.map(n=>n.id));
     expect(ids.size).toBe(12);
