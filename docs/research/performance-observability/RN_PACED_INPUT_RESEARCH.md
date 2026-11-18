@@ -125,6 +125,10 @@ checkpoint, not a new runtime package, OTLP signal or Observer import format.
 
 ## Next measurement decision
 
+Follow-up: [ID/coordinate calibration](RN_INPUT_CALIBRATION.md) retains all 24 no-download gestures; coordinate
+meets the unchanged budget for 12/12, ID for 9/12. This identifies a candidate route, not a replacement for this
+failed loaded pilot or proof of precise callback-phase matching. A separate loaded study remains necessary.
+
 Validate a lower-jitter injection route before accepting a phase-controlled input benchmark; coordinate selection
 or a different driver needs its own predeclared calibration, not a retrospective relaxation of this budget.
 Retain this no-download baseline and every failed phase. Physical ordinary Release/presentation, React Components

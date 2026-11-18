@@ -1,5 +1,10 @@
 # Research summary and decisions
 
+Input delivery calibration (17 November): [ID selector versus coordinate](RN_INPUT_CALIBRATION.md).
+Eight no-download processes / 24 native gestures: coordinate meets the unchanged budget for 12/12, ID for 9/12.
+Coordinate is a candidate for a separately declared loaded study; overall calibration still exits 1 and no app UX
+optimization or exact callback-phase matching is established.
+
 Paced input pilot (17 November): [no-download control and independent planned targets](RN_PACED_INPUT_RESEARCH.md).
 Nine processes / 27 gestures complete; 4 phase-budget misses remain in the report and the gate exits 1. Idle already
 has a measurable input path; no accepted phase-controlled optimization claim follows. Actual timestamps stay separate
