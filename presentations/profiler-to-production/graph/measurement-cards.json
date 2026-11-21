@@ -1,4 +1,14 @@
 {
+  "slide-01": {
+    "title": "From Profiler to Production",
+    "subtitle": "Measuring What Actually Matters in React & React Native",
+    "bullets": [
+      "Choose metrics that reflect user experience.",
+      "Know when to use each profiler — and custom instrumentation.",
+      "Take away a CI template that catches performance regressions."
+    ],
+    "note": "State the three promised outcomes: a framework for choosing metrics, a practical toolkit, and a usable CI template. The original takeaway text supplied by Andrei on 19 November is preserved in AUDIENCE_OUTCOMES.md. These are delivery requirements, not claims that the current draft has already delivered them. Keep the fixed title and description. Introduce the speaker and GDG Linz next. A score, byte count or render duration becomes a vanity target when optimized without checking the user outcome; do not call those observations universally useless. Real Hermes, Flashlight and React DevTools workflows and a validated CI template remain required."
+  },
   "slide-03": {
     "title": "Same score. Different response.",
     "subtitle": "A · Handler start → React Profiler callback · Four matched local pairs",
@@ -14,5 +24,23 @@
     "bullets": [
       "Equal download size does not mean equal executed work or readiness. Controlled configurations; not a production bug-fix history."
     ]
+  },
+  "slide-02": {
+    "title": "Visible ≠ interactive",
+    "subtitle": "SSR illustration · Early click before client JavaScript arrived · One diagnostic run",
+    "image": "visibleCard",
+    "bullets": [
+      "FCP 316 ms; early click 419.7 ms; JS responseEnd 1444.4 ms. The early action was lost. Expensive hydration is not established."
+    ],
+    "note": "История: пользователь видит каталог и нажимает сортировку; ожидает новый порядок, но ничего не происходит. Кажется, что React долго делает hydration. Однако в этом прогоне нажатие произошло до окончания загрузки клиентского JavaScript; повторное нажатие позже сработало. Поэтому не объявляем hydration причиной: её стоимость здесь не измерена. Следующий вопрос исследования — влияет ли потоковая выдача HTML и способ подключения JavaScript на доступность этого действия. Это гипотеза: текущий сервер не использует streaming, сравнения и исправления пока нет. План проверки: одна страница с поздним блоком рекомендаций; один клиентский код, обычный module против async module. Проверяем раннее нажатие, фактическую загрузку скрипта и корректность обоих вариантов. Результатов пока нет. Рассказ: research/01-web-streaming.md; план: research/01-web-comparison-plan.md.\n\nIllustration: SSR catalog, one diagnostic run. Chrome 157, emulated network 1.6 Mbit/s with 150 ms latency, CPU slowdown 4×, cache disabled. JS was uncompressed (220145 B). First contentful paint at 316 ms, trusted click at 419.7 ms, JS responseEnd at 1444.4 ms. After loading the original order remained; a new click sorted the products. This is not a hydration duration, readiness timestamp or before/after result. Original Chrome Performance screenshot and app screenshot: web-case/figures/. Full conditions: web-case/LOAD_INSPECTION.md. Explain visible content versus working interaction, then distinguish handler, selected work, React callback and presentation before showing A/B."
+  },
+  "slide-05": {
+    "title": "After profiling, keep the action observable.",
+    "subtitle": "OpenTelemetry → OTLP-compatible backend · Real delivery proof using retained lab observations",
+    "image": "observabilityCard",
+    "bullets": [
+      "Custom action duration → OTel histogram → OTLP-compatible backend. Two retained-pilot points received; live RUM, release comparison and alerting remain to demonstrate."
+    ],
+    "note": "Переход от профайлера к наблюдению. Профиль помог найти причину; теперь выбранное действие должно оставаться измеряемым. На экране реальный backend, получивший histogram talk.ui.interaction.duration через настоящий Node OTel SDK и OTLP HTTP. Значения 0.120/0.096 s — два уже сохранённых browser Event Timing наблюдения из endpoint pilot, не новая серия. Проверены metric name, unit, count 1 и sum каждого point; архив содержит один HTTP request и два metric points. Это replay lab evidence после измерения, не инструментация live production RUM. Metric timestamp — время экспорта, не исходного клика; resource service.version=pilot-export-v1 относится к exporter demo, а не разным релизам приложения. experiment.variant — конфигурация одного fixture, не выдуманные версии. Никакие spans/trace IDs для browser duration не создавались. UI показывает одноточечные approximate quantiles; не используем их как population p95. Источник и endpoint выбирает инструментация приложения/браузера, OTel сам не знает hydration или usable boundary. Для production нужно настроить app release/platform/action context, pipeline, выборку, сравнение и alert; эта часть на слайде помечена как workflow to build. Требуется backend с поддержкой нужного OTLP signal/protocol; это не обещание одинаковых возможностей всех vendors. Не делаем обзор нашего продукта или collector architecture. Источники: web-case/OTEL_OBSERVABILITY.md, web-case/otel-delivery-proof.json, web-case/export-otel-pilot.mjs. Реплика: «Профайлер объяснил одну запись. А как узнать, вернулась ли проблема после следующего релиза? Оставляем действие под наблюдением и отправляем его метрику с контекстом через OpenTelemetry в совместимый backend». Ни живой RUM, ни релизное улучшение этой доставкой ещё не доказаны."
   }
 }

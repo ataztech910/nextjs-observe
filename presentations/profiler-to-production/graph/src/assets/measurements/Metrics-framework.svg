@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" role="img" aria-labelledby="title description">
+  <title id="title">Choose the metric. Find the cause. Verify the gain.</title>
+  <desc id="description">Three steps for Web and React Native: define the user outcome and primary metric, profile the work to test a cause, then repeat the same task to keep or reject a change. The layout example maps to all three steps.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 10 5 0 10Z" fill="#8696a8"/></marker>
+  </defs>
+  <rect width="1920" height="1080" fill="#0d131a"/>
+  <g font-family="Arial, Helvetica, sans-serif" fill="#edf2f7">
+    <text x="80" y="100" font-size="49" font-weight="700">Choose the metric. Find the cause. Verify the gain.</text>
+    <text x="80" y="153" font-size="29" fill="#aebdcd">One method for Web and React Native · Different platform signals</text>
+
+    <rect x="80" y="210" width="540" height="360" rx="18" fill="#14222b" stroke="#5eead4" stroke-width="2"/>
+    <rect x="690" y="210" width="540" height="360" rx="18" fill="#19212b" stroke="#8bb8ef" stroke-width="2"/>
+    <rect x="1300" y="210" width="540" height="360" rx="18" fill="#25231b" stroke="#ffbe63" stroke-width="2"/>
+    <path d="M634 390 H673" stroke="#8696a8" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M1244 390 H1283" stroke="#8696a8" stroke-width="3" marker-end="url(#arrow)"/>
+
+    <text x="110" y="263" font-size="29" fill="#5eead4">1 · USER OUTCOME</text>
+    <text x="110" y="313" font-size="38" font-weight="700">What does the user</text>
+    <text x="110" y="357" font-size="38" font-weight="700">wait for?</text>
+    <text x="110" y="410" font-size="31">Ready to start? Respond?</text>
+    <text x="110" y="450" font-size="31">Move smoothly?</text>
+    <text x="110" y="496" font-size="29" fill="#aebdcd">Choose start, end and source.</text>
+    <text x="110" y="546" font-size="29" font-weight="700" fill="#5eead4">ONE PRIMARY METRIC</text>
+
+    <text x="720" y="263" font-size="29" fill="#8bb8ef">2 · DIAGNOSIS</text>
+    <text x="720" y="313" font-size="38" font-weight="700">What explains</text>
+    <text x="720" y="357" font-size="38" font-weight="700">the wait?</text>
+    <text x="720" y="410" font-size="31">JS / React / browser / native</text>
+    <text x="720" y="450" font-size="31">Profile the suspected work.</text>
+    <text x="720" y="496" font-size="29" fill="#aebdcd">Test a cause, change the work.</text>
+    <text x="720" y="546" font-size="29" font-weight="700" fill="#8bb8ef">ONE TESTABLE CAUSE</text>
+
+    <text x="1330" y="263" font-size="29" fill="#ffbe63">3 · DECISION</text>
+    <text x="1330" y="313" font-size="38" font-weight="700">Did the same task</text>
+    <text x="1330" y="357" font-size="38" font-weight="700">improve?</text>
+    <text x="1330" y="410" font-size="31">Repeat after the change.</text>
+    <text x="1330" y="450" font-size="31">Compare the primary metric.</text>
+    <text x="1330" y="496" font-size="29" fill="#aebdcd">Same result, work, conditions.</text>
+    <text x="1330" y="546" font-size="27" font-weight="700" fill="#ffbe63">KEEP / REJECT / INCONCLUSIVE</text>
+
+    <text x="80" y="639" font-size="29" font-weight="700">Our layout example — the same task through all three steps</text>
+    <rect x="80" y="668" width="540" height="177" rx="12" fill="#14222b"/>
+    <rect x="690" y="668" width="540" height="177" rx="12" fill="#19212b"/>
+    <rect x="1300" y="668" width="540" height="177" rx="12" fill="#25231b"/>
+    <text x="110" y="715" font-size="31" font-weight="700">Expand the same 120 cards</text>
+    <text x="110" y="762" font-size="29">Target: observed interaction</text>
+    <text x="110" y="799" font-size="29">duration (browser Event Timing).</text>
+    <text x="720" y="715" font-size="31" font-weight="700">React render stays short</text>
+    <text x="720" y="762" font-size="29">The Chrome trace reveals</text>
+    <text x="720" y="799" font-size="29">repeated browser layout.</text>
+    <text x="1330" y="715" font-size="31" font-weight="700">Read width once, then write</text>
+    <text x="1330" y="762" font-size="29">6/6 pairs lower, same final output.</text>
+    <text x="1330" y="799" font-size="29">Medians: 88 → 64 ms, locally.</text>
+
+    <text x="80" y="924" font-size="31" font-weight="700">The outcome metric tests the gain. Diagnostic timings guide the fix.</text>
+    <text x="80" y="982" font-size="24" fill="#aebdcd">Example: local Event Timing, not field INP or physical presentation. Trace and comparison are separate recordings.</text>
+    <text x="80" y="1028" font-size="24" fill="#aebdcd">A smaller bundle or shorter React render alone does not establish a faster user outcome.</text>
+  </g>
+</svg>

@@ -1,0 +1,21 @@
+{
+  "name": "performance-checks-template",
+  "private": true,
+  "type": "module",
+  "description": "CI template from the talk: check behaviour and counts, not milliseconds",
+  "scripts": {
+    "test:web": "playwright test",
+    "test:hook": "vitest run",
+    "test": "vitest run && playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0",
+    "@testing-library/react": "16.3.3",
+    "jsdom": "26.1.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "typescript": "5.9.3",
+    "vite": "8.1.5",
+    "vitest": "4.1.11"
+  }
+}

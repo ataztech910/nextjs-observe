@@ -1,0 +1,22 @@
+# Copy to .github/workflows/performance-checks.yml in your repo.
+# Check behaviour and counts, not milliseconds: CI runners are noisy, "the click worked" and "0 listeners" are not.
+name: performance checks
+on: [pull_request]
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      # React Native (and web): the hook check. Investigation 02: a closed screen keeps no subscriptions
+      # (fails with "expected 30 to be 0")
+      - run: npm run test:hook
+      # Web only — an RN repo drops these Playwright steps. Investigation 01: an early click on the visible page
+      # works (fails with "Received: Original order")
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:web
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with: { name: playwright-report, path: playwright-report }

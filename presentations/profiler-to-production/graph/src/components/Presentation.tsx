@@ -230,11 +230,14 @@ export function Presentation() {
         onFullscreen: fullscreen,
         onHome: nav.home,
         onBranchStep: stepBranch,
-        // The same as T and R: only a card with a timer in focus has one to start or reset.
-        onTimerToggle: () => timed?.timer && toggleTimer(timed.id, timed.timer.minutes, Date.now()),
+        // ↑ is a jump on a step that has one; otherwise, like T and R, the timer of a card that has one.
+        onTimerToggle: () => {
+          if (nav.jump()) return;
+          if (timed?.timer) toggleTimer(timed.id, timed.timer.minutes, Date.now());
+        },
         onTimerReset: () => timed?.timer && resetTimer(timed.id),
       }),
-      [gamepadNext, gamepadBack, toggleOverview, fullscreen, nav.home, stepBranch, timed],
+      [gamepadNext, gamepadBack, toggleOverview, fullscreen, nav.home, nav.jump, stepBranch, timed],
     ),
   );
 
@@ -287,6 +290,8 @@ export function Presentation() {
     } else if (k === "ArrowLeft" || k === "PageUp") {
       e.preventDefault();
       nav.back();
+    } else if (k === "ArrowUp") {
+      if (nav.jump()) e.preventDefault();
     } else if (/^[1-9]$/.test(k) && choosing) {
       const c = step.choices![Number(k) - 1];
       if (c) nav.choose(c.key);

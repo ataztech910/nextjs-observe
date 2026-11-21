@@ -42,7 +42,7 @@ def build():
         bullets, context = audience(screen)
         if i == 0 and bullets[0] == match[2]: bullets.pop(0)
         sid = match[1]
-        part = 'Main talk · 25 minutes' if i < 8 else 'Q&A · within 5 minutes'
+        part = 'Main talk' if i < 8 else 'Appendix · Q&A'
         label = {'01':'30 minutes total','06':'Controlled delivery faults','07':'No accepted overhead budget','A1':'Presentation unavailable','A2':'Runner ≠ archive state'}.get(sid, 'Scoped evidence')
         x, y = (240+(i%4)*1120, 300+(i//4)*1500) if i < 8 else (1360+(i-8)*1120,3300)
         nodes.append({'id':f'slide-{sid}','title':match[2],'subtitle':' '.join(context) if context else part,'size':'lg','x':x,'y':y,'chips':[{'label':sid,'mono':True}],'badge':{'label':label,'tone':'amber' if sid in ['06','07','A1','A2'] else 'gray'},'detail':{'bullets':bullets,'note':plain(notes.strip())+'\n\nEvidence cue\n'+plain(evidence.strip())}})
@@ -57,20 +57,49 @@ def build():
         if node['id'] in measurements:
             card = measurements[node['id']]
             node['title'], node['subtitle'] = card['title'], card['subtitle']
-            node['detail']['image'] = card['image']
+            if card.get('image'): node['detail']['image'] = card['image']
             node['detail']['bullets'] = card['bullets']
+            if card.get('note'): node['detail']['note'] = card['note']
+            if node['id'] == 'slide-02':
+                node['badge']['label'] = 'Investigation 01 · Web'
     introduction = json.loads((ROOT/'introduction.json').read_text())
     assert [n['id'] for n in introduction] == ['about-me','gdg-linz']
     nodes[1:1] = introduction
-    steps[1:1] = [{'id':n['id'],'focus':[n['id']],'part':'Opening · within 1:30','caption':'Who is talking' if n['id']=='about-me' else 'GDG Linz'} for n in introduction]
-    nodes[0]['detail']['note'] = 'Timing: 00:00–00:15 elapsed; budget 0:15. State the title, then introduce yourself and GDG Linz. The full three-card opening finishes at 01:30.\n\n' + nodes[0]['detail']['note'].split('\n',1)[-1].strip()
+    steps[1:1] = [{'id':n['id'],'focus':[n['id']],'part':'Opening','caption':'Who is talking' if n['id']=='about-me' else 'GDG Linz'} for n in introduction]
+    for example in json.loads((ROOT/'mini-examples.json').read_text()):
+        index = next(i for i, n in enumerate(nodes) if n['id'] == example['after']) + 1
+        nodes.insert(index, {'id':example['id'], 'title':example['title'], 'subtitle':example['subtitle'],
+            'size':'lg', 'x':0, 'y':0, 'chips':[{'label':example.get('label', 'Mini-example')}],
+            'badge':{'label':example.get('badge', 'Diagnostic illustration'),'tone':'amber'},
+            'detail':{'image':example.get('image', ''), 'bullets':example['bullets'], 'note':example['note']}})
+        if example.get('code'): nodes[index]['detail']['code'] = example['code']
+        index = next(i for i, s in enumerate(steps) if s['id'] == example['after']) + 1
+        steps.insert(index, {'id':example['id'], 'focus':[example['id']], 'part':example.get('part', 'Web · Mini-examples'),
+            'caption':example.get('caption', 'Controlled example. Mechanism and performance acceptance are separate.')})
+    # The closing card stays on screen during Q&A: the main route ends there and the appendices return to it.
+    closing = next(s for s in steps if s['id'] == 'thank-you')
+    for s in steps:
+        if s['id'] == 'slide-08': s.pop('next', None)
+        if s.get('returnToStep') == 'slide-08': s['returnToStep'] = 'thank-you'
+    closing['next'] = None
+    # Closing: from the toolkit map, ↑ goes back to the shared method card; ↑ again goes to the end.
+    toolkit = next(s for s in steps if s['id'] == 'toolkit-map')
+    toolkit['jump'] = {'to': 'framework-choice', 'exit': 'thank-you'}
+    # Keep historical evidence in its source files, but do not mix old investigations
+    # into the new talk route while the five new cases are being researched.
+    historical = {'slide-02', 'mini-mismatch', 'slide-03', 'slide-04', 'mini-layout',
+                  'layout-framework-check', 'slide-05', 'slide-06', 'slide-07',
+                  # The closing is toolkit-map → (↑) framework-choice → (↑) thank-you; the old summary card is out.
+                  'slide-08'}
+    nodes = [node for node in nodes if node['id'] not in historical]
+    steps = [step for step in steps if step['id'] not in historical]
     for i,node in enumerate(nodes):
-        node['x'],node['y'] = 240+(i%4)*2040,300+(i//4)*1600
+        node['x'],node['y'] = 240+(i%5)*2040,300+(i//5)*1600
     main = [s for s in steps if not s.get('returnToStep')]
-    edges = [{'from':a['focus'][0],'to':b['focus'][0]} for a,b in zip(main,main[1:])] + [{'from':'slide-08','to':f'slide-{sid}','kind':'dashed','label':'Q&A'} for sid in ['A1','A2']]
-    deck = {'meta':{'title':'From Profiler to Production','subtitle':'React & React Native · 25 min + 5 min Q&A'},'nodes':nodes,'edges':edges,'steps':steps}
-    data = json.dumps(deck,ensure_ascii=False,indent=2).replace('"photo": "speakerPhoto"','"photo": speakerPhoto').replace('"photo": "communityPhoto"','"photo": communityPhoto').replace('"image": "interactionCard"','"image": interactionCard').replace('"image": "startupCard"','"image": startupCard')
-    (ROOT/'src/deck/deck.ts').write_text('// Generated from CONFERENCE_SLIDES.md + introduction.json. Edit sources, then regenerate.\nimport type { Deck } from "./types";\nimport speakerPhoto from "../assets/about/me.jpg?inline";\nimport communityPhoto from "../assets/about/gdg-linz.jpg?inline";\nimport interactionCard from "../assets/measurements/A-interaction.png?inline";\nimport startupCard from "../assets/measurements/B-startup.png?inline";\nexport const deck: Deck = '+data+';\n')
+    edges = [{'from':a['focus'][0],'to':b['focus'][0]} for a,b in zip(main,main[1:])] + [{'from':'thank-you','to':f'slide-{sid}','kind':'dashed','label':'Q&A'} for sid in ['A1','A2']]
+    deck = {'meta':{'title':'From Profiler to Production','subtitle':'React & React Native'},'nodes':nodes,'edges':edges,'steps':steps}
+    data = json.dumps(deck,ensure_ascii=False,indent=2).replace('"photo": "speakerPhoto"','"photo": speakerPhoto').replace('"photo": "communityPhoto"','"photo": communityPhoto').replace('"image": "interactionCard"','"image": interactionCard').replace('"image": "startupCard"','"image": startupCard').replace('"image": "visibleCard"','"image": visibleCard').replace('"image": "mismatchCard"','"image": mismatchCard').replace('"image": "layoutCard"','"image": layoutCard').replace('"image": "observabilityCard"','"image": observabilityCard').replace('"image": "layoutComparisonCard"','"image": layoutComparisonCard').replace('"image": "metricsFrameworkCard"','"image": metricsFrameworkCard').replace('"image": "metricsFrameworkSharedCard"','"image": metricsFrameworkSharedCard').replace('"image": "streamingEvidenceCard"','"image": streamingEvidenceCard').replace('"image": "lighthouseStreamingCard"','"image": lighthouseStreamingCard').replace('"image": "subscriptionCard"','"image": subscriptionCard').replace('"image": "subscriptionHermesCard"','"image": subscriptionHermesCard').replace('"image": "toolkitMapCard"','"image": toolkitMapCard').replace('"image": "streamingDevtoolsCard"','"image": streamingDevtoolsCard').replace('"image": "thankYouCard"','"image": thankYouCard').replace('"image": "subscriptionReactProfilerCard"','"image": subscriptionReactProfilerCard').replace('"image": "userWaitsCard"','"image": userWaitsCard').replace('"image": "streamingPageCard"','"image": streamingPageCard').replace('"image": "streamingTimelineCard"','"image": streamingTimelineCard').replace('"image": "streamingMechanismCard"','"image": streamingMechanismCard').replace('"image": "sessionCountCard"','"image": sessionCountCard')
+    (ROOT/'src/deck/deck.ts').write_text('// Generated from talk Markdown, introduction, measurement cards and mini-examples. Edit sources, then regenerate.\nimport type { Deck } from "./types";\nimport speakerPhoto from "../assets/about/me.jpg?inline";\nimport communityPhoto from "../assets/about/gdg-linz.jpg?inline";\nimport interactionCard from "../assets/measurements/A-interaction.png?inline";\nimport startupCard from "../assets/measurements/B-startup.png?inline";\nimport visibleCard from "../assets/measurements/SSR-visible-interactive.png?inline";\nimport mismatchCard from "../assets/measurements/SSR-mismatch.png?inline";\nimport layoutCard from "../assets/measurements/React-layout.png?inline";\nimport observabilityCard from "../assets/measurements/OTel-action.png?inline";\nimport layoutComparisonCard from "../assets/measurements/Layout-comparison.png?inline";\nimport metricsFrameworkCard from "../assets/measurements/Metrics-framework.svg?inline";\nimport metricsFrameworkSharedCard from "../assets/measurements/Metrics-framework-shared.svg?inline";\nimport streamingEvidenceCard from "../assets/measurements/Streaming-comparison.svg?inline";\nimport lighthouseStreamingCard from "../assets/measurements/Lighthouse-streaming.png?inline";\nimport subscriptionCard from "../assets/measurements/RN-subscription-chart.svg?inline";\nimport subscriptionHermesCard from "../assets/measurements/RN-subscription-hermes.svg?inline";\nimport toolkitMapCard from "../assets/measurements/Toolkit-map.svg?inline";\nimport streamingDevtoolsCard from "../assets/measurements/Streaming-devtools.svg?inline";\nimport thankYouCard from "../assets/measurements/Thank-you.svg?inline";\nimport subscriptionReactProfilerCard from "../assets/measurements/RN-react-profiler-card.svg?inline";\nimport userWaitsCard from "../assets/measurements/User-waits.svg?inline";\nimport streamingPageCard from "../assets/measurements/Streaming-page.svg?inline";\nimport streamingTimelineCard from "../assets/measurements/Streaming-timeline.svg?inline";\nimport streamingMechanismCard from "../assets/measurements/Streaming-mechanism.svg?inline";\nimport sessionCountCard from "../assets/measurements/RN-session-count.svg?inline";\nexport const deck: Deck = '+data+';\n')
     return deck
 
 

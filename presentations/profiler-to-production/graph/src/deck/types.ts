@@ -82,6 +82,11 @@ export type Step = {
   /** Override the next step. `null` = end of deck. Default: next step in the array. */
   next?: string | null;
   /**
+   * D-pad ↑ (and ↑ on the keyboard) jumps to `to` — e.g. back to an earlier card in the closing.
+   * Arrived there by this jump, ↑ again goes on to `exit`; on a normal pass ↑ does nothing there.
+   */
+  jump?: { to: string; exit?: string };
+  /**
    * Hands the room over to something outside the deck — the live app.
    *
    * Advancing asks first, because it cannot be undone: the deck is replaced,

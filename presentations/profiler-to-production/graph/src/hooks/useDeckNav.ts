@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Choice, Deck, Step } from "@/deck/types";
+import { resolveJump, type JumpExit } from "@/lib/jump";
 import { stepNumber } from "@/lib/step-number";
 
 export type Mode = "step" | "overview" | "choosing";
@@ -123,6 +124,22 @@ export function useDeckNav(deck: Deck) {
     if (prev) setStepId(prev.id);
   }, [overview, history, steps, index]);
 
+  // Where ↑ leads from the card a jump landed on; forgotten as soon as we move off that card.
+  const [jumpExit, setJumpExit] = useState<JumpExit>(null);
+  useEffect(() => {
+    if (jumpExit && jumpExit.at !== step.id) setJumpExit(null);
+  }, [jumpExit, step.id]);
+
+  /** True when ↑ meant a jump here — otherwise the caller may use it for something else (the timer). */
+  const jump = useCallback((): boolean => {
+    if (overview) return false;
+    const j = resolveJump(step, jumpExit, (id) => byId.has(id));
+    if (!j) return false;
+    goTo(j.to);
+    setJumpExit(j.exit);
+    return true;
+  }, [overview, jumpExit, step, byId, goTo]);
+
   const home = useCallback(() => goTo(steps[0]!.id), [goTo, steps]);
 
   const goToNode = useCallback(
@@ -169,6 +186,7 @@ export function useDeckNav(deck: Deck) {
     next,
     back,
     home,
+    jump,
   };
 }
 export type DeckNav = ReturnType<typeof useDeckNav>;
